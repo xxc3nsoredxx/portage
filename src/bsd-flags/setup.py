@@ -1,5 +1,5 @@
 #! /usr/bin/env python
-# $Header$
+# $Id$
 
 from os import chdir, stat
 from distutils.core import setup, Extension
