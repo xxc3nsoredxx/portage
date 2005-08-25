@@ -1031,7 +1031,7 @@ for x in scanlist:
 		myear = time.gmtime(os.stat(checkdir+"/"+y+".ebuild")[ST_MTIME])[0]
 		gentoo_copyright = re.compile(r'^# Copyright 1999-' + str(myear) + r' Gentoo Foundation')
 		gentoo_license = re.compile(r'^# Distributed under the terms of the GNU General Public License v2$')
-		cvs_header = re.compile(r'^#\s*\$Header.*\$$')
+		cvs_header = re.compile(r'^#\s*\$Id$$')
 		ignore_line = re.compile(r'(^$)|(^(\t)*#)')
 		leading_spaces = re.compile(r'^[\S\t]')
 		trailing_whitespace = re.compile(r'.*([\S]$)')
