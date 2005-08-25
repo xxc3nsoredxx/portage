@@ -82,7 +82,6 @@ addpredict()
 
 unpack()
 {
-	echo "unpack called, cwd=$(pwd)"
 	local x y myfail tarvars srcdir
 
 	if [ "$USERLAND" == "BSD" ]; then

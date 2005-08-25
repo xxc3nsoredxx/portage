@@ -144,6 +144,7 @@ while [ "$alive" == "1" ]; do
 #					echo "disabling sandbox due to '$line'" >&2
 				else
 					export SANDBOX_DISABLED=0
+					export SANDBOX_VERBOSE="no"
 #					echo "enabling sandbox" >&2
 				fi
 			elif [ "${line}" == "start_processing" ]; then
@@ -165,6 +166,9 @@ while [ "$alive" == "1" ]; do
 #			speak "starting ${phases}"
 			if [ -z $RC_NOCOLOR ]; then
 				set_colors
+			fi
+			if ! type -p filter-env &> /dev/null; then
+				die "can't find filter-env!"
 			fi
 			DONT_EXPORT_FUNCS="${DONT_EXPORT_FUNCS} ${PORTAGE_PRELOADED_ECLASSES}"
 			for x in $DONT_EXPORT_FUNCS; do
