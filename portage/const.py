@@ -1,7 +1,7 @@
 # portage: Constants
 # Copyright 1998-2004 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Header$
+# $Id$
 
 # note this is lifted out of portage 2.  so... it's held onto for the sake of having stuff we still need,
 # but it does need cleanup.
@@ -63,4 +63,3 @@ RSYNC_BIN               = "/usr/bin/rsync"
 RSYNC_HOST              = "rsync.gentoo.org/gentoo-portage"
 
 CVS_BIN                 = "/usr/bin/cvs"
-

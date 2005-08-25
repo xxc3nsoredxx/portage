@@ -1,7 +1,7 @@
 # Copyright 2004-2005 Gentoo Foundation
 # Author(s): Nicholas Carpaski (carpaski@gentoo.org), Brian Harring (ferringb@gentoo.org)
 # License: GPL2
-# $Header$
+# $Id$
 cvs_id_string="$Id$"[5:-2]
 
 import os,types,string,sys
@@ -304,8 +304,7 @@ def spawn_get_output(mycommand,spawn_type=spawn,raw_exit_code=False,emulate_gso=
 	spawn_type is the passed in function to call- typically spawn_bash, spawn, spawn_sandbox, or spawn_fakeroot"""
 	global selinux_capable
 	pr,pw=os.pipe()
-	import inspect
-	if inspect.isroutine(spawn_type):
+	if callable(spawn_type):
 		raise ValueError("spawn type must be a function")
 
 	if fd_pipes==None:

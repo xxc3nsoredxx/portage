@@ -1,6 +1,6 @@
 # Copyright: 2004-2005 Gentoo Foundation
 # License: GPL2
-# $Header$
+# $Id$
 
 
 # We _try_ to load this module. If it fails we do the slow fallback.

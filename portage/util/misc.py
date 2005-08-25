@@ -1,6 +1,6 @@
 # Copyright 1998-2005 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Header$
+# $Id$
 cvs_id_string="$Id$"[5:-2]
 
 #clean this up.

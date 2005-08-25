@@ -1,7 +1,7 @@
 # Copyright: 2005 Gentoo Foundation
 # Author(s): Brian Harring (ferringb@gentoo.org)
 # License: GPL2
-# $Header$
+# $Id$
 
 # potentially use an intermediate base for user config errors, seperate base for instantiation?
 class BaseException(Exception):

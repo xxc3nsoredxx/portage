@@ -1,7 +1,7 @@
 # Copyright: 2005 Gentoo Foundation
 # Author(s): Brian Harring (ferringb@gentoo.org)
 # License: GPL2
-# $Header$
+# $Id$
 
 import template, cache_errors
 from template import reconstruct_eclasses

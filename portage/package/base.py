@@ -3,6 +3,5 @@
 # License: GPL2
 # $Id$
 
-import metadata
-import cpv
-import atom
+class base(object):
+	pass

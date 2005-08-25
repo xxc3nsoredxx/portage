@@ -1,7 +1,7 @@
 # fetchcommand.py; fetcher class encapsulating make.conf FETCHCOMMAND/RESUMECOMMAND, and the ensueing spawn calls
 # Copyright 2004 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-#$Header$
+#$Id$
 
 import urlparse,types
 from portage.exec import spawn_bash

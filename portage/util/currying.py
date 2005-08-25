@@ -1,7 +1,7 @@
 # Copyright: 2005 Gentoo Foundation
 # Author(s): *_curry from python cookbook, Scott David Daniels, Ben Wolfson, Nick Perkins, Alex Martelli for curry routine.
 # License: GPL2
-# $Header$
+# $Id$
 
 def pre_curry(*args, **kwargs):
 	"""passed in args are prefixed, with further args appended"""

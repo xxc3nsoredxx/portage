@@ -1,7 +1,7 @@
 # Copyright 2004-2005 Gentoo Foundation
 # Author(s): Brian Harring (ferringb@gentoo.org)
 # License: GPL2
-# $Header$
+# $Id$
 
 
 # goofy set of classes representating the fs objects portage knows of.

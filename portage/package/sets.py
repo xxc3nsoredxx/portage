@@ -2,7 +2,3 @@
 # Author(s): Brian Harring (ferringb@gentoo.org)
 # License: GPL2
 # $Id$
-
-import metadata
-import cpv
-import atom

@@ -1,7 +1,7 @@
 # portage_data.py -- Calculated/Discovered Data Values
 # Copyright 1998-2004 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Header$
+# $Id$
 cvs_id_string="$Id$"[5:-2]
 
 import os,pwd,grp
@@ -11,12 +11,12 @@ ostype=os.uname()[0]
 lchown = None
 if ostype=="Linux":
 	userland="GNU"
-	os.environ["XARGS"]="xargs -r"
+	xargs = os.environ["XARGS"]="xargs -r"
 elif ostype in ["Darwin","FreeBSD","OpenBSD"]:
 	if ostype == "Darwin":
 		lchown=os.chown
 	userland="BSD"
-	os.environ["XARGS"]="xargs"	
+	xargs = os.environ["XARGS"]="xargs"	
 else:
 	raise Exception("Operating system unsupported, '%s'" % ostype)
 

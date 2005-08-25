@@ -1,7 +1,7 @@
 # Copyright: 2005 Gentoo Foundation
 # Author(s): 
 # License: GPL2
-# $Header$
+# $Id$
 
 def unique(s):
 	"""lifted from python cookbook, credit: Tim Peters

@@ -1,6 +1,6 @@
 # Copyright: 2004-2005 Gentoo Foundation
 # License: GPL2
-# $Header$
+# $Id$
 
 import sha
 
