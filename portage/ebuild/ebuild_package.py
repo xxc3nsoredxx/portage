@@ -7,11 +7,21 @@ import os
 from portage import package
 from conditionals import DepSet
 from portage.package.atom import atom
-#from portage.fetch import fetchable
-#from digest import parse_digest
+from digest import parse_digest
 from portage.util.mappings import LazyValDict
 from portage.restrictions.values import StrExactMatch
 from portage.restrictions.packages import PackageRestriction
+from portage.chksum.errors import MissingChksum
+from portage.fetch import fetchable
+
+def create_fetchable_from_uri(chksums, uri):
+	file = os.path.basename(uri)
+	if file == uri:
+		uri = []
+	if file not in chksums:
+		raise MissingChksum(file)
+	return fetchable(file, [uri], chksums[file])
+
 
 class EbuildPackage(package.metadata.package):
 
@@ -33,7 +43,9 @@ class EbuildPackage(package.metadata.package):
 			# drop the s, and upper it.
 			val = DepSet(self.data[key.upper()[:-1]], atom)
 		elif key == "fetchables":
-			val = DepSet(self.data["SRC_URI"], str, operators={})
+			chksums = parse_digest(os.path.join(self.__dict__["_parent"].base, self.category, self.package, "files",
+				"digest-%s-%s" % (self.package, self.fullver)))
+			val = DepSet(self.data["SRC_URI"], lambda x:create_fetchable_from_uri(chksums, x), operators={})
 		elif key in ("license", "slot"):
 			val = DepSet(self.data[key.upper()], str)
 		elif key == "description":
