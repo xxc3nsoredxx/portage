@@ -269,7 +269,6 @@ dyn_compile()
 	cp "${EBUILD}" "${T}/build-info/"
 	
 	if [ -d "${S}" ]; then
-		echo "it exists"
 		cd "${S}"
 	fi
 	#our custom version of libtool uses $S and $D to fix
