@@ -1,4 +1,9 @@
 #!/usr/bin/python
+# Copyright: 2005 Gentoo Foundation
+# Author(s): Brian Harring (ferringb@gentoo.org)
+# License: GPL2
+# $Id$
+
 import portage.config, sys, time
 
 if __name__ == "__main__":
