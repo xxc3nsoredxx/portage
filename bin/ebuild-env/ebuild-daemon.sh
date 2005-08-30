@@ -163,13 +163,15 @@ while [ "$alive" == "1" ]; do
 					addwrite "$PORTAGE_LOGFILE"
 				fi
 			fi
-#			speak "starting ${phases}"
 			if [ -z $RC_NOCOLOR ]; then
 				set_colors
 			fi
 			if ! type -p filter-env &> /dev/null; then
+				echo "couldn't find filter-env in $PATH" >&2
 				die "can't find filter-env!"
 			fi
+#			speak "starting ${phases}"
+
 			DONT_EXPORT_FUNCS="${DONT_EXPORT_FUNCS} ${PORTAGE_PRELOADED_ECLASSES}"
 			for x in $DONT_EXPORT_FUNCS; do
 				declare -fr $x &> /dev/null
@@ -217,9 +219,7 @@ while [ "$alive" == "1" ]; do
 		if [ $? != 0 ]; then
 			echo "phases failed"
 			speak "phases failed"
-			speak "execute: $?"
 		else
-#			echo "phases succeeded"
 			speak "phases succeeded"
 		fi
 		;;

@@ -354,7 +354,6 @@ class ebuild_processor:
 		self.set_sandbox_state(True)
 		self.write("start_processing")
 
-		self.expect("starting depend")
 		metadata_keys = {}
 		val=self.generic_handler(additional_commands={ \
 			"request_inherit":post_curry(self.__class__._inherit, eclass_cache), \
@@ -478,5 +477,9 @@ def expected_ebuild_env(pkg, d={}):
 		d["PR"] = ""
 	d["PVR"]= pkg.fullver
 	d["EBUILD"] = pkg.path
+
+	from portage.const import depends_phase_path
+
+	d["PATH"] = depends_phase_path
 	return d
 
