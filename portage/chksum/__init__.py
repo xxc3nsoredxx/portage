@@ -3,7 +3,8 @@
 # License: GPL2
 # $Id$
 
-import os
+import os, sys
+from portage.util.modules import load_module
 
 chksum_types = {}
 __inited__ = False
@@ -26,8 +27,9 @@ def init(additional_handlers={}):
 			i = f.find(".")
 			if i != -1:	f = f[:i]
 			del i
-			m = __import__(f)
-		except ImportError:
+			m = load_module(__name__+"."+f)
+		except ImportError, ie:
+			print "ie",ie
 			continue
 		try:
 			types = getattr(m, "chksum_types")
@@ -45,3 +47,15 @@ def init(additional_handlers={}):
 	chksum_types.update(additional_handlers)	
 
 	__inited__ = True
+
+def size(file, required, cmp_syntax=False):
+	try:
+		size = os.stat(file).st_size
+	except OSError:
+		if cmp_syntax:
+			return -1
+		return False
+
+	if cmp_syntax:
+		return cmp(size, required)
+	return size == required
