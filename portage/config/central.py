@@ -15,7 +15,9 @@ class config:
 	collapses configurations, instantiates objects dependant on section definitions (mislabled conf_defaults), and 
 	a ConfigParser (or object with such an api) that is passed in.
 
-	see conf_default_types for explanation of default sections and capabilities"""
+	see conf_default_types for explanation of default sections and capabilities
+	"""
+
 	def __init__(self, cparser, conf_defaults=CONF_DEFAULTS):
 		self._cparser = cparser
 		self.type_handler = load_conf_definitions(conf_defaults)
