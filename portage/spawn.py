@@ -303,9 +303,9 @@ def spawn_get_output(mycommand,spawn_type=spawn,raw_exit_code=False,emulate_gso=
 	emulate_gso was deprecated from the day it was added, so convert your code over.
 	spawn_type is the passed in function to call- typically spawn_bash, spawn, spawn_sandbox, or spawn_fakeroot"""
 	global selinux_capable
-	pr,pw=os.pipe()
-	if callable(spawn_type):
+	if not callable(spawn_type):
 		raise ValueError("spawn type must be a function")
+	pr,pw=os.pipe()
 
 	if fd_pipes==None:
 		fd_pipes={}

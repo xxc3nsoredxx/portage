@@ -11,9 +11,9 @@ from portage.package.cpv import CPV as cpv
 
 class tree(prototype.tree):
 	package_class = str
-	def __init__(self, base):
+	def __init__(self, location):
 		super(tree,self).__init__()
-		self.base = base
+		self.base = location
 		try:
 			st = os.lstat(self.base)
 			if not stat.S_ISDIR(st.st_mode):
@@ -39,7 +39,7 @@ class tree(prototype.tree):
 	def _get_packages(self, category):
 		cpath = os.path.join(self.base,category.lstrip(os.path.sep))
 		#-5 == len(".tbz2")
-		l=set
+		l=set()
 		try:    
 			for x in os.listdir(cpath):
 				if x.endswith(".tbz2"):
@@ -55,7 +55,8 @@ class tree(prototype.tree):
 		l=set()
 		try:
 			for x in os.listdir(os.path.join(self.base, os.path.dirname(catpkg.lstrip("/").rstrip("/")))):
-				if x.startswith(pkg):
+				# startswith is faster but causes false positives, fex: mozilla and mozilla-launcher
+				if cpv(x[:-5]).package==pkg:
 					l.add(cpv(x[:-5]).fullver)
 			return tuple(l)
 		except (OSError, IOError), e:
