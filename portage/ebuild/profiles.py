@@ -109,11 +109,6 @@ class OnDiskProfile(profiles.base, ebd_data_source.base):
 		del use_mask
 		self.bashrc = filter(os.path.exists, imap(lambda x: os.path.join(x, "profile.bashrc"), stack))
 
-		fp = os.path.join(self.basepath, "thirdpartymirrors")
-		if os.path.isfile(fp):
-			mirrors = read_dict(fp, splitter='\t')
-		else:
-			mirrors = {}
 
 		maskers = []
 		for fp, i in loop_iter_read(os.path.join(prof, "package.mask") for prof in stack + [self.basepath]):

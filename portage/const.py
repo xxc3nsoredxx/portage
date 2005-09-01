@@ -6,12 +6,8 @@
 # note this is lifted out of portage 2.  so... it's held onto for the sake of having stuff we still need,
 # but it does need cleanup.
 
-#VDB_PATH                = "var/db/pkg"
-
-PRIVATE_PATH            = "/var/lib/portage"
-
-USER_CONFIG_PATH        = "/etc/portage"
-
+USER_CONFIG_PATH 	= "/etc/portage"
+PRIVATE_PATH		= "/var/lib/portage"
 
 try:
 	import portage_custom_path
@@ -44,6 +40,7 @@ DEPSCAN_SH_BINARY       = "/sbin/depscan.sh"
 BASH_BINARY             = "/bin/bash"
 MOVE_BINARY             = "/bin/mv"
 PRELINK_BINARY          = "/usr/sbin/prelink"
+depends_phase_path		= PORTAGE_BIN_PATH+":/bin:/usr/bin:"
 
 WORLD_FILE              = PRIVATE_PATH+"/world"
 #MAKE_CONF_FILE          = "/etc/make.conf"
