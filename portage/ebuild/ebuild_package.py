@@ -119,8 +119,8 @@ class EbuildFactory(package.metadata.factory):
 		else:
 			mydata["_eclasses_"] = {}
 
-		if self.__cache != None:
-			self.__cache[pkg.cpvstr] = mydata
+		if self._cache != None:
+			self._cache[pkg.cpvstr] = mydata
 
 		return mydata
 
