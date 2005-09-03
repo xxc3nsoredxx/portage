@@ -92,8 +92,9 @@ class tree(object):
 		#actual matching.
 		for catpkg in candidates:
 			for ver in self.versions[catpkg]:
-				if restrict.match(self.package_class(catpkg+"-"+ver)):
-					yield self[catpkg+"-"+ver]
+				pkg = self.package_class(catpkg+"-"+ver)
+				if restrict.match(pkg):
+					yield pkg
 		return
 
 
