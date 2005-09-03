@@ -23,10 +23,11 @@ class database(flat_hash.database):
 
 	autocommits = True
 
-	def __init__(self, *args, **config):
-		super(database, self).__init__(*args, **config)
-		self.location = os.path.join(self.location[:-len(self.label)], "metadata/cache")
-		self.ec = eclass_cache.cache(self.location)
+	def __init__(self, location, *args, **config):
+		loc = location
+		super(database, self).__init__(location, *args, **config)
+		self.location = os.path.join(loc, "metadata","cache")
+		self.ec = eclass_cache.cache(loc)
 
 	def __getitem__(self, cpv):
 		d = flat_hash.database.__getitem__(self, cpv)
