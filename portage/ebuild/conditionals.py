@@ -69,7 +69,7 @@ class DepSet(AndRestriction):
 					except StopIteration:	k2 = ''
 
 					if k2 != "(":
-						raise ParseError(dep_str)
+						raise ParseError(full_str)
 
 					# push another frame on
 					depsets.append(self.__class__(None, element_func, empty=True, conditional_converter=conditional_converter,
@@ -94,7 +94,7 @@ class DepSet(AndRestriction):
 
 		# check if any closures required
 		if len(depsets) != 1:
-			raise ParseError(dep_str)
+			raise ParseError(full_str)
 		self.has_conditionals = has_conditionals[0]
 		for x in self.node_conds:
 			self.node_conds[x] = tuple(unique(flatten(self.node_conds[x])))

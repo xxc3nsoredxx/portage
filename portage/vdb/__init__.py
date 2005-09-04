@@ -3,3 +3,4 @@
 # License: GPL2
 # $Id$
 from repository import tree as repository
+from virtualrepository import tree as virtualrepository
