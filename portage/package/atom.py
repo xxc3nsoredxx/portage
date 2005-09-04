@@ -130,6 +130,8 @@ class atom(AndRestriction):
 	def __init__(self, atom, negate_vers=False):
 		super(self.__class__, self).__init__()
 
+		self._hash = hash(atom)
+
 		pos=0
 		while atom[pos] in ("<",">","=","~","!"):
 			pos+=1
@@ -160,7 +162,7 @@ class atom(AndRestriction):
 		else:
 			self.slot = ()
 		del u,s
-			
+
 		if atom.endswith("*"):
 			self.glob = True
 			self.atom = atom[pos:-1]
@@ -194,7 +196,7 @@ class atom(AndRestriction):
 				false_use = map(lambda x: x[1:], filter(lambda x: x.startswith("-"), self.use))
 				true_use = filter(lambda x: not x.startswith("-"), self.use)
 				if false_use:
-					# XXX: convert this to a value AndRestriction whenever harring gets off his ass and 
+					# XXX: convert this to a value AndRestriction whenever harring gets off his ass and
 					# decides another round of tinkering with restriction subsystem is viable (burnt out now)
 					# ~harring
 					r.append(PackageRestriction("use", ContainmentMatch(all=True, *false_use), negate=True))
@@ -209,10 +211,20 @@ class atom(AndRestriction):
 		raise AttributeError(attr)
 
 	def atom_str(self):
-			s=self.op+self.category+"/"+self.package
-			if self.version:		s+="-"+self.fullver
-			if self.glob:			s+="*"
-			return s
+		if self.blocks:
+			s = "!"
+		else:
+			s = ""
+		s+=self.op+self.category+"/"+self.package
+		if self.version:		s+="-"+self.fullver
+		if self.glob:			s+="*"
+		return s
+
+	def __str__(self):
+		return self.atom_str()
+
+	def __hash__(self):
+		return self._hash
 
 	def __iter__(self):
 		return iter(self.restrictions)
