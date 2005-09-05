@@ -178,7 +178,9 @@ class atom(AndRestriction):
 	def __getattr__(self, attr):
 		if attr in ("category", "package", "version", "revision", "cpvstr", "fullver", "key"):
 			g = getattr(self.cpv, attr)
-#			self.__dict__[attr] = g
+			# Commenting this doubles the time taken in StateGraph.recalculate_deps()
+			# -- jstubbs
+			setattr(self, attr, g)
 			return g
 		elif attr == "restrictions":
 			r = [PackageRestriction("package", StrExactMatch(self.package))]

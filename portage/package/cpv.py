@@ -111,6 +111,11 @@ class CPV(base):
 			return self.__dict__[name]
 		raise AttributeError,name
 
+	def __eq__(self, other):
+		if not isinstance(other, self.__class__):
+			return False
+		return self.hash == other.hash
+
 	def __cmp__(self, other):
 
 		if self.cpvstr == other.cpvstr:
