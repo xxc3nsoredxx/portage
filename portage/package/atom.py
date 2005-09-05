@@ -130,7 +130,7 @@ class atom(AndRestriction):
 	def __init__(self, atom, negate_vers=False):
 		super(self.__class__, self).__init__()
 
-		self._hash = hash(atom)
+		self.hash = hash(atom)
 
 		pos=0
 		while atom[pos] in ("<",">","=","~","!"):
@@ -211,10 +211,8 @@ class atom(AndRestriction):
 		raise AttributeError(attr)
 
 	def atom_str(self):
-		if self.blocks:
-			s = "!"
-		else:
-			s = ""
+		s = ""
+		if self.blocks:			s+="!"
 		s+=self.op+self.category+"/"+self.package
 		if self.version:		s+="-"+self.fullver
 		if self.glob:			s+="*"
@@ -224,7 +222,7 @@ class atom(AndRestriction):
 		return self.atom_str()
 
 	def __hash__(self):
-		return self._hash
+		return self.hash
 
 	def __iter__(self):
 		return iter(self.restrictions)

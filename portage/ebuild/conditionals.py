@@ -60,9 +60,10 @@ class DepSet(AndRestriction):
 					elif conditionals[-1]:
 						depsets[-2].restrictions.append(operators[conditionals.pop(-1)](depsets[-1]))
 					else:
-						# XXX: This is not becoming a sublevel set...
-						# Need it to be for "|| ( ( a b ) c )" cases
-						depsets[-2].restrictions.append(depsets[-1])
+						# XXX: This DepSet does not become a sublevel set unless it's wrapped in its own.
+						# Not sure what is going on there...
+						# -- jstubbs
+						depsets[-2].restrictions.append(AndRestriction(depsets[-1]))
 						conditionals.pop(-1)
 
 					depsets[-1].has_conditionals = has_conditionals.pop(-1)
@@ -77,6 +78,7 @@ class DepSet(AndRestriction):
 						if k2 != "(":
 							raise ParseError(full_str)
 					else:
+						# Unconditional subset - useful in the || ( ( a b ) c ) case
 						k = ""
 					# push another frame on
 					depsets.append(self.__class__(None, element_func, empty=True, conditional_converter=conditional_converter,
