@@ -11,6 +11,8 @@ active_ebp_list = []
 
 import portage.spawn, os, logging
 from portage.util.currying import post_curry
+from portage.const import depends_phase_path, EBUILD_DAEMON_PATH, PORTAGE_BIN_PATH
+
 
 def shutdown_all_processors():
 	"""kill off all known processors"""
@@ -103,8 +105,6 @@ class ebuild_processor:
 		
 		Violating this will result in nastyness
 		"""
-
-		from portage.const import EBUILD_DAEMON_PATH, PORTAGE_BIN_PATH
 
 		self.ebd = EBUILD_DAEMON_PATH
 		self.ebd_libs = PORTAGE_BIN_PATH
@@ -350,6 +350,8 @@ class ebuild_processor:
 		returns a dict when successful, None when failed"""
 
 		self.write("process_ebuild depend")
+		e = expected_ebuild_env(package_inst)
+		e["PATH"] = depends_phase_path
 		self.send_env(expected_ebuild_env(package_inst))
 		self.set_sandbox_state(True)
 		self.write("start_processing")
@@ -478,8 +480,5 @@ def expected_ebuild_env(pkg, d={}):
 	d["PVR"]= pkg.fullver
 	d["EBUILD"] = pkg.path
 
-	from portage.const import depends_phase_path
-
-	d["PATH"] = depends_phase_path
 	return d
 
