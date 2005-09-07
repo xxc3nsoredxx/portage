@@ -40,7 +40,7 @@ DEPSCAN_SH_BINARY       = "/sbin/depscan.sh"
 BASH_BINARY             = "/bin/bash"
 MOVE_BINARY             = "/bin/mv"
 PRELINK_BINARY          = "/usr/sbin/prelink"
-depends_phase_path		= PORTAGE_BIN_PATH+":/bin:/usr/bin:"
+depends_phase_path		= PORTAGE_BIN_PATH+":/bin:/usr/bin"
 
 WORLD_FILE              = PRIVATE_PATH+"/world"
 #MAKE_CONF_FILE          = "/etc/make.conf"
