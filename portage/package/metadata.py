@@ -7,6 +7,7 @@ import weakref
 from cpv import CPV
 
 class package(CPV):
+	immutable = True
 	def __init__(self, cpv, parent_repository):
 		super(package,self).__init__(cpv)
 		self.__dict__["_cpv_finalized"] = False
