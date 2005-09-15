@@ -10,6 +10,8 @@ def parse_digest(path, throw_errors=True):
 		f = open(path)
 		for line in f:
 			l = line.split()
+			if len(l) == 0:
+				continue
 			if len(l) != 4:
 				if throw_errors:
 					raise ParseChksumError(path, "line count was not 4, was %i: '%s'" % (len(l), line))
