@@ -5,11 +5,11 @@
 
 from portage.util.fs import normpath
 import os, sys
-from portage.protocols import ebd_data_source
+from portage.protocols import data_source
 
 class base(object):	pass
 
-class cache(base, ebd_data_source.base):
+class cache(base, data_source.base):
 	"""
 	Maintains the cache information about eclasses available to an ebuild.
 	get_path and get_data are special- one (and only one) can be set to None.

@@ -15,7 +15,7 @@ from portage.util.currying import post_curry
 from portage.util.lists import unique
 from portage.util.mappings import ProtectedDict
 from itertools import imap
-from portage.protocols.ebd_data_source import local_source
+from portage.protocols.data_source import local_source
 
 class MissingFile(BaseException):
 	def __init__(self, file, setting):	self.file, self.setting = file, setting
