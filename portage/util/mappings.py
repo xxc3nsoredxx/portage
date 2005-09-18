@@ -306,3 +306,21 @@ class LimitedChangeSet(object):
 
 	def __len__(self):
 		return len(self.__new)
+
+
+class ImmutableDict(dict):
+	"""Immutable Dict, non changable after instantiating"""
+
+	def __delitem__(self, *args):
+		raise TypeError("non modifiable")
+
+	__setitem__ = __delitem__
+	clear = __delitem__
+	
+	def __hash__(self):
+		k = self.items()
+		k.sort(lambda x, y: cmp(x[0], y[0]))
+		return hash(tuple(k))
+	
+	__delattr__ = __setitem__
+	__setattr__ = __setitem__
