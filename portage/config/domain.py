@@ -170,11 +170,10 @@ class domain:
 			
 		if profile.get_path == None and profile.get_data == None:
 			raise Failure("profile instance '%s' lacks a usable ebd_data_source method" % profile)
-		bashrc = [(profile, x) for x in profile.bashrc]
+		bashrc = profile.bashrc[:]
 
 		if "bashrc" in self.settings:
-			l = local_source()
-			bashrc.extend([(l,x) for x in self.settings["bashrc"]])
+			bashrc.extend([local_source(x) for x in self.settings["bashrc"]])
 
 		self.settings["bashrc"] = bashrc
 		

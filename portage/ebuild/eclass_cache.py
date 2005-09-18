@@ -9,7 +9,7 @@ from portage.protocols import data_source
 
 class base(object):	pass
 
-class cache(base, data_source.base):
+class cache(base):
 	"""
 	Maintains the cache information about eclasses available to an ebuild.
 	get_path and get_data are special- one (and only one) can be set to None.
@@ -79,7 +79,7 @@ class cache(base, data_source.base):
 
 		return ec_dict
 
-	def get_path(self, eclass):
+	def get_eclass_path(self, eclass):
 		"""get local file path to an eclass.  remote implementations should set this to None, since the file isn't locally available"""
 		try:
 			return os.path.join(self.eclasses[eclass][0], eclass+".eclass")

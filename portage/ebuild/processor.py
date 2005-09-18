@@ -384,12 +384,12 @@ class ebuild_processor:
 			raise UnhandledCommand("inherit requires an eclass specified, none specified")
 		
 		line=line.strip()
-		if ecache.get_path != None:
-			value = ecache.get_path(line)
+		if ecache.get_eclass_path != None:
+			value = ecache.get_eclass_path(line)
 			self.write("path")
 			self.write(value)
-		elif ecache.get_data != None:
-			value = ecache.get_data(line)
+		elif ecache.get_eclass_data != None:
+			value = ecache.get_eclass_data(line)
 			self.write("transfer")
 			self.write(value)
 		else:
