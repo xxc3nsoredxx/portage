@@ -14,6 +14,7 @@ from portage.restrictions.packages import PackageRestriction
 from portage.chksum.errors import MissingChksum
 from portage.fetch.errors import UnknownMirror
 from portage.fetch import fetchable, mirror
+import const
 
 def create_fetchable_from_uri(chksums, mirrors, uri):
 	file = os.path.basename(uri)
@@ -65,9 +66,15 @@ class EbuildPackage(package.metadata.package):
 		elif key == "keywords":
 			val = self.data["KEYWORDS"].split()
 		elif key == "eapi":
-			val = self.data.get("EAPI", 0)
-			# XXX remove this once the arguement over "EAPI should be allowed as string!" is silenced, and int's rule. >:)
-			if val == '' :	val = 0
+			try:
+				val = int(self.data.get("EAPI", 0))
+			except ValueError:
+				if self.data["EAPI"] == '':
+					val = 0
+				else:
+					val = const.unknown_eapi
+			except KeyError:
+				val = 0
 		else:
 			return super(EbuildPackage, self).__getattr__(key)
 		self.__dict__[key] = val
