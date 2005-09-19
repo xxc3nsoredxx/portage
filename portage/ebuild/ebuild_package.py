@@ -15,6 +15,7 @@ from portage.chksum.errors import MissingChksum
 from portage.fetch.errors import UnknownMirror
 from portage.fetch import fetchable, mirror
 import const
+import processor
 
 def create_fetchable_from_uri(chksums, mirrors, uri):
 	file = os.path.basename(uri)
@@ -120,7 +121,6 @@ class EbuildFactory(package.metadata.factory):
 
 	def _update_metadata(self, pkg):
 
-		import processor
 		ebp=processor.request_ebuild_processor()
 		mydata = ebp.get_keys(pkg, self._ecache)
 		processor.release_ebuild_processor(ebp)
