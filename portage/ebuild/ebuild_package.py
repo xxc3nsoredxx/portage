@@ -52,9 +52,10 @@ class EbuildPackage(package.metadata.package):
 			val = self.package
 		elif key == "PR":
 			val = "-r"+str(self.revision)
-		elif key in ("depends", "rdepends", "bdepends"):
-			# drop the s, and upper it.
-			val = DepSet(self.data[key.upper()[:-1]], atom)
+		elif key == "depends":
+			val = DepSet(self.data.get("DEPEND",""), atom)
+		elif key == "rdepends":
+			val = DepSet(self.data.get("RDEPEND","") + " " + self.data.get("PDEPEND", ""), atom)
 		elif key == "fetchables":
 			chksums = parse_digest(os.path.join(self.__dict__["_parent"]._base, self.category, self.package, "files",
 				"digest-%s-%s" % (self.package, self.fullver)))
