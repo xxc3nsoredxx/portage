@@ -31,6 +31,13 @@ class IndexableSequence(object):
 	def keys(self):
 		return list(self.iterkeys())
 
+	def __len__(self):
+		if self.__cache_complete:
+			return len(self.__cache.keys())
+		count=0
+		for x in self.iterkeys():
+			count+=1
+		return count
 	
 	def __delitem__(self, key):
 		if self._frozen:
