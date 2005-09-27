@@ -22,7 +22,10 @@ def crappy_iter_tokens(s, splitter=" "):
 # ya know what's sad?  This is faster for majority of cases.
 # for it to be slower involves *massive* strings, and a >10 splitters.
 def iter_tokens(s, splitter=" "):
-	if len(splitter) > 1:
+	l = len(splitter)
+	if l > 1:
+		if l == 3 and "\n" in splitter and " " in splitter and "\t" in splitter:
+			return iter(s.split())
 		for x in splitter[:-1]:
 			s = s.replace(x, splitter[-1])
 	return ifilter(None, s.split(splitter[-1]))
