@@ -22,13 +22,8 @@ def crappy_iter_tokens(s, splitter=" "):
 # ya know what's sad?  This is faster for majority of cases.
 # for it to be slower involves *massive* strings, and a >10 splitters.
 def iter_tokens(s, splitter=" "):
-	if len(splitter) == 1:
-		return iter(s.split(splitter))
-	
-#	for x in range(len(splitter) -1):
-#		s = splitter[x + 1].join(filter(None,s.split(splitter[x])))
-#	return iter(filter(None, s.split(splitter[-1])))
-	for x in range(len(splitter) -1):
-		s = s.replace(splitter[x], splitter[x+1])
+	if len(splitter) > 1:
+		for x in splitter[:-1]:
+			s = s.replace(x, splitter[-1])
 	return ifilter(None, s.split(splitter[-1]))
 #	return iter(crappy_iter_tokens(s, splitter))
