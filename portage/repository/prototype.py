@@ -30,14 +30,17 @@ class tree(object):
 
 
 	def _get_categories(self, *arg):
+		"""this must return a list, or sequence"""
 		raise NotImplementedError
 
 
 	def _get_packages(self, category):
+		"""this must return a list, or sequence"""
 		raise NotImplementedError
 
 
 	def _get_versions(self, package):
+		"""this must return a list, or sequence"""
 		raise NotImplementedError
 
 
