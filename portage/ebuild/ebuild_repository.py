@@ -18,7 +18,7 @@ def convert_depset(instance, conditionals):
 	return instance.evaluate_depset(conditionals)
 
 class UnconfiguredTree(prototype.tree):
-	false_categories = set(["eclass","profiles","packages","distfiles","licenses","scripts"])
+	false_categories = set(["eclass","profiles","packages","distfiles","licenses","scripts", "CVS"])
 	configured=False
 	configurables = ("settings",)
 	configure = None
