@@ -7,7 +7,7 @@ anydbm_module = __import__("anydbm")
 try:
 	import cPickle as pickle
 except ImportError:
-	import pickl
+	import pickle
 import os
 import fs_template
 import cache_errors
