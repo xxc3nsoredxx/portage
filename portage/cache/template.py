@@ -115,9 +115,8 @@ class database(object):
 			self.commit()
 
 	def commit(self):
-		if self.autocommits:
-			pass
-		raise NotImplementedError
+		if not self.autocommits:
+			raise NotImplementedError
 
 	def get_matches(self, match_dict):
 		"""generic function for walking the entire cache db, matching restrictions to
