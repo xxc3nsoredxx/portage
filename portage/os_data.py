@@ -36,7 +36,9 @@ if not lchown:
 secpass=0
 
 uid=os.getuid()
-wheelgid=0
+# hard coding sucks.
+root_uid = 0
+wheelgid = 0
 
 if uid==0:
 	secpass=2
