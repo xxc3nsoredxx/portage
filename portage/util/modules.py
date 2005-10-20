@@ -14,9 +14,9 @@ __import_lock = threading.Lock()
 def load_module(name):
 	"""load a module, throwing a FailedImport if __import__ fails"""
 	__import_lock.acquire()
-	if name in sys.modules:
-		return sys.modules[name]
 	try:
+		if name in sys.modules:
+			return sys.modules[name]
 		try:
 			m = __import__(name)
 			nl = name.split('.')
