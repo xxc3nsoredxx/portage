@@ -45,23 +45,10 @@ def ensure_dirs(path, gid=-1, uid=-1, mode=0777):
 	return True
 
 
-# XXX throw this out.
-try:
-	#XXX: This should get renamed to bsd_chflags, I think.
-	import chflags
-	bsd_chflags = chflags
-except SystemExit, e:
-	raise
-except:
-	# XXX: This should get renamed to bsd_chflags, I think.
-	bsd_chflags = None
-
-
 def abssymlink(symlink):
 	"""
 	This reads symlinks, resolving the relative symlinks, and returning the absolute.
 	"""
-	import os.path
 	mylink=os.readlink(symlink)
 	if mylink[0] != '/':
 		mydir=os.path.dirname(symlink)
@@ -71,9 +58,8 @@ def abssymlink(symlink):
 
 def normpath(mypath):
 	newpath = os.path.normpath(mypath)
-	if len(newpath) > 1:
-		if newpath[:2] == "//":
-			return newpath[1:]
+	if newpath.startswith('//'):
+		return newpath[1:]
 	return newpath
 
 

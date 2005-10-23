@@ -25,9 +25,11 @@ def load_module(name):
 			while len(nl):
 				m = getattr(m, nl[0])
 				nl.pop(0)
-			return m	
-		except AttributeError, e:
-			raise FailedImport(name, e)
+			return m
+		# * ferringb|afk hit it at some point, sure of that
+		# but no idea how, so commenting out to see if things break...
+		# except AttributeError, e:
+		#	raise FailedImport(name, e)
 		except ImportError, e:
 			try:
 				del sys.modules[name]
