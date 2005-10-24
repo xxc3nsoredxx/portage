@@ -65,6 +65,8 @@ class tree(object):
 			yield self.package_class(cpv)
 		return
 
+	def __len__(self):
+		return len(self.versions)
 
 	def match(self, atom):
 		return list(self.itermatch(atom))
