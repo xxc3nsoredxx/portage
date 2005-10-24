@@ -138,3 +138,5 @@ class EbuildFactory(package.metadata.factory):
 		return mydata
 
 
+def generate_new_factory(*a, **kw):
+	return EbuildFactory(*a, **kw).new_package
