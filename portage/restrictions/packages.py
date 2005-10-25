@@ -11,6 +11,28 @@ import values
 class base(restriction.base):
 	package_matching = True
 
+
+class Conditional(base):
+	"""base object representing a conditional node"""
+	package_matcing = False
+	
+	def __init__(self, node, payload, negate=False):
+		self.negate, self.cond, self.restrictions = negate, node, payload
+
+	def __str__(self):	
+		if self.negate:	s="!"+self.cond
+		else:					s=self.cond
+		try:		s2=" ".join(self.restrictions)
+		except TypeError:
+			s2=str(self.restrictions)
+		return "%s? ( %s )" % (s, s2)
+
+
+	def __iter__(self):
+		return iter(self.restrictions)
+
+
+
 class PackageRestriction(base):
 	"""cpv data restriction.  Inherit for anything that's more then cpv mangling please"""
 
@@ -138,3 +160,4 @@ def force_True(self, *a):
 
 AlwaysTrue = AlwaysBoolRestriction(True)
 AlwaysFalse = AlwaysBoolRestriction(True)
+

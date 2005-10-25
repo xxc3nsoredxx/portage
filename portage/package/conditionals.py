@@ -3,28 +3,9 @@
 # License: GPL2
 # $Id$
 
-#from metadata import package as package_base
 from portage.util.mappings import LimitedChangeSet, Unchangable
 from portage.util.lists import unique, flatten
 import copy
-
-class base(object):
-	"""base object representing a conditional node"""
-
-	def __init__(self, node, payload, negate=False):
-		self.negate, self.cond, self.restrictions = negate, node, payload
-
-	def __str__(self):	
-		if self.negate:	s="!"+self.cond
-		else:					s=self.cond
-		try:		s2=" ".join(self.restrictions)
-		except TypeError:
-			s2=str(self.restrictions)
-		return "%s? ( %s )" % (s, s2)
-
-
-	def __iter__(self):
-		return iter(self.restrictions)
 
 class PackageWrapper(object):
 	def __init__(self, pkg_instance, configurable_attribute_name, initial_settings=[], unchangable_settings=[], attributes_to_wrap={},
