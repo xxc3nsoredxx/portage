@@ -129,8 +129,10 @@ class bash_parser(shlex):
 		self.changed_state.append((self.state, self.token[self.__pos:]))
 		tok = ''
 		for s, t in self.changed_state:
-			if s in ('"', "a"):		tok += self.var_expand(t)
-			else:							tok += t
+			if s in ('"', "a"):
+				tok += self.var_expand(t)
+			else:
+				tok += t
 		return tok
 
 	def var_expand(self, val):
