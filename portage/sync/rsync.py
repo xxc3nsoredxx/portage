@@ -65,15 +65,18 @@ class RsyncHost:
 			return None
 		return self.__ips
 	
-	def sync(self,settings, local_path,remote_path=None,verbosity=1,excludes=[],compress=True, \
+	def sync(self,settings, local_path,remote_path=None,verbosity=1,excludes=None,compress=True, \
 		timeout=180,ip=None,cleanup=True):
+		
 		"""sync up local_path with remote_path on host
 		settings is a portage.config, at some point hopefully removed and specific options
 		passed in instead.
 		verbosity ranges 0-4
 		0 is absolutely quiet, 1 is quiet, 2 is normal, 3 is noisy.
 		ip is used to control which ip of the host is used.
-		cleanup controls deletion."""
+		cleanup controls deletion.
+		"""
+
 
 		args=[self.__binary,
 			"--recursive",    # Recurse directories
@@ -93,8 +96,9 @@ class RsyncHost:
 
 		if compress:
 			args.append("--compress")
-		for x in excludes:
-			args.append("--exclude=%s" % str(x))
+		if excludes:
+			for x in excludes:
+				args.append("--exclude=%s" % str(x))
 		if verbosity >=3:
 			args.append("--progress")
 			args.append("--verbose")

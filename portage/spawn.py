@@ -97,7 +97,7 @@ def find_binary(myc):
 	return None
 
 
-def spawn_func(func,args=[],kwargs=None,exit_func=None,**keywords):
+def spawn_func(func,args=None,kwargs=None,exit_func=None,**keywords):
 	"""spawn a python function in a fork
 	func: python function
 	args: positional args to positionally expand for the function
@@ -107,7 +107,8 @@ def spawn_func(func,args=[],kwargs=None,exit_func=None,**keywords):
 	note exit_func should handle applicable exceptions.  Unhandled exemptions are caught,
 	and the process exits with a code of 1.
 	"""
-	
+	if args is None:
+		args = []
 	if kwargs is None:
 		kwargs == {}
 	if exit_func:

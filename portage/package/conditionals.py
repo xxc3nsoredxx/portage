@@ -8,7 +8,7 @@ from portage.util.lists import unique, flatten
 import copy
 
 class PackageWrapper(object):
-	def __init__(self, pkg_instance, configurable_attribute_name, initial_settings=[], unchangable_settings=[], 
+	def __init__(self, pkg_instance, configurable_attribute_name, initial_settings=None, unchangable_settings=None, 
 		attributes_to_wrap=None, build_callback=None):
 
 		"""pkg_instance should be an existing package instance
@@ -19,6 +19,11 @@ class PackageWrapper(object):
 		attributes_to_wrap should be a dict of attr_name:callable
 		the callable receives the 'base' attribute (unconfigured), with the built up conditionals as a second arg
 		"""
+		
+		if initial_settings is None:
+			initial_settings = []
+		if unchangable_settings is None:
+			unchangable_settings = []
 		self.__wrapped_pkg = pkg_instance
 		if attributes_to_wrap is None:
 			attributes_to_wrap = {}

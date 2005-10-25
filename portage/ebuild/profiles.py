@@ -19,7 +19,11 @@ class OnDiskProfile(profiles.base):
 	required = ("base_repo", "profile")
 	section_ref = ("base_repo")
 
-	def __init__(self, base_repo, profile, incrementals=[]):
+	def __init__(self, base_repo, profile, incrementals=None):
+
+		if incrementals is None:
+			incrementals = []
+
 		self.basepath = os.path.join(base_repo.base,"profiles")
 
 		dep_path = os.path.join(self.basepath, profile, "deprecated")
