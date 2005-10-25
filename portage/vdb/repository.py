@@ -11,9 +11,11 @@ from portage.package.cpv import CPV as cpv
 from portage.util.lists import unique
 from portage.util.mappings import LazyValDict
 from portage.vdb.contents import ContentsFile
+from portage.plugins import get_plugin
 
 class tree(prototype.tree):
-
+	ebuild_format_magic = "ebuild_built"
+	
 	def __init__(self, location):
 		super(tree,self).__init__()
 		self.base = self.location = location
@@ -27,8 +29,7 @@ class tree(prototype.tree):
 		except OSError:
 			raise errors.InitializationError("lstat failed on base %s" % self.base)
 
-		from portage.ebuild.ebuild_built import package_factory
-		self.package_class = package_factory(self).new_package
+		self.package_class = get_plugin("format", self.ebuild_format_magic)(self)
 
 
 
