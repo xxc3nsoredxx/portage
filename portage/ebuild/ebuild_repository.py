@@ -102,6 +102,11 @@ class UnconfiguredTree(prototype.tree):
 			raise KeyError("failed fetching versions for package %s: %s" % \
 			(os.path.join(self.base,catpkg.lstrip(os.path.sep)), str(e)))
 
+	def _get_ebuild_path(self, pkg):
+		return os.path.join(self.base, pkg.category, pkg.package, \
+			"%s-%s.ebuild" % (pkg.package, pkg.fullver))
+		           
+
 
 class ConfiguredTree(UnconfiguredTree):
 	configured = True

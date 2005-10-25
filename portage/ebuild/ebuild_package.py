@@ -17,6 +17,7 @@ from portage.fetch import fetchable, mirror
 import const
 import processor
 
+# utility func.
 def create_fetchable_from_uri(chksums, mirrors, uri):
 	file = os.path.basename(uri)
 	if file == uri:
@@ -38,12 +39,15 @@ def create_fetchable_from_uri(chksums, mirrors, uri):
 
 class EbuildPackage(package.metadata.package):
 	immutable = False
+
+	def __init__(self, cpv, parent, pull_path):
+		super(EbuildPackage, self).__init__(cpv, parent)
+		self.__dict__["_get_path"] = pull_path
 	
 	def __getattr__(self, key):
 		val = None
 		if key == "path":
-			val = os.path.join(self.__dict__["_parent"]._base, self.category, self.package, \
-				"%s-%s.ebuild" % (self.package, self.fullver))
+			val = self._get_path(self)
 		elif key == "_mtime_":
 			#XXX wrap this.
 			val = long(os.stat(self.path).st_mtime)
@@ -136,6 +140,9 @@ class EbuildFactory(package.metadata.factory):
 			self._cache[pkg.cpvstr] = mydata
 
 		return mydata
+
+	def _get_new_child_data(self, cpv):
+		return ([self._parent_repo._get_ebuild_path], {})
 
 
 def generate_new_factory(*a, **kw):
