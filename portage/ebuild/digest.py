@@ -19,5 +19,5 @@ def parse_digest(path, throw_errors=True):
 			d[l[2]] = {l[0].lower():l[1], "size":l[3]}
 		f.close()
 	except (OSError, IOError), e:
-			raise ChecksumUnavailable("failed parsing " + path, e)
+			raise ParseChksumError("failed parsing " + path, e)
 	return d
