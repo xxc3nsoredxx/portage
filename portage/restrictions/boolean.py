@@ -15,25 +15,23 @@ __all__ = ("AndRestriction", "OrRestriction", "XorRestriction")
 import restriction
 
 class base(restriction.base):
-	__slots__ = tuple(["restrictions"] + restriction.base.__slots__)
-	required_base = restriction.base
+	__slots__ = tuple(["restrictions", "type"] + restriction.base.__slots__)
 	
-	def __init__(self, *restrictions, **kwds):
+	def __init__(self, type, *restrictions, **kwds):
 		"""Optionally hand in (positionally) restrictions to use as the basis of this restriction
 		finalize=False, set it to True to notify this instance to internally finalize itself (no way to reverse it yet)
 		negate=False, controls whether matching results are negated
 		"""
+		self.type = type
 		finalize = kwds.pop('finalize', False)
 		super(base, self).__init__(**kwds)
-		for x in restrictions:
-			if not isinstance(x, restriction.base):
-				#bad monkey.
-				raise TypeError, x
+
+		self.restrictions = []
+		if restrictions:
+			self.add_restriction(*restrictions)
 
 		if finalize:
-			self.restrictions = tuple(restrictions)
-		else:
-			self.restrictions = list(restrictions)
+			self.restrictions = tuple(self.restrictions)
 
 
 	def add_restriction(self, *new_restrictions):
@@ -41,9 +39,12 @@ class base(restriction.base):
 		"""
 		if len(new_restrictions) == 0:
 			raise TypeError("need at least one restriction handed in")
-		for r in new_restrictions:
-			if not isinstance(r, self.required_base):
-				raise TypeError("instance '%s' isn't a derivative '%s'" % (r, self.required_base))
+		try:
+			for r in new_restrictions:
+				if r.type != self.type:
+					raise TypeError("instance '%s' is restriction type '%s', must be '%s'" % (r, r.type, self.type))
+		except AttributeError:
+			raise TypeError("instance '%s' has no restriction type, '%s' required" % (r, self.type))
 		
 		self.restrictions.extend(new_restrictions)
 
@@ -384,7 +385,6 @@ class XorRestriction(base):
 					yield True
 			pkg.rollback(entry_point)
 		
-
 	def __str__(self):
 		if self.negate:	return "not ( %s )" % " ^^ ".join(imap(str, self.restrictions))
 		return "( %s )" % " ^^ ".join(imap(str, self.restrictions))
