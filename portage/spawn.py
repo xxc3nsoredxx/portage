@@ -144,7 +144,7 @@ def spawn(mycommand,env=None,raw_exit_code=False,opt_name=None,fd_pipes=None,ret
 	"""
 
 	if env is None:
-		nev = {}
+		env = {}
 	myc=''
 	if not func_call:
 		if type(mycommand)==types.StringType:
