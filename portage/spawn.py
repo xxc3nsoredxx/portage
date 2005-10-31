@@ -9,6 +9,9 @@ import signal
 from const import SANDBOX_BINARY, BASH_BINARY, SANDBOX_BINARY, SANDBOX_PIDS_FILE, FAKEROOT_PATH
 from os_data import portage_gid
 
+
+__all__ = ["cleanup", "spawn","spawn_sandbox", "spawn_bash", "spawn_fakeroot", "spawn_func", "spawn_get_output"]
+
 selinux_capable = False
 sandbox_capable = os.path.exists(SANDBOX_BINARY)
 userpriv_capable = (os.getuid() == 0)
