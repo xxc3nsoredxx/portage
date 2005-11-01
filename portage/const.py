@@ -39,6 +39,7 @@ if not os.path.exists(SANDBOX_BINARY):
 DEPSCAN_SH_BINARY		= "/sbin/depscan.sh"
 BASH_BINARY				= "/bin/bash"
 MOVE_BINARY				= "/bin/mv"
+COPY_BINARY				= "/bin/cp"
 PRELINK_BINARY			= "/usr/sbin/prelink"
 depends_phase_path		= PORTAGE_BIN_PATH+":/bin:/usr/bin"
 
