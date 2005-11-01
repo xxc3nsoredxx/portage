@@ -116,7 +116,7 @@ unpack()
 				bzip2 -dc "${srcdir}${x}" | tar ${tarvars} -xf -
 				assert "$myfail"
 				;;
-			ZIP|zip)
+			ZIP|zip|jar)
 				unzip -qo "${srcdir}${x}" || die "$myfail"
 				;;
 			gz|Z|z)
@@ -137,6 +137,9 @@ unpack()
 				;;
 			RAR|rar)
 				unrar x -idq "${srcdir}/${x}" || die "$myfail"
+				;;
+			LHa|LHA|lha|lzh)
+				lha xqf "${srcdir}/${x}" || die "$myfail"
 				;;
 			*)
 				echo "unpack ${x}: file format not recognized. Ignoring."
