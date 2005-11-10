@@ -1,7 +1,6 @@
 # Copyright 2004 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 # $Id$
-cvs_id_string="$Id$"[5:-2]
 
 import os, stat
 import fcntl

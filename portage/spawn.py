@@ -2,7 +2,6 @@
 # Author(s): Nicholas Carpaski (carpaski@gentoo.org), Brian Harring (ferringb@gentoo.org)
 # License: GPL2
 # $Id$
-cvs_id_string="$Id$"[5:-2]
 
 import os,types,string,sys
 import signal
