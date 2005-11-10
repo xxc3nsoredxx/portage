@@ -172,6 +172,23 @@ class ebuild_processor:
 		# locking isn't used much, but w/ threading this will matter
 
 
+	def prep_phase(self, phase, env, sandbox=None, logging=None):
+		"""
+		Utility function, combines multiple calls into one, leaving the processor in a state where all that 
+		remains is a call start_processing call, then generic_handler event loop.
+		
+		Returns True for success, false for everything else.
+		"""
+		
+		self.write("process_ebuild %s" % phase)
+		if not self.send_env(env):
+			return False
+		if sandbox:
+			self.set_sandbox_state(sandbox)
+		if logging:
+			self.set_logging(logging)
+		return True
+
 	def sandboxed(self):
 		"""is this instance sandboxed?"""
 		return self.__sandbox
