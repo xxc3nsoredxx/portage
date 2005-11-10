@@ -1,7 +1,6 @@
-# Copyright 2004-2005 Gentoo Foundation
-# Author(s): Nicholas Carpaski (carpaski@gentoo.org), Brian Harring (ferringb@gentoo.org)
+# Copyright: 2005 Gentoo Foundation
 # License: GPL2
-# $Id$
+# $Id:$
 
 import os,types,string,sys
 import signal
