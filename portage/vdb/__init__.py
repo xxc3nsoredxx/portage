@@ -1,7 +1,7 @@
 # Copyright: 2005 Gentoo Foundation
-# Author(s): Brian Harring (ferringb@gentoo.org)
 # License: GPL2
 # $Id$
+
 from portage.repository import multiplex
 from repository import tree as vdb_repository
 from virtualrepository import tree as virtualrepository
