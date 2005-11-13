@@ -1,6 +1,6 @@
 # Copyright: 2005 Gentoo Foundation
 # License: GPL2
-# $Id:$
+# $Id$
 
 import os,pwd,grp
 
@@ -10,11 +10,14 @@ lchown = None
 if ostype=="Linux":
 	userland="GNU"
 	xargs = os.environ["XARGS"]="xargs -r"
-elif ostype in ["Darwin","FreeBSD","OpenBSD"]:
+elif ostype == "Darwin":
+	userland="Darwin"
+	os.environ["XARGS"]="xargs"
+elif ostype in ["FreeBSD","OpenBSD","NetBSD"]:
 	if ostype == "Darwin":
 		lchown=os.chown
 	userland="BSD"
-	xargs = os.environ["XARGS"]="xargs"	
+	xargs = os.environ["XARGS"]="xargs"
 else:
 	raise Exception("Operating system unsupported, '%s'" % ostype)
 
