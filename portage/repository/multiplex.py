@@ -66,3 +66,12 @@ class tree(prototype.tree):
 				d[m] = None
 		return d.keys()
 
+	def __iter__(self):
+		s = set()
+		for t in self.trees:
+			# rather then using the iter, we use version scanning
+			# reason is wee only need to cache the cpv, not the full obj.
+			for cpv in t.versions:
+				if cpv not in s:
+					yield t.package_class(cpv)
+					s.add(cpv)
