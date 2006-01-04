@@ -2,7 +2,7 @@
 # License: GPL2
 # $Id$
 
-import re, logging
+import re
 from portage.restrictions import restriction, boolean
 from portage.util.currying import pre_curry, pretty_docs
 
@@ -31,13 +31,12 @@ class base(restriction.base):
 
 class VersionRestriction(base):
 	"""use this as base for version restrictions, gives a clue to what the restriction does"""
-	pass
+	__slots__ = base.__slots__
 
 
 class StrMatch(base):
 	""" Base string matching restriction.  all derivatives must be __slot__ based classes"""
 	__slots__ = ["flags"] + base.__slots__
-	pass
 
 
 class StrRegexMatch(StrMatch):
