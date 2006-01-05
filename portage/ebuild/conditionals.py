@@ -18,7 +18,7 @@ def conditional_converter(node, payload):
 class DepSet(boolean.AndRestriction):
 	__slots__ = ("has_conditionals", "conditional_class", "node_conds") + boolean.AndRestriction.__slots__
 
-	def __init__(self, dep_str, element_func, operators={"||":packages.OrRestriction}, \
+	def __init__(self, dep_str, element_func, operators={"||":packages.OrRestriction,"":packages.AndRestriction}, \
 		conditional_converter=conditional_converter, conditional_class=packages.Conditional, empty=False, full_str=None):
 
 		"""dep_str is a dep style syntax, element_func is a callable returning the obj for each element, and
@@ -57,11 +57,8 @@ class DepSet(boolean.AndRestriction):
 						raw_conditionals.pop(-1)
 						for x in depsets[-1]:
 							self.node_conds.setdefault(x, []).append(cond)
-					elif conditionals[-1]:
-						depsets[-2].restrictions.append(operators[conditionals.pop(-1)](*depsets[-1].restrictions))
 					else:
-						depsets[-2].restrictions.extend(depsets[-1].restrictions)
-						conditionals.pop(-1)
+						depsets[-2].restrictions.append(operators[conditionals.pop(-1)](*depsets[-1].restrictions))
 
 					depsets[-1].has_conditionals = has_conditionals.pop(-1)
 					depsets.pop(-1)
