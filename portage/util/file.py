@@ -104,6 +104,8 @@ class bash_parser(shlex):
 		self.wordchars += "${}/."
 		if sourcing_command is not None:
 			self.source = sourcing_command
+		if env is None:
+			env = {}
 		self.env = env
 		self.__pos = 0
 
