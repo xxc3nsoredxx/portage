@@ -200,7 +200,7 @@ def combinations(restrict):
 				newset.add(element)
 				ret.add(newset)
 			else:
-				ret = extrapolate(ret, combinations(element))
+				ret.union_update(combinations(element))
 	else:
 		newset = sets.Set()
 		subsets = sets.Set()
