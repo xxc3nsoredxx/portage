@@ -93,15 +93,6 @@ class tree(prototype.tree):
 				data = f.read()
 				f.close()
 				data = data.strip()
-				if key == "USE":
-					# This is innefficient.
-					# it's implemented as a hack here, rather then in the general ebuild_built code however.
-					try:
-						iuse = set(load_data("IUSE").split())
-						data = " ".join(filter(lambda x: x in iuse, data.split()))
-					except OSError:
-						pass
-				
 			else:
 				data = ContentsFile(os.path.join(path,key))
 			return data
