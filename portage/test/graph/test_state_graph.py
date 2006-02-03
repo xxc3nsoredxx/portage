@@ -3,11 +3,20 @@
 # $Id:$
 
 from twisted.trial import unittest
-from portage.package.atom import atom
+from portage.restrictions.values import StrExactMatch
+from portage.restrictions.packages import package_type
 from portage.ebuild.conditionals import DepSet
 from portage.graph.state_graph import combinations
 if not hasattr(__builtins__, "set"):
 	from sets import Set as set
+
+class StrPackage(StrExactMatch):
+	"""simple string restriction for testing purposes (portage.package.atom requires
+	categories and has many other features which would only be clutter here)"""
+	def __init__(self, *args, **kwds):
+		super(StrPackage, self).__init__(*args, **kwds)
+		# package_type is a hard coded requirement by DepSet
+		self.type = package_type
 
 class CombinationsTest(unittest.TestCase):
 
@@ -20,8 +29,8 @@ class CombinationsTest(unittest.TestCase):
 	}
 
 	def get_combinations(self, depstring):
-		d = DepSet(depstring, atom)
-		return combinations(d)
+		d = DepSet(depstring, StrPackage)
+		return combinations(d, StrPackage)
 
 	def test_combinations(self):
 		for depstring, comb_strings in self.test_input.iteritems():
