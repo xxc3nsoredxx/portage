@@ -20,7 +20,7 @@ class StateGraph(object):
 	def add_pkg(self, pkg):
 		assert(pkg not in self.pkgs)
 		self.dirty = True
-		self.pkgs[pkg] = (combinations(pkg.rdepends), sets.Set(), sets.Set())
+		self.pkgs[pkg] = (combinations(pkg.rdepends, atom), sets.Set(), sets.Set())
 		if len(self.pkgs[pkg][0]) <= 1:
 			for atomset in self.pkgs[pkg][0]:
 				self.pkgs[pkg][1].union_update(atomset)
@@ -196,25 +196,25 @@ def extrapolate(set1, set2):
 	return final_set
 
 
-def combinations(restrict):
+def combinations(restrict, elem_type=atom):
 	ret = sets.Set()
 
 	if isinstance(restrict, OrRestriction):
 		for element in restrict:
-			if isinstance(element, atom):
+			if isinstance(element, elem_type):
 				newset = sets.Set()
 				newset.add(element)
 				ret.add(newset)
 			else:
-				ret.union_update(combinations(element))
+				ret.union_update(combinations(element, elem_type))
 	else:
 		newset = sets.Set()
 		subsets = sets.Set()
 		for element in restrict:
-			if isinstance(element, atom):
+			if isinstance(element, elem_type):
 				newset.add(element)
 			else:
-				subsets.add(combinations(element))
+				subsets.add(combinations(element, elem_type))
 		ret.add(newset)
 		for comb in subsets:
 			ret = extrapolate(ret, comb)
