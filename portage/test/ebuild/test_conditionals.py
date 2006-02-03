@@ -44,7 +44,12 @@ class StrPackage(StrExactMatch):
 
 class DepSetTest(unittest.TestCase):
 
-	depstring_input={"AndRestriction":"|| ( ( x11-libs/libXrender x11-libs/libX11 x11-libs/libXt ) virtual/x11 )"}
+	test_input = ("|| ( ( a b ) c )",
+		"|| ( a ( b c ) )",
+		"|| ( ( a b ) c ( d e ) )",
+		"|| ( a ( b c ) ( d e ) )",
+		"|| ( a b ) ( c d )",
+		"a || ( b c )")
 
 	def depset_consistency_check(self, depstring):
 		norm_depstring = normalize_depstring(depstring)
@@ -55,5 +60,5 @@ class DepSetTest(unittest.TestCase):
 		self.assertEquals(norm_depstring, output_depstring)
 
 	def test_depstrings(self):
-		for k in self.depstring_input:
-			self.depset_consistency_check(self.depstring_input[k])
+		for depstring in self.test_input:
+			self.depset_consistency_check(depstring)
