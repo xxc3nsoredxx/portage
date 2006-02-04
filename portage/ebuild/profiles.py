@@ -129,9 +129,9 @@ class OnDiskProfile(profiles.base):
 					else:				d[k] = v
 				else:					d[k] = v
 
-
-		# use_expand
-		d["USE_EXPAND"] = d.get("USE_EXPAND",'').split()
+		d.setdefault("USE_EXPAND",'')
+		if isinstance(d["USE_EXPAND"],str):
+			d["USE_EXPAND"] = d["USE_EXPAND"].split()
 		for u in d["USE_EXPAND"]:
 			u2 = u.lower()+"_"
 			if u in d:
