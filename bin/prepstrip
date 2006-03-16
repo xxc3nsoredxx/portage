@@ -3,7 +3,10 @@
 # Distributed under the terms of the GNU General Public License v2
 # $Id: /var/cvsroot/gentoo-src/portage/bin/prepstrip,v 1.23.2.3 2005/08/15 02:58:20 vapier Exp $
 
-if [ "${FEATURES//*nostrip*/true}" == "true" ] || [ "${RESTRICT//*nostrip*/true}" == "true" ] ; then
+if [[ " ${FEATURES} " == *" nostrip "* ]] || \
+   [[ " ${RESTRICT} " == *" nostrip "* ]] || \
+   [[ " ${RESTRICT} " == *" strip "* ]]
+then
 	echo "nostrip"
 	STRIP="/bin/false"
 	PORTAGE_STRIP_FLAGS=""
