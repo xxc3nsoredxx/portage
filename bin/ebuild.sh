@@ -1026,16 +1026,21 @@ dyn_install() {
 		# Don't want paths that point to the tree where the package was built
 		# (older, broken libtools would do this).  Also check for null paths
 		# because the loader will search $PWD when it finds null paths.
-		f=$(scanelf -qyRF '%r %p' "${D}" | grep -E "(${BUILDDIR}|: |::|^ )")
+		f=$(scanelf -qyRF '%r %p' "${D}" | grep -E "(${BUILDDIR}|: |::|^:|^ )")
 		if [[ -n ${f} ]] ; then
-			echo -ne '\a\n'
+			echo -ne '\a\n'                        
 			echo "QA Notice: the following files contain insecure RUNPATH's"
-			echo " Please file a bug about this at http://bugs.gentoo.org/"
-			echo " For more information on this issue, kindly review:"
-			echo " http://bugs.gentoo.org/81745"
+			echo " Please file a bug about this at http://bugs.gentoo.org/"                        
+			echo " with the maintaining herd of the package."
+			echo " Summary: $CATEGORY/$PN: insecure RPATH ${f}"                        
 			echo "${f}"
 			echo -ne '\a\n'
-			die "Insecure binaries detected"
+			if has stricter ${FEATURES}; then
+				insecure_rpath=1
+			else
+				echo "Auto fixing rpaths for ${f}"
+				TMPDIR=${BUILDDIR} scanelf -BXr ${f} -o /dev/null
+			fi
 		fi
 
 		# Check for setid binaries but are not built with BIND_NOW
