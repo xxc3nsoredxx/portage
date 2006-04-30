@@ -1058,8 +1058,22 @@ dyn_install() {
 		fi
 
 		# TEXTREL's are baaaaaaaad
-		f=$(scanelf -qyRF '%t %p' "${D}")
-		if [[ -n ${f} ]] ; then
+		# Allow devs to mark things as ignorable ... e.g. things that are
+		# binary-only and upstream isn't cooperating (nvidia-glx) ... we
+		# allow ebuild authors to set QA_TEXTRELS_arch and QA_TEXTRELS ...
+		# the former overrides the latter ... regexes allowed ! :)
+		qa_var="QA_TEXTRELS_${ARCH}"
+		[[ -n ${!qa_var} ]] && QA_TEXTRELS=${!qa_var}
+		[[ -n ${QA_STRICT_TEXTRELS} ]] && QA_TEXTRELS=""
+		f=()
+		for s in $(scanelf -qyRF '%t %p' "${D}" | grep -v ' usr/lib/debug/'); do
+			[[ ${s} == "TEXTREL" ]] && continue
+			for t in ${QA_TEXTRELS}; do
+				[[ ${t} == ${s} ]] && continue 2
+			done
+			f=( ${f} ${s} )
+		done
+		if [[ -n ${f[@]} ]] ; then
 			echo -ne '\a\n'
 			echo "QA Notice: the following files contain runtime text relocations"
 			echo " Text relocations require a lot of extra work to be preformed by the"
@@ -1067,7 +1081,7 @@ dyn_install() {
 			echo " and might not function properly on other architectures hppa for example."
 			echo " If you are a programmer please take a closer look at this package and"
 			echo " consider writing a patch which addresses this problem."
-			echo "${f}"
+			echo "${f[@]}"
 			echo -ne '\a\n'
 			[[ ${FEATURES/stricter} != "${FEATURES}" ]] \
 				&& die "Aborting due to textrels"
