@@ -309,7 +309,7 @@ the program has been merged.
 .br
 You may use the same syntax to vary dependencies as seen above in \fBDEPEND\fR.
 .TP
-\fBRESTRICT\fR = \fI[fetch,mirror,nostrip,userpriv]\fR
+\fBRESTRICT\fR = \fI[fetch,mirror,strip,userpriv]\fR
 This should be a space delimited list of portage features to restrict.
 .PD 0
 .RS
@@ -323,7 +323,7 @@ files in \fBSRC_URI\fR will not be downloaded from the \fBGENTOO_MIRRORS\fR.
 .I primaryuri
 fetch from URL's in \fBSRC_URI\fR before \fBGENTOO_MIRRORS\fR.
 .TP
-.I nostrip
+.I strip
 final binaries/libraries will not be stripped of debug symbols.
 .TP
 .I userpriv
