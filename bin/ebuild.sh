@@ -1030,9 +1030,9 @@ dyn_install() {
 		if [[ -n ${f} ]] ; then
 			echo -ne '\a\n'                        
 			echo "QA Notice: the following files contain insecure RUNPATH's"
-			echo " Please file a bug about this at http://bugs.gentoo.org/"                        
+			echo " Please file a bug about this at http://bugs.gentoo.org/"
 			echo " with the maintaining herd of the package."
-			echo " Summary: $CATEGORY/$PN: insecure RPATH ${f}"                        
+			echo " Summary: $CATEGORY/$PN: insecure RPATH ${f}"           
 			echo "${f}"
 			echo -ne '\a\n'
 			if has stricter ${FEATURES}; then
@@ -1065,14 +1065,18 @@ dyn_install() {
 		qa_var="QA_TEXTRELS_${ARCH}"
 		[[ -n ${!qa_var} ]] && QA_TEXTRELS=${!qa_var}
 		[[ -n ${QA_STRICT_TEXTRELS} ]] && QA_TEXTRELS=""
-		f=()
-		for s in $(scanelf -qyRF '%t %p' "${D}" | grep -v ' usr/lib/debug/'); do
-			[[ ${s} == "TEXTREL" ]] && continue
+		QA_TEXTRELS=$(echo ${QA_TEXTRELS}) # strip newlines
+		f=""
+		s=$(scanelf -qyRF '"#t%p"' "${D}" | grep -v 'usr/lib/debug/')
+		s=$(echo ${s}) # strip newlines
+		# eval needed to get ${QA_TEXTRELS} expanded so bash splits
+		# words taking account of spaces in quoted words.
+		eval "for s in ${s}; do
 			for t in ${QA_TEXTRELS}; do
-				[[ ${t} == ${s} ]] && continue 2
+				[[ \${s} =~ \"^\${t}$\" ]] && continue 2
 			done
-			f=( ${f} ${s} )
-		done
+			f=\"\${f}\${s}\n\"
+		done"
 		if [[ -n ${f[@]} ]] ; then
 			echo -ne '\a\n'
 			echo "QA Notice: the following files contain runtime text relocations"
@@ -1081,22 +1085,53 @@ dyn_install() {
 			echo " and might not function properly on other architectures hppa for example."
 			echo " If you are a programmer please take a closer look at this package and"
 			echo " consider writing a patch which addresses this problem."
-			echo "${f[@]}"
+			printf "${f}"
 			echo -ne '\a\n'
 			[[ ${FEATURES/stricter} != "${FEATURES}" ]] \
 				&& die "Aborting due to textrels"
 			sleep 1
 		fi
 
-		# Check for files with executable stacks
-		f=$(scanelf -qyRF '%e %p' "${D}")
+		# Also, executable stacks only matter on linux (and just glibc atm ...)
+		f=""
+		case ${CTARGET:-${CHOST}} in
+			*-linux-gnu*)
+			# Check for files with executable stacks, but only on arches which
+			# are supported at the moment.  Keep this list in sync with
+			# http://hardened.gentoo.org/gnu-stack.xml (Arch Status)
+			case ${CTARGET:-${CHOST}} in
+				i?86*|ia64*|m68k*|s390*|x86_64*)
+					# Allow devs to mark things as ignorable ... e.g. things
+					# that are binary-only and upstream isn't cooperating ...
+					# we allow ebuild authors to set QA_EXECSTACK_arch and
+					# QA_EXECSTACK ... the former overrides the latter ...
+					# regexes allowed ! :)
+
+					qa_var="QA_EXECSTACK_${ARCH}"
+					[[ -n ${!qa_var} ]] && QA_EXECSTACK=${!qa_var}
+					[[ -n ${QA_STRICT_EXECSTACK} ]] && QA_EXECSTACK=""
+					QA_EXECSTACK=$(echo ${QA_EXECSTACK}) # strip newlines
+					s=$(scanelf -qyRF '"#e%p"' "${D}" | grep -v 'usr/lib/debug/')
+					s=$(echo ${s}) # strip newlines
+					# eval needed to get ${QA_TEXTRELS} expanded so bash splits
+					# words taking account of spaces in quoted words.
+					eval "for s in ${s}; do
+						for e in ${QA_EXECSTACK}; do
+							[[ \${s} =~ \"^\${e}$\" ]] && continue 2
+						done
+						f=\"\${f}\${s}\n\"
+					done"
+					;;
+			esac
+			;;
+		esac
 		if [[ -n ${f} ]] ; then
 			echo -ne '\a\n'
 			echo "QA Notice: the following files contain executable stacks"
 			echo " Files with executable stacks will not work properly (or at all!)"
 			echo " on some architectures/operating systems.  A bug should be filed"
 			echo " at http://bugs.gentoo.org/ to make sure the file is fixed."
-			echo "${f}"
+			printf "${f}"
 			echo -ne '\a\n'
 			[[ ${FEATURES/stricter} != "${FEATURES}" ]] \
 				&& die "Aborting due to +x stack"
