@@ -11,7 +11,7 @@ class FetchException(Exception):
 class Fetcher(object):
 	_protos = []
 	
-	def fetch(self, uri, destination, resume=False, cleanup=False):
+	def fetch(self, uri, destination, resume=False, cleanup=False, fd=sys.stdout):
 		proto = uriparse(uri)[0]
 		if proto not in self._protos:
 			raise Exception("Fetcher %s doesn't support protocol %s" % (self._name, proto))
