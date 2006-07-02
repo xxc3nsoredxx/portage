@@ -3,6 +3,7 @@
 # $Id: portage_const.py 3483 2006-06-10 21:40:40Z genone $
 
 from transports import fetch, uriparse
+from random import shuffle
 
 class Protocol(object):
 	_protocols = {}
@@ -83,6 +84,6 @@ class MirrorProtocol(Protocol):
 		mirrors = []
 		if self._mirrormap.has_key("local"):
 			mirrors += self._mirrormap["local"]
-		mirrors += self._mirrormap[name]
+		mirrors += shuffle(self._mirrormap[name])
 		
 		return ["/".join(x, loc) for x in mirrors]

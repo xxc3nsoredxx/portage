@@ -2,6 +2,9 @@
 # Distributed under the terms of the GNU General Public License v2
 # $Id: portage_const.py 3483 2006-06-10 21:40:40Z genone $
 
+import os
+from transport.protocols import Protocol
+
 class FetchException(Exception):
 	pass
 
@@ -29,7 +32,15 @@ def uriparse(uri):
 	
 	return (proto, loc, name)
 
-def fetch(uri, destination, resume=False, cleanup=False, failover=False):
+def fetch(uri, destination, mirrorlist=[], resume=False, cleanup=False, failover=False):
 	proto, loc, name = uriparse(uri)
 	p = Protocol.getProtocol(proto)
-	return p.fetch(uri, destination, resume, cleanup, failover)
+	if len(mirrorlist) > 0:
+		mirrorlist.append("://",join(proto, loc, os.dirname(name)))
+		mirrormap = {"_internal": mirrorlist}
+		filename = os.path.basename(name)
+		mirroruri = "mirror://_internal/"+filename
+		mp = Protocol.getProtocol("mirror")
+		return mp.fetch(mirroruri, destination, resume, cleanup, failover)
+	else:
+		return p.fetch(uri, destination, resume, cleanup, failover)
