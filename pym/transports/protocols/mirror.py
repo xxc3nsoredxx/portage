@@ -1,9 +1,9 @@
-# Copyright 1998-2004 Gentoo Foundation
+# Copyright 2006 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 # $Id: portage_const.py 3761 2006-07-02 19:40:56Z genone $
 
 from transports.protocols import Protocol
-import os
+import os, sys
 
 class MirrorProtocol(Protocol):
 	def __init__(self, mirrormap):
@@ -39,12 +39,10 @@ def init(settings):
 
 	thirdpartymirrors = grabdict(os.path.join(settings["PORTDIR"], "profiles", "thirdpartymirrors"))
 	custommirrors = grabdict(CUSTOM_MIRRORS_FILE)
-	defaultmirrors = {"_internal": settings["GENTOO_MIRRORS"]}
 	
 	allmirrors = {}
 	allmirrors.update(thirdpartymirrors)
 	allmirrors.update(custommirrors)
-	allmirrors.update(defaultmirrors)
 
-	protocol = Mirrorprotocol(allmirrors)
+	protocol = MirrorProtocol(allmirrors)
 	Protocol.register(protocol)
