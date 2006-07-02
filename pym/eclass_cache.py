@@ -1,7 +1,7 @@
 # Copyright: 2005 Gentoo Foundation
 # Author(s): Nicholas Carpaski (carpaski@gentoo.org), Brian Harring (ferringb@gentoo.org)
 # License: GPL2
-# $Id:$
+# $Id$
 
 from portage_util import writemsg
 import portage_file
