@@ -1,4 +1,4 @@
-# Copyright 1998-2004 Gentoo Foundation
+# Copyright 2006 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 # $Id: portage_const.py 3761 2006-07-02 19:40:56Z genone $
 
@@ -51,17 +51,16 @@ class FancyCommandFetcher(BasicCommandFetcher):
 								"gid"    : portage_gid,
 								"groups" : [portage_gid],
 								"umask"  : 002})
-		try:
-			if self._settings.selinux_enabled():
-				import selinux
-				con = selinux.getcontext()
-				con = cont.replace(con, self._settings["PORTAGE_T"], self._settings["PORTAGE_FETCH_T"])
-				selinux.setexec(con)
+		if self._settings.selinux_enabled():
+			import selinux
+			con = selinux.getcontext()
+			con = cont.replace(con, self._settings["PORTAGE_T"], self._settings["PORTAGE_FETCH_T"])
+			selinux.setexec(con)
 
-			myret = spawn_bash(mycommand, **spawn_keywords)
+		myret = spawn_bash(mycommand, **spawn_keywords)
 
-			if self._settings.selinux_enabled():
-				selinux.setexec(None)
+		if self._settings.selinux_enabled():
+			selinux.setexec(None)
 
 		return myret
 
@@ -72,7 +71,7 @@ def get_commands(settings, key):
 	# anticipate for new potential config() behavior
 	except KeyError:
 		resumecmd = fetchcmd
-	if resumecmd == ""
+	if resumecmd == "":
 		resumecmd = fetchcmd
 
 	return (fetchcmd, resumecmd)
@@ -85,12 +84,12 @@ def init(settings, set_preferred=False):
 			key = k[len(CMD_VARNAME):]
 			commands = get_commands(settings, key)
 			
-			if key[0] == "_":
-				protos = [key[1]:].lower()
-				name = "Command"+key[1].upper()+key[2:].lower()
-			elif key == "":
+			if key == "":
 				protos = ["http", "ftp"]
 				name = "Command"
+			elif key[0] == "_":
+				protos = [key[1:].lower()]
+				name = "Command"+key[1].upper()+key[2:].lower()
 			else:
 				continue
 			
@@ -99,4 +98,4 @@ def init(settings, set_preferred=False):
 				m = __import__("transports.protocols."+p, [], [], "protocol")
 				m.protocol.addFetcher(fetcher)
 				if set_preferred:
-					m.protocol.setPreferred(fetcher.getName)
+					m.protocol.setPreferredFetcher(fetcher.getName())

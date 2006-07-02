@@ -3,7 +3,8 @@
 # $Id: portage_const.py 3483 2006-06-10 21:40:40Z genone $
 
 import os, sys
-from transports.protocols import Protocol, MirrorProtocol
+from transports.protocols import Protocol
+from transports.protocols.mirror import MirrorProtocol
 
 class FetchException(Exception):
 	pass
@@ -52,3 +53,14 @@ def fetch(uri, destination, mirrorlist=[], resume=False, cleanup=False, failover
 		return mp.fetch(mirroruri, destination, fd, resume, cleanup, failover, fd)
 	else:
 		return p.fetch(uri, destination, resume, cleanup, failover, fd)
+
+def init(settings, prefer_commands=True):
+	# TODO: replace with a generic and extensible solution
+	import transports.fetchcommand as fcmd
+	fcmd.init(settings, set_preferred=prefer_commands)
+
+	import transports.file
+	# file module has auto-init
+	
+	import transports.protocols.mirror as mirror
+	mirror.init(settings)
