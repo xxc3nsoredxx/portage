@@ -3,7 +3,7 @@
 # $Id: portage_const.py 3483 2006-06-10 21:40:40Z genone $
 
 import os, sys
-from transports.protocols import Protocol
+from transports.protocols import Protocol, MirrorProtocol
 
 class FetchException(Exception):
 	pass
@@ -48,7 +48,7 @@ def fetch(uri, destination, mirrorlist=[], resume=False, cleanup=False, failover
 		mirrormap = {"_internal": mirrorlist}
 		filename = os.path.basename(name)
 		mirroruri = "mirror://_internal/"+filename
-		mp = Protocol.getProtocol("mirror")
+		mp = MirrorProtocol(mirrormap)
 		return mp.fetch(mirroruri, destination, fd, resume, cleanup, failover, fd)
 	else:
 		return p.fetch(uri, destination, resume, cleanup, failover, fd)
