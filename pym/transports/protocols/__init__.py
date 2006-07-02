@@ -2,8 +2,8 @@
 # Distributed under the terms of the GNU General Public License v2
 # $Id: portage_const.py 3483 2006-06-10 21:40:40Z genone $
 
-from transports import fetch, uriparse
 from random import shuffle
+import sys
 
 class Protocol(object):
 	_protocols = {}
@@ -19,19 +19,19 @@ class Protocol(object):
 	def register(self, proto):
 		if not isinstance(proto, Protocol):
 			raise TypeError("argument isn't a Protocol instance")
-		if proto.getName() in _protocols.keys():
+		if proto.getName() in Protocol._protocols.keys():
 			raise Exception("protocol %s is already registered" % proto.getName())
-		_protocols[proto.getName()] = proto
+		Protocol._protocols[proto.getName()] = proto
 	register = classmethod(register)
 	
 	def getProtocol(self, name):
-		return _protocols[name.lower()]
+		return Protocol._protocols[name.lower()]
 	getProtocol = classmethod(getProtocol)
 	
 	def addFetcher(self, fetcher):
 		self._fetchers[fetcher.getName()] = fetcher
 		if self._preferred == None:
-			self._preferred = name
+			self._preferred = fetcher.getName()
 	
 	def setPreferredFetcher(self, name):
 		if not self._fetchers.has_key(name):
@@ -39,7 +39,8 @@ class Protocol(object):
 		else:
 			self._preferred = name
 
-	def fetch(self, uri, destination, resume=False, cleanup=False, failover=False):
+	def fetch(self, uri, destination, resume=False, cleanup=False, failover=False, fd=sys.stdout):
+		from transports import fetch, uriparse
 		if len(self._fetchers.keys()) == 0:
 			raise Exception("No fetcher defined for protocol %s." % self._name)
 		if uriparse(uri)[0].lower() != self._name:
@@ -48,13 +49,13 @@ class Protocol(object):
 		fetcher = self._fetchers[self._preferred]
 		if failover:
 			try:
-				return fetcher.fetch(uri, destination, resume, cleanup)
+				return fetcher.fetch(uri, destination, resume, cleanup, fd)
 			except FetchException, e:
 				for f in self._fetchers.keys():
 					if f == self._preferred:
 						continue
 					try:
-						return self._fetchers[f].fetch(uri, destination, resume, cleanup)
+						return self._fetchers[f].fetch(uri, destination, resume, cleanup, fd)
 					except FetchException, e:
 						pass
 				raise
@@ -62,11 +63,11 @@ class Protocol(object):
 			return fetcher.fetch(uri, destination, resume, cleanup)
 
 class MirrorProtocol(Protocol):
-	def __init__(self, mirrormap)
+	def __init__(self, mirrormap):
 		self._name = "mirror"
 		self._mirrormap = mirrormap
 
-	def fetch(self, uri, destination, resume=False, cleanup=False, failover=False):
+	def fetch(self, uri, destination, resume=False, cleanup=False, failover=False, fd=sys.stdout):
 		# name and loc are different than when used inside uriparse()
 		proto, name, loc = uriparse(uri)
 		if proto != "mirror":
@@ -76,7 +77,7 @@ class MirrorProtocol(Protocol):
 		
 		for myuri in uris:
 			try:
-				return fetch(myuri, destination, resume, cleanup, failover)
+				return fetch(myuri, destination, resume, cleanup, failover, fd)
 			except FetchException, e:
 				continue
 		
@@ -84,6 +85,7 @@ class MirrorProtocol(Protocol):
 		mirrors = []
 		if self._mirrormap.has_key("local"):
 			mirrors += self._mirrormap["local"]
-		mirrors += shuffle(self._mirrormap[name])
+		if name != "local":
+			mirrors += shuffle(self._mirrormap[name])
 		
 		return ["/".join(x, loc) for x in mirrors]
