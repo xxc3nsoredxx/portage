@@ -61,31 +61,3 @@ class Protocol(object):
 				raise
 		else:
 			return fetcher.fetch(uri, destination, resume, cleanup)
-
-class MirrorProtocol(Protocol):
-	def __init__(self, mirrormap):
-		self._name = "mirror"
-		self._mirrormap = mirrormap
-
-	def fetch(self, uri, destination, resume=False, cleanup=False, failover=False, fd=sys.stdout):
-		# name and loc are different than when used inside uriparse()
-		proto, name, loc = uriparse(uri)
-		if proto != "mirror":
-			raise Exception("URI %s is not a mirrored URI." % uri)
-		
-		uris = self._getURIList(name, loc)
-		
-		for myuri in uris:
-			try:
-				return fetch(myuri, destination, resume, cleanup, failover, fd)
-			except FetchException, e:
-				continue
-		
-	def _getURIList(self, name, loc):
-		mirrors = []
-		if self._mirrormap.has_key("local"):
-			mirrors += self._mirrormap["local"]
-		if name != "local":
-			mirrors += shuffle(self._mirrormap[name])
-		
-		return ["/".join(x, loc) for x in mirrors]
