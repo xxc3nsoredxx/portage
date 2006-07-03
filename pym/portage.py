@@ -1841,7 +1841,119 @@ def spawn(mystring,mysettings,debug=0,free=0,droppriv=0,sesandbox=0,fd_pipes=Non
 
 	return retval
 
+def get_default_mirrors(mysettings):
+	restrict = mysettings["RESTRICT"].split()
+	
+	if ("fetch" in restrict or "nofetch" in restrict):
+		return (False, None)
+	mirrors = []
+	try:
+		mirrors += grabdict(
+					os.path.join(mysettings["PORTAGE_CONFIGROOT"],
+						CUSTOM_MIRRORS_FILE.lstrip(os.path.sep)),
+					recursive=1)["local"]
+	except KeyError:
+		pass
+
+	if not ("mirror" in restrict or "nomirror" in restrict):
+		mirrors += mysettings["GENTOO_MIRRORS"].split()
+
+	return mirrors
+
+def fetch_real(myuris, mysettings):
+	restrict = mysettings["RESTRICT"].split()
+	
+	if ("fetch" in restrict or "nofetch" in restrict):
+		return (False, None)
+	
+	mirrors = get_default_mirrors(mysettings)
+	
+	import transports
+	transports.init(mysettings)
+	
+	for uri in myuris:
+		rval = transports.fetch(uri, mysettings["DISTDIR"], mirrorlist=mirrors, 
+								resume=os.path.exists(os.path.join(mysettings["DISTDIR"], os.path.basename(uri))))
+		if rval not in [0, True, None]:
+			return (False, uri)
+	
+	return True
+
+def list_uris(myuris, mysettings):
+	import transports
+	transports.init(mysettings)
+
+	mirrors = get_default_mirrors(mysettings)
+	rval = []
+	for x in myuris:
+		rval.append(transports.expand_uri(x, mirrors))
+	return rval
+
+def fetch2(myuris, mysettings, listonly=0):
+	# NOTE: the following features from fetch() are missing:
+	#	- FEATURES=mirror support
+	#	- read-only DISTDIR support
+	#	- locking
+	#	- RESTRICT=primaryuri support
+	#	- most of the permission/ownership/other-fs-stuff handling
+	#	- resume support is likely to be broken/incomplete
+	#	- 404 error page handling
+	#	- RESTRICT=fetch support
+	#	- fetchonly and trymirror parameters, not sure what those are for
+	
+	check_config_instance(mysettings)
+
+	restrict = mysettings["RESTRICT"].split()
+	features = mysettings["FEATURES"].split()
+
+	mydigests = Manifest(mysettings["O"], mysettings["DISTDIR"]).getTypeDigests("DIST")
+
+	if listonly:
+		writemsg("\n")
+		urilist = list_uris(myuris, mysettings)
+		writemsg("\n".join([" ".join(x) for x in urilist]))
+		writemsg("\n")
+		return True
+
+	complete_uris = []
+	for x in myuris:
+		filename = os.path.join(mysettings["DISTDIR"], os.path.basename(x))
+		if not os.path.exists(filename):
+			continue
+		size = os.stat(filename).st_size
+		if int(size) == int(mydigests[myfile]["size"]):
+			complete_uris.append(x)
+	
+	fetchuris = [x for x in myuris if x not in complete_uris]
+	rval = fetch_real(fetchuris, mysettings)
+	for uri in myuris:
+		filename = os.path.join(mysettings["DISTDIR"], os.path.basename(x))
+		verified_ok,reason = portage_checksum.verify_all(filename, mydigests[os.path.basename(filename)])
+		if not verified_ok:
+			writemsg("!!! Fetched file: "+str(filename)+" VERIFY FAILED!\n", noiselevel=-1)
+			writemsg("!!! Reason: "+reason[0]+"\n",	noiselevel=-1)
+			writemsg("!!! Got:      %s\n!!! Expected: %s\n" % (reason[1], reason[2]), noiselevel=-1)
+			writemsg("Removing corrupt distfile...\n", noiselevel=-1)
+			os.unlink(mysettings["DISTDIR"]+"/"+myfile)
+			rval = False
+		else:
+			for x_key in mydigests[myfile].keys():
+				writemsg(">>> "+str(myfile)+" "+x_key+" ;-)\n")
+	return rval				
+
+
+
+
+
+
+
+
+# This is just a big huge motherfucker
+
 def fetch(myuris, mysettings, listonly=0, fetchonly=0, locks_in_subdir=".locks",use_locks=1, try_mirrors=1):
+
+	return fetch2(myuris, mysettings, listonly)
+
 	"fetch files.  Will use digest file if available."
 
 	features = mysettings.features

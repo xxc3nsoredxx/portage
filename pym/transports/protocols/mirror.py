@@ -4,6 +4,7 @@
 
 from transports.protocols import Protocol
 import os, sys
+from random import shuffle
 
 class MirrorProtocol(Protocol):
 	def __init__(self, mirrormap):
@@ -11,12 +12,8 @@ class MirrorProtocol(Protocol):
 		self._mirrormap = mirrormap
 
 	def fetch(self, uri, destination, resume=False, cleanup=False, failover=False, fd=sys.stdout):
-		# name and loc are different than when used inside uriparse()
-		proto, name, loc = uriparse(uri)
-		if proto != "mirror":
-			raise Exception("URI %s is not a mirrored URI." % uri)
-		
-		uris = self._getURIList(name, loc)
+		from transports import fetch
+		uris = self.expandURI(uri)
 		
 		for myuri in uris:
 			try:
@@ -24,16 +21,30 @@ class MirrorProtocol(Protocol):
 			except FetchException, e:
 				continue
 		
-	def _getURIList(self, name, loc):
+	def expandURI(self, uri):
+		from transports import uriparse, expand_uri
+		# name and loc are different than when used inside uriparse()
+		proto, name, loc = uriparse(uri)
+		if proto != "mirror":
+			raise Exception("URI %s is not a mirrored URI." % uri)
 		mirrors = []
 		if self._mirrormap.has_key("local"):
 			mirrors += self._mirrormap["local"]
 		if name != "local":
-			mirrors += shuffle(self._mirrormap[name])
+			x = self._mirrormap[name]
+			shuffle(x)
+			mirrors += x
 		
-		return ["/".join(x, loc) for x in mirrors]
+		rval = []
+		for x in mirrors:
+			rval += expand_uri(x+"/"+loc)
+		return rval
+
+protocol = None
 
 def init(settings):
+	global protocol
+
 	from portage_const import CUSTOM_MIRRORS_FILE
 	from portage_util import grabdict
 
@@ -42,7 +53,11 @@ def init(settings):
 	
 	allmirrors = {}
 	allmirrors.update(thirdpartymirrors)
-	allmirrors.update(custommirrors)
+	for k in custommirrors.keys():
+		if allmirrors.has_key(k):
+			allmirrors[k] = custommirrors[k]+allmirrors[k]
+		else:
+			allmirrors[k] = custommirrors[k]
 
 	protocol = MirrorProtocol(allmirrors)
 	Protocol.register(protocol)

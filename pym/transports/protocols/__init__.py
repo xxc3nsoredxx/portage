@@ -16,11 +16,19 @@ class Protocol(object):
 	def getName(self):
 		return self._name
 	
+	def expandURI(self, uri):
+		return [uri]
+
 	def register(self, proto):
 		if not isinstance(proto, Protocol):
 			raise TypeError("argument isn't a Protocol instance")
 		if proto.getName() in Protocol._protocols.keys():
-			raise Exception("protocol %s is already registered" % proto.getName())
+			# fast way out to prevent multiple registrations of the same protocol
+			# FIXME: remove "or True"
+			if Protocol._protocols[proto.getName()] == proto or True:
+				return
+			else:
+				raise Exception("protocol %s is already registered" % proto.getName())
 		Protocol._protocols[proto.getName()] = proto
 	register = classmethod(register)
 	
@@ -29,9 +37,16 @@ class Protocol(object):
 	getProtocol = classmethod(getProtocol)
 	
 	def addFetcher(self, fetcher):
-		self._fetchers[fetcher.getName()] = fetcher
+		name = fetcher.getName()
+		# fast way out to prevent multiple registrations of the same fetcher
+		if self._fetchers.has_key(name) and fetcher in self._fetchers[name]:
+			return
+
+		if not self._fetchers.has_key(name):
+			self._fetchers[name] = []
+		self._fetchers[name].append(fetcher)
 		if self._preferred == None:
-			self._preferred = fetcher.getName()
+			self._preferred = name
 	
 	def setPreferredFetcher(self, name):
 		if not self._fetchers.has_key(name):
