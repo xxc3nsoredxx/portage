@@ -42,9 +42,8 @@ class FancyCommandFetcher(BasicCommandFetcher):
 	
 	def _fetch(self, uri, destination, resume=False, fd=sys.stdout):
 		mycommand = self.getCommand(uri, destination, resume)
-		spawn_keywords = {"fd_pipes": {0:0,1:fd,2:fd},
-							"env": self._settings.environ()}
-		if "userfetch" in mysettings.features and \
+		spawn_keywords = {"env": self._settings.environ()}
+		if "userfetch" in self._settings.features and \
 				os.getuid() == 0 and portage_gid and portage_uid:
 			spawn_keywords.update({
 								"uid"    : portage_uid,
@@ -61,6 +60,9 @@ class FancyCommandFetcher(BasicCommandFetcher):
 
 		if self._settings.selinux_enabled():
 			selinux.setexec(None)
+
+		if myret != 0:
+			raise FetchException()
 
 		return myret
 

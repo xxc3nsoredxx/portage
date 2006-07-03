@@ -1867,7 +1867,7 @@ def fetch_real(myuris, mysettings):
 		return (False, None)
 	
 	mirrors = get_default_mirrors(mysettings)
-	
+
 	import transports
 	transports.init(mysettings)
 	
@@ -1921,7 +1921,7 @@ def fetch2(myuris, mysettings, listonly=0):
 		if not os.path.exists(filename):
 			continue
 		size = os.stat(filename).st_size
-		if int(size) == int(mydigests[myfile]["size"]):
+		if int(size) == int(mydigests[os.path.basename(filename)]["size"]):
 			complete_uris.append(x)
 	
 	fetchuris = [x for x in myuris if x not in complete_uris]
@@ -1934,11 +1934,11 @@ def fetch2(myuris, mysettings, listonly=0):
 			writemsg("!!! Reason: "+reason[0]+"\n",	noiselevel=-1)
 			writemsg("!!! Got:      %s\n!!! Expected: %s\n" % (reason[1], reason[2]), noiselevel=-1)
 			writemsg("Removing corrupt distfile...\n", noiselevel=-1)
-			os.unlink(mysettings["DISTDIR"]+"/"+myfile)
+			os.unlink(filename)
 			rval = False
 		else:
-			for x_key in mydigests[myfile].keys():
-				writemsg(">>> "+str(myfile)+" "+x_key+" ;-)\n")
+			for x_key in mydigests[os.path.basename(filename)].keys():
+				writemsg(">>> "+str(filename)+" "+x_key+" ;-)\n")
 	return rval				
 
 

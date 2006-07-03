@@ -12,12 +12,14 @@ class MirrorProtocol(Protocol):
 		self._mirrormap = mirrormap
 
 	def fetch(self, uri, destination, resume=False, cleanup=False, failover=False, fd=sys.stdout):
-		from transports import fetch
+		from transports import fetch, FetchException
 		uris = self.expandURI(uri)
 		
 		for myuri in uris:
+			print uris
 			try:
-				return fetch(myuri, destination, resume, cleanup, failover, fd)
+				rval = fetch(myuri, destination, mirrorlist=[], resume=resume, cleanup=cleanup, failover=failover, fd=fd)
+				return rval
 			except FetchException, e:
 				continue
 		

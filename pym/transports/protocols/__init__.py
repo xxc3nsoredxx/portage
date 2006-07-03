@@ -39,12 +39,10 @@ class Protocol(object):
 	def addFetcher(self, fetcher):
 		name = fetcher.getName()
 		# fast way out to prevent multiple registrations of the same fetcher
-		if self._fetchers.has_key(name) and fetcher in self._fetchers[name]:
+		if self._fetchers.has_key(name) and fetcher == self._fetchers[name]:
 			return
 
-		if not self._fetchers.has_key(name):
-			self._fetchers[name] = []
-		self._fetchers[name].append(fetcher)
+		self._fetchers[name] = fetcher
 		if self._preferred == None:
 			self._preferred = name
 	

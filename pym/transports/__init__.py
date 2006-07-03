@@ -46,20 +46,7 @@ def uriparse(uri):
 	
 	return (proto, loc, name)
 
-def fetch(uri, destination, mirrorlist=[], resume=False, cleanup=False, failover=False, fd=sys.stdout):
-	proto, loc, name = uriparse(uri)
-	p = Protocol.getProtocol(proto)
-	if len(mirrorlist) > 0:
-		mirrorlist.append(proto+"://"+loc+"/"+os.dirname(name))
-		mirrormap = {"_internal": mirrorlist}
-		filename = os.path.basename(name)
-		mirroruri = "mirror://_internal/"+filename
-		mp = MirrorProtocol(mirrormap)
-		return mp.fetch(mirroruri, destination, fd, resume, cleanup, failover, fd)
-	else:
-		return p.fetch(uri, destination, resume, cleanup, failover, fd)
-
-def expand_uri(uri, mirrorlist=[]):
+def _prepare_uri(uri, mirrorlist=[]):
 	proto, loc, name = uriparse(uri)
 	p = Protocol.getProtocol(proto)
 	if len(mirrorlist) > 0:
@@ -68,9 +55,17 @@ def expand_uri(uri, mirrorlist=[]):
 		filename = os.path.basename(name)
 		mirroruri = "mirror://_internal/"+filename
 		mp = MirrorProtocol(mirrormap)
-		return mp.expandURI(mirroruri)
+		return (mp, mirroruri)
 	else:
-		return p.expandURI(uri)
+		return (p, uri)
+
+def fetch(uri, destination, mirrorlist=[], resume=False, cleanup=False, failover=False, fd=sys.stdout):
+	p, uri = _prepare_uri(uri, mirrorlist)
+	return p.fetch(uri, destination, resume, cleanup, failover, fd)
+
+def expand_uri(uri, mirrorlist=[]):
+	p, uri = _prepare_uri(uri, mirrorlist)
+	return p.expandURI(uri)
 
 
 def init(settings, prefer_commands=True):
