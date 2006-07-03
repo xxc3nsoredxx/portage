@@ -33,11 +33,16 @@ class Fetcher(object):
 # protocols, and "mirror://" isn't supported
 def uriparse(uri):
 	proto_sep_pos = uri.find("://")
-	loc_sep_pos = uri.find("/", proto_sep_pos+3)
+	if proto_sep_pos < 0:
+		proto = "file"
+		loc = os.path.dirname(uri)
+		name = os.path.basename(uri)
+	else:
+		loc_sep_pos = uri.find("/", proto_sep_pos+3)
 	
-	proto = uri[:proto_sep_pos]
-	loc = uri[proto_sep_pos+3:loc_sep_pos]
-	name = uri[loc_sep_pos+1:]
+		proto = uri[:proto_sep_pos]
+		loc = uri[proto_sep_pos+3:loc_sep_pos]
+		name = uri[loc_sep_pos+1:]
 	
 	return (proto, loc, name)
 
