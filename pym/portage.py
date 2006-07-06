@@ -1952,6 +1952,7 @@ def fetch2(myuris, mysettings, listonly=0):
 
 def fetch(myuris, mysettings, listonly=0, fetchonly=0, locks_in_subdir=".locks",use_locks=1, try_mirrors=1):
 
+	print "\n>>> Using fetch2() for fetching\n"
 	return fetch2(myuris, mysettings, listonly)
 
 	"fetch files.  Will use digest file if available."

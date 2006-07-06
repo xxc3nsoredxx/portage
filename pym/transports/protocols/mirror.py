@@ -20,7 +20,6 @@ class MirrorProtocol(Protocol):
 		for myuri in uris:
 			try:
 				rval = fetch(myuri, destination, mirrorlist=[], resume=resume, cleanup=cleanup, failover=failover, fd=fd)
-				print "mirror", rval
 				if rval == FETCH_OK:
 					break
 			except FetchException, e:

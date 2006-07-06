@@ -22,7 +22,6 @@ class Fetcher(object):
 			raise Exception("Fetcher %s doesn't support protocol %s" % (self._name, proto))
 		try:
 			rval = self._fetch(uri, destination, resume)
-			print "transport", rval
 		except FetchException, e:
 			if cleanup and os.path.exists(destination):
 				os.unlink(destination)
@@ -68,7 +67,6 @@ def _prepare_uri(uri, mirrorlist=[]):
 def fetch(uri, destination, mirrorlist=[], resume=False, cleanup=False, failover=False, fd=sys.stdout):
 	p, uri = _prepare_uri(uri, mirrorlist)
 	rval = p.fetch(uri, destination, resume, cleanup, failover, fd)
-	print "main", rval
 	return rval
 
 def expand_uri(uri, mirrorlist=[]):

@@ -22,7 +22,9 @@ except KeyboardInterrupt:
 
 import os
 os.environ["PORTAGE_CALLER"]="emerge"
-sys.path = ["/usr/lib/portage/pym"]+sys.path
+sys.path.insert(0, "/usr/lib/portage/pym")
+if os.environ.has_key("PYTHONPATH"):
+	sys.path.insert(0, os.environ["PYTHONPATH"])
 
 os.environ["PORTAGE_LEGACY_GLOBALS"] = "false"
 import portage

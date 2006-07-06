@@ -65,14 +65,12 @@ class Protocol(object):
 		if failover:
 			try:
 				rval = fetcher.fetch(uri, destination, resume, cleanup, fd)
-				print "protocol (failover1)", rval
 			except FetchException, e:
 				for f in self._fetchers.keys():
 					if f == self._preferred:
 						continue
 					try:
 						rval = self._fetchers[f].fetch(uri, destination, resume, cleanup, fd)
-						print "protocol (failover2)", rval
 						if rval == FETCH_OK:
 							break
 					except FetchException, e:
@@ -81,5 +79,4 @@ class Protocol(object):
 					raise
 		else:
 			rval = fetcher.fetch(uri, destination, resume, cleanup)
-		print "protocol", rval
 		return rval
