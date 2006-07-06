@@ -66,7 +66,7 @@ def _prepare_uri(uri, mirrorlist=[]):
 
 def fetch(uri, destination, mirrorlist=[], resume=False, cleanup=False, failover=False, fd=sys.stdout):
 	p, uri = _prepare_uri(uri, mirrorlist)
-	rval = p.fetch(uri, destination, resume, cleanup, failover, fd)
+	rval = p.fetch(uri, destination, resume, cleanup, failover=True, fd=fd)
 	return rval
 
 def expand_uri(uri, mirrorlist=[]):
@@ -81,6 +81,8 @@ def init(settings, prefer_commands=True):
 
 	import transports.file
 	# file module has auto-init
+	import transports.urllib
+	# urllib module has auto-init
 	
 	import transports.protocols.mirror as mirror
 	mirror.init(settings)

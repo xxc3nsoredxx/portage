@@ -53,7 +53,7 @@ class Protocol(object):
 			self._preferred = name
 
 	def fetch(self, uri, destination, resume=False, cleanup=False, failover=False, fd=sys.stdout):
-		from transports import fetch, uriparse, FETCH_FAILED, FETCH_OK
+		from transports import fetch, uriparse, FETCH_FAILED, FETCH_OK, FetchException
 		
 		rval = FETCH_FAILED
 		if len(self._fetchers.keys()) == 0:
@@ -65,6 +65,8 @@ class Protocol(object):
 		if failover:
 			try:
 				rval = fetcher.fetch(uri, destination, resume, cleanup, fd)
+				if rval != FETCH_OK:
+					raise FetchException()
 			except FetchException, e:
 				for f in self._fetchers.keys():
 					if f == self._preferred:
