@@ -1916,6 +1916,8 @@ def fetch2(myuris, mysettings, listonly=0):
 		return True
 
 	complete_uris = []
+	filenames = set(map(os.path.basename, myuris))
+	
 	for x in myuris:
 		filename = os.path.join(mysettings["DISTDIR"], os.path.basename(x))
 		if not os.path.exists(filename):
@@ -1923,18 +1925,24 @@ def fetch2(myuris, mysettings, listonly=0):
 		size = os.stat(filename).st_size
 		if int(size) == int(mydigests[os.path.basename(filename)]["size"]):
 			complete_uris.append(x)
+			filenames.remove(filename)
 	
 	fetchuris = [x for x in myuris if x not in complete_uris]
 	rval = fetch_real(fetchuris, mysettings)
 	for uri in myuris:
 		filename = os.path.join(mysettings["DISTDIR"], os.path.basename(x))
-		verified_ok,reason = portage_checksum.verify_all(filename, mydigests[os.path.basename(filename)])
+		if os.path.basename(filename) in filenames:
+			verified_ok = False
+			reason = ("Could not fetch file", "Success", "Failure")
+		else:
+			verified_ok,reason = portage_checksum.verify_all(filename, mydigests[os.path.basename(filename)])
 		if not verified_ok:
 			writemsg("!!! Fetched file: "+str(filename)+" VERIFY FAILED!\n", noiselevel=-1)
 			writemsg("!!! Reason: "+reason[0]+"\n",	noiselevel=-1)
 			writemsg("!!! Got:      %s\n!!! Expected: %s\n" % (reason[1], reason[2]), noiselevel=-1)
-			writemsg("Removing corrupt distfile...\n", noiselevel=-1)
-			os.unlink(filename)
+			if os.path.exists(filename):
+				writemsg("Removing corrupt distfile...\n", noiselevel=-1)
+				os.unlink(filename)
 			rval = False
 		else:
 			for x_key in mydigests[os.path.basename(filename)].keys():
