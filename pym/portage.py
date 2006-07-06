@@ -1868,10 +1868,10 @@ def fetch_real(myuris, mysettings):
 	for uri in myuris:
 		rval = transports.fetch(uri, mysettings["DISTDIR"], mirrorlist=mirrors, 
 								resume=os.path.exists(os.path.join(mysettings["DISTDIR"], os.path.basename(uri))))
-		if rval not in [0, True, None]:
+		if rval != transports.FETCH_OK:
 			return (False, uri)
 	
-	return True
+	return (True, None)
 
 def list_uris(myuris, mysettings):
 	import transports
@@ -1882,6 +1882,20 @@ def list_uris(myuris, mysettings):
 	for x in myuris:
 		rval.append(transports.expand_uri(x, mirrors))
 	return rval
+
+def filter_complete_uris(uris, mysettings, mydigests):
+	filenames = []
+	complete_uris = []
+	for x in uris:
+		filename = os.path.join(mysettings["DISTDIR"], os.path.basename(x))
+		if not os.path.exists(filename):
+			continue
+		size = os.stat(filename).st_size
+		if int(size) == int(mydigests[os.path.basename(filename)]["size"]):
+			complete_uris.append(x)
+			filenames.append(filename)
+	return (set(filenames), complete_uris)
+
 
 def fetch2(myuris, mysettings, listonly=0):
 	# NOTE: the following features from fetch() are missing:
@@ -1909,23 +1923,19 @@ def fetch2(myuris, mysettings, listonly=0):
 		writemsg("\n")
 		return True
 
-	complete_uris = []
-	filenames = set(map(os.path.basename, myuris))
-	
-	for x in myuris:
-		filename = os.path.join(mysettings["DISTDIR"], os.path.basename(x))
-		if not os.path.exists(filename):
-			continue
-		size = os.stat(filename).st_size
-		if int(size) == int(mydigests[os.path.basename(filename)]["size"]):
-			complete_uris.append(x)
-			filenames.remove(filename)
+	allfiles = map(os.path.basename, myuris)
+	filenames, complete_uris = filter_complete_uris(myuris, mysettings, mydigests)
 	
 	fetchuris = [x for x in myuris if x not in complete_uris]
-	rval = fetch_real(fetchuris, mysettings)
+	fetch_ok, failed_uri = fetch_real(fetchuris, mysettings)
+	if not fetch_ok:
+		writemsg("Fetching of %s failed\n" % failed_uri)
+		return False
+	filenames, complete_uris = filter_complete_uris(uris, mysettings, mydigests)
+
 	for uri in myuris:
 		filename = os.path.join(mysettings["DISTDIR"], os.path.basename(x))
-		if os.path.basename(filename) in filenames:
+		if os.path.basename(filename) not in filenames:
 			verified_ok = False
 			reason = ("Could not fetch file", "Success", "Failure")
 		else:
