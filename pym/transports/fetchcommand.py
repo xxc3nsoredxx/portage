@@ -14,12 +14,12 @@ class BasicCommandFetcher(Fetcher):
 		self._resumecommand = resumecommand
 	
 	def getCommand(self, uri, destination, resume):
-		if os.path.isdir(destination):
-			destdir = destination
-			destfilename = os.path.basename(uri)
-		else:
+		if os.path.isfile(destination):
 			destdir = os.path.dirname(destination)
 			destfilename = os.path.basename(destination)
+		else:
+			destdir = destination
+			destfilename = os.path.basename(uri)
 		
 		if resume and os.path.isfile(os.path.join(destdir, destfilename)):
 			mycommand = self._resumecommand
