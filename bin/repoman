@@ -481,7 +481,7 @@ if quiet < 2:
 	print "PORTDIR = \""+os.environ["PORTDIR"]+"\""
 	print "PORTDIR_OVERLAY = \""+os.environ["PORTDIR_OVERLAY"]+"\""
 
-
+portage.close_portdbapi_caches()
 reload(portage)
 repoman_settings = portage.config(clone=portage.settings)
 
@@ -604,7 +604,7 @@ if repolevel==2:
 		caterror(catdir)
 	mydirlist=os.listdir(startdir)
 	for x in mydirlist:
-		if x == "CVS" or x.startswith("."):
+		if x=="CVS":
 			continue
 		if os.path.isdir(startdir+"/"+x):
 			scanlist.append(catdir+"/"+x)
@@ -613,7 +613,7 @@ elif repolevel==1:
 		if not os.path.isdir(startdir+"/"+x):
 			continue
 		for y in os.listdir(startdir+"/"+x):
-			if y == "CVS" or y.startswith("."):
+			if y=="CVS":
 				continue
 			if os.path.isdir(startdir+"/"+x+"/"+y):
 				scanlist.append(x+"/"+y)
@@ -1138,15 +1138,19 @@ for x in scanlist:
 
 				profdir = portdir+"/profiles/"+prof[0]
 	
-				if arch_caches.has_key(prof[0]):
-					dep_settings, portage.portdb, portage.db["/"]["porttree"] = arch_caches[prof[0]]
+				if prof[0] in arch_caches:
+					dep_settings = arch_caches[prof[0]]
 				else:
-					dep_settings=portage.config(config_profile_path=profdir, config_incrementals=portage_const.INCREMENTALS)
-					portage.portdb=portage.portdbapi(portdir, dep_settings)
-					portage.db["/"]["porttree"]=portage.portagetree("/",dep_settings.getvirtuals("/"))
-					arch_caches[prof[0]]=[dep_settings, portage.portdb, portage.db["/"]["porttree"]]
+					dep_settings = portage.config(
+						config_profile_path=profdir,
+						config_incrementals=portage_const.INCREMENTALS)
+					arch_caches[prof[0]] = dep_settings
 
+				portage.db["/"]["porttree"].settings = dep_settings
+				portage.db["/"]["porttree"].dbapi.mysettings = dep_settings
 				dep_settings["ACCEPT_KEYWORDS"] = " ".join(groups)
+				# just in case, prevent config.reset() from nuking these.
+				dep_settings.backup_changes("ACCEPT_KEYWORDS")
 
 				for myprovide in myaux["PROVIDE"].split():
 					prov_cp = portage.dep_getkey(myprovide)
