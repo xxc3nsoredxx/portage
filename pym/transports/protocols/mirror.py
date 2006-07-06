@@ -12,16 +12,20 @@ class MirrorProtocol(Protocol):
 		self._mirrormap = mirrormap
 
 	def fetch(self, uri, destination, resume=False, cleanup=False, failover=False, fd=sys.stdout):
-		from transports import fetch, FetchException
+		from transports import fetch, FetchException, FETCH_FAILED, FETCH_OK
+		
+		rval = FETCH_FAILED
 		uris = self.expandURI(uri)
 		
 		for myuri in uris:
-			print uris
 			try:
 				rval = fetch(myuri, destination, mirrorlist=[], resume=resume, cleanup=cleanup, failover=failover, fd=fd)
-				return rval
+				print "mirror", rval
+				if rval == FETCH_OK:
+					break
 			except FetchException, e:
 				continue
+		return rval
 		
 	def expandURI(self, uri):
 		from transports import uriparse, expand_uri

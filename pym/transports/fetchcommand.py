@@ -57,6 +57,7 @@ class FancyCommandFetcher(BasicCommandFetcher):
 			selinux.setexec(con)
 
 		myret = spawn_bash(mycommand, **spawn_keywords)
+		print "fetchcommand", myret
 
 		if self._settings.selinux_enabled():
 			selinux.setexec(None)

@@ -53,7 +53,9 @@ class Protocol(object):
 			self._preferred = name
 
 	def fetch(self, uri, destination, resume=False, cleanup=False, failover=False, fd=sys.stdout):
-		from transports import fetch, uriparse
+		from transports import fetch, uriparse, FETCH_FAILED, FETCH_OK
+		
+		rval = FETCH_FAILED
 		if len(self._fetchers.keys()) == 0:
 			raise Exception("No fetcher defined for protocol %s." % self._name)
 		if uriparse(uri)[0].lower() != self._name:
@@ -62,15 +64,22 @@ class Protocol(object):
 		fetcher = self._fetchers[self._preferred]
 		if failover:
 			try:
-				return fetcher.fetch(uri, destination, resume, cleanup, fd)
+				rval = fetcher.fetch(uri, destination, resume, cleanup, fd)
+				print "protocol (failover1)", rval
 			except FetchException, e:
 				for f in self._fetchers.keys():
 					if f == self._preferred:
 						continue
 					try:
-						return self._fetchers[f].fetch(uri, destination, resume, cleanup, fd)
+						rval = self._fetchers[f].fetch(uri, destination, resume, cleanup, fd)
+						print "protocol (failover2)", rval
+						if rval == FETCH_OK:
+							break
 					except FetchException, e:
 						pass
-				raise
+				if rval != FETCH_OK:
+					raise
 		else:
-			return fetcher.fetch(uri, destination, resume, cleanup)
+			rval = fetcher.fetch(uri, destination, resume, cleanup)
+		print "protocol", rval
+		return rval

@@ -6,6 +6,9 @@ import os, sys
 from transports.protocols import Protocol
 from transports.protocols.mirror import MirrorProtocol
 
+FETCH_FAILED = 1
+FETCH_OK = 0
+
 class FetchException(Exception):
 	pass
 
@@ -13,14 +16,17 @@ class Fetcher(object):
 	_protos = []
 	
 	def fetch(self, uri, destination, resume=False, cleanup=False, fd=sys.stdout):
+		rval = FETCH_FAILED
 		proto = uriparse(uri)[0]
 		if proto not in self._protos:
 			raise Exception("Fetcher %s doesn't support protocol %s" % (self._name, proto))
 		try:
-			return self._fetch(uri, destination, resume)
+			rval = self._fetch(uri, destination, resume)
+			print "transport", rval
 		except FetchException, e:
 			if cleanup and os.path.exists(destination):
 				os.unlink(destination)
+		return rval
 
 	def _fetch(self, uri, destination, resume=False, fd=sys.stdout):
 		""" This method has to be overridden by inheriting classes """
@@ -61,7 +67,9 @@ def _prepare_uri(uri, mirrorlist=[]):
 
 def fetch(uri, destination, mirrorlist=[], resume=False, cleanup=False, failover=False, fd=sys.stdout):
 	p, uri = _prepare_uri(uri, mirrorlist)
-	return p.fetch(uri, destination, resume, cleanup, failover, fd)
+	rval = p.fetch(uri, destination, resume, cleanup, failover, fd)
+	print "main", rval
+	return rval
 
 def expand_uri(uri, mirrorlist=[]):
 	p, uri = _prepare_uri(uri, mirrorlist)
