@@ -14,24 +14,22 @@ import sys
 import signal
 import re
 import tempfile
+import time
+import codecs
+import itertools
+from commands import getstatusoutput
+from fileinput import input
+from grp import getgrnam
+from stat import S_ISDIR, ST_CTIME, ST_GID, ST_MTIME
+from optparse import OptionParser
 
 try:
-	import cPickle as picke
+	import cPickle as pickle
 except ImportError:
 	import pickle
 
 if not hasattr(__builtins__, "set"):
 	from sets import Set as set
-
-exename=os.path.basename(sys.argv[0])	
-version="1.2"	
-
-allowed_filename_chars="a-zA-Z0-9._-+:"
-allowed_filename_chars_set = {}
-map(allowed_filename_chars_set.setdefault, map(chr, range(ord('a'), ord('z')+1)))
-map(allowed_filename_chars_set.setdefault, map(chr, range(ord('A'), ord('Z')+1)))
-map(allowed_filename_chars_set.setdefault, map(chr, range(ord('0'), ord('9')+1)))
-map(allowed_filename_chars_set.setdefault, map(chr, map(ord, [".", "-", "_", "+", ":"])))
 
 os.environ["PORTAGE_LEGACY_GLOBALS"] = "false"
 try:
@@ -49,19 +47,22 @@ import portage.dep
 portage.dep._dep_check_strict = True
 import portage.exception
 from portage import cvstree
-import time
-import codecs
-
 from portage.manifest import Manifest
 from portage.exception import ParseError
 from portage.process import spawn
-
 from portage.output import bold, darkgreen, darkred, green, nocolor, red, turquoise, yellow
 
-from commands import getstatusoutput
-from fileinput import input
-from grp import getgrnam
-from stat import S_ISDIR, ST_CTIME, ST_GID, ST_MTIME
+
+exename=os.path.basename(sys.argv[0])	
+
+VERSION="$Rev: 6427 $"[6:-2] + "-svn"
+
+allowed_filename_chars="a-zA-Z0-9._-+:"
+allowed_filename_chars_set = {}
+map(allowed_filename_chars_set.setdefault, map(chr, range(ord('a'), ord('z')+1)))
+map(allowed_filename_chars_set.setdefault, map(chr, range(ord('A'), ord('Z')+1)))
+map(allowed_filename_chars_set.setdefault, map(chr, range(ord('0'), ord('9')+1)))
+map(allowed_filename_chars_set.setdefault, map(chr, map(ord, [".", "-", "_", "+", ":"])))
 
 # A sane umask is needed for files that portage creates.
 os.umask(022)
@@ -75,6 +76,7 @@ if repoman_settings.get("NOCOLOR", "").lower() in ("yes", "true") or \
 
 def warn(txt):
 	print exename+": "+txt
+
 def err(txt):
 	warn(txt)
 	sys.exit(1)
@@ -100,7 +102,9 @@ modeshelp={
 "last"   : "Remember report from last run",
 "lfull"  : "Remember report from last run (full listing)"
 }
+
 modes=modeshelp.keys()
+
 repoman_options={
 "--commitmsg"      : "Adds a commit message via the command line",
 "--commitmsgfile"  : "Adds a commit message from the specified file",
@@ -113,6 +117,7 @@ repoman_options={
 "--version"        : "Show version info",
 "--xmlparse"       : "Forces the metadata.xml parse check to be carried out"
 }
+
 repoman_shortoptions={
 "-h" : "--help",
 "-i" : "--ignore-masked",
@@ -125,7 +130,9 @@ repoman_shortoptions={
 "-V" : "--version",
 "-x" : "--xmlparse"
 }
+
 repoman_shortoptions_rev=dict([(v,k) for (k,v) in repoman_shortoptions.items()])
+
 options=repoman_options.keys()
 
 qahelp={
@@ -199,33 +206,33 @@ qacats = qahelp.keys()
 qacats.sort()
 
 qawarnings=[
-"changelog.missing",
-"changelog.notadded",
-"ebuild.notadded",
-"ebuild.nostable",
-"ebuild.allmasked",
-"ebuild.nesteddie",
-"digest.assumed",
-"digest.notadded",
-"digest.disjointed",
-"digest.missing",
-"digestentry.unused",
-"DEPEND.badmasked","RDEPEND.badmasked","PDEPEND.badmasked",
-"DEPEND.badindev","RDEPEND.badindev","PDEPEND.badindev",
-"DEPEND.badmaskedindev","RDEPEND.badmaskedindev","PDEPEND.badmaskedindev",
-"IUSE.invalid",
-"KEYWORDS.stupid",
-"KEYWORDS.missing",
-"ebuild.minorsyn",
-"ebuild.badheader",
-"file.size",
-"metadata.missing",
-"metadata.bad",
-"virtual.versioned",
-"virtual.exists",
-"virtual.unavailable",
-"usage.obsolete",
-"LIVEVCS.stable"
+	"changelog.missing",
+	"changelog.notadded",
+	"ebuild.notadded",
+	"ebuild.nostable",
+	"ebuild.allmasked",
+	"ebuild.nesteddie",
+	"digest.assumed",
+	"digest.notadded",
+	"digest.disjointed",
+	"digest.missing",
+	"digestentry.unused",
+	"DEPEND.badmasked","RDEPEND.badmasked","PDEPEND.badmasked",
+	"DEPEND.badindev","RDEPEND.badindev","PDEPEND.badindev",
+	"DEPEND.badmaskedindev","RDEPEND.badmaskedindev","PDEPEND.badmaskedindev",
+	"IUSE.invalid",
+	"KEYWORDS.stupid",
+	"KEYWORDS.missing",
+	"ebuild.minorsyn",
+	"ebuild.badheader",
+	"file.size",
+	"metadata.missing",
+	"metadata.bad",
+	"virtual.versioned",
+	"virtual.exists",
+	"virtual.unavailable",
+	"usage.obsolete",
+	"LIVEVCS.stable"
 ]
 
 missingvars=["KEYWORDS","LICENSE","DESCRIPTION","HOMEPAGE","SLOT"]
@@ -345,48 +352,134 @@ def last():
 	print
 	sys.exit(1)
 
-mymode=None
-myoptions=[]
-if len(sys.argv)>1:
-	x=1
-	while x < len(sys.argv):
-		if sys.argv[x] in shortmodes.keys():
-			sys.argv[x]=shortmodes[sys.argv[x]]
-		elif sys.argv[x] in repoman_shortoptions.keys():
-			sys.argv[x] = repoman_shortoptions[sys.argv[x]]
-		if sys.argv[x] in modes:
-			if mymode is None:
-				mymode=sys.argv[x]
-			else:
-				err("Please specify either \""+mymode+"\" or \""+sys.argv[x]+"\", but not both.")
-		elif sys.argv[x] in options:
-			optionx=sys.argv[x]
-			if (optionx=="--commitmsg") and (len(sys.argv)>=(x+1)):
-				commitmessage=sys.argv[x+1]
-				x=x+1
-			elif (optionx=="--commitmsgfile") and (len(sys.argv)>=(x+1)):
-				commitmessagefile=sys.argv[x+1]
-				x=x+1
-			elif (optionx=="--verbose"):
-				verbose+=1
-			elif (optionx=="--quiet"):
-				quiet+=1
-			elif optionx not in myoptions:
-				myoptions.append(optionx)
+
+def ParseOptions(args):
+	"""
+	Parse the options given to repoman
+	
+	@param args: typically sys.argv, a list of strings basically.
+	@type args: List
+
+	"""
+
+	parser = OptionParser(version="%prog" + str(VERSION))
+	parser.set_defaults(do="scan")
+	parser.add_option("-c", "--commit",
+		help="Scan directory tree for QA issues; Commit if OK.",
+		dest="do", action="store_const", const="commit")
+	parser.add_option("--scan", dest="do", action="store_const", const="scan",
+		help="Scan directory tree for QA issues (default)")
+	parser.add_option("--fix", help="Fix simple automated QA issues",
+		dest="do", action="store_const", const="fix")
+	parser.add_option("--full", dest="do", action="store_const", const="full",
+		help="Scan directory tree for QA issues (full listing)")
+	parser.add_option("--last", help="Remember report from last run.",
+		dest="do", action="store_const", const="last")
+	parser.add_option("--lfull", dest="do", action="store_const", const="lfull",
+		help="Remember report from last run, list all errors")
+	parser.add_option("-i", "--ignore-masked", dest="ignoredmasked",
+		help="Ignore masked packages (not allowed with commit mode)")
+	parser.add_option("-I", "--ignore-arches", dest="ignorearches",
+		help="Ignore arch-specific failures (where arch != host)")
+	parser.add_option("-m", "--commitmsg", dest="commitmsg",
+		help="Adds a commit message via the command line")
+	parser.add_option("-M", "--commitmsgfile", dest="commitmsgfile",
+		help="Adds a commit message from the specified file")
+	parser.add_option("-p", "--pretend", dest="pretend",
+		help="Don't commit or fix anything; just show what would be done")
+	parser.add_option("-q", "--quiet", dest="verbose", action="store_false",
+		help="Be less verbose about extraneous info")
+	parser.add_option("-v", "--verbose", dest="verbose", action="store_true",
+		help="Displays every package name while checking")
+#	parser.add_option("-V", action="callback", help="Display version information",
+#		callback="show_version")
+	parser.add_option("-x", "--xmlparse",
+		help="Forces the metadata.xml parse check to be carried out")
+
+	opts, args = parser.parse_args(args)
+	return BackwardsCompatableProcessing(opts, args)
+
+def BackwardsCompatableProcessing(opts, args):
+	"""
+	An options object as returned from optparse, and a set of unprocessed arguments
+	This function attempts to keep the arguments backwards compatable.
+
+	Determine whether we have an old style arg or not
+	"""
+	def QuickCheck(option, opts, args):
+		if option in args:
+			if opts.do:
+				return ValueError("You specified %s but the action was already specified as: %s" % (option, opts.do))
+			opts.do = option
+			return (opts, args)
 		else:
-			err_help("\""+sys.argv[x]+"\" is not a valid mode or option.")
-		x=x+1
-if mymode is None:
-	mymode="scan"
-if mymode=="help" or ("--help" in myoptions):
-	help(exitstatus=0)
-if ("--version" in myoptions):
-	show_version()
-if mymode=="last" or (mymode=="lfull"):
-	last()
-if mymode == "commit":
-	while "--ignore-masked" in myoptions:
-		myoptions.remove("--ignore-masked")
+			return None
+
+	"""
+	For each old option, call QuickCheck on it, to see if we have been passed one or
+	not.  Itertools.repeat is used to pass the same opts, args each time.
+	ifilter then pulls out all the records that returned None, leaving us with a set
+	of valid old-style commands (or an iterator that yields nothing).
+	"""
+
+	old_options = ["scan", "commit", "ci", "fix", "full", "lfull", "last"]
+	l = []
+	m = []
+	[l.append(opts) for i in xrange(len(old_options))]
+	[m.append(args) for i in xrange(len(old_options))]
+	itertools.ifilter(bool, map(QuickCheck, old_options, l, m))
+
+	if not opts.do:
+		return None
+	else:
+		return (opts, args)
+
+#
+#mymode=None
+#myoptions=[]
+#if len(sys.argv)>1:
+#	x=1
+#	while x < len(sys.argv):
+#		if sys.argv[x] in shortmodes.keys():
+#			sys.argv[x]=shortmodes[sys.argv[x]]
+#		elif sys.argv[x] in repoman_shortoptions.keys():
+#			sys.argv[x] = repoman_shortoptions[sys.argv[x]]
+#		if sys.argv[x] in modes:
+#			if mymode is None:
+#				mymode=sys.argv[x]
+#			else:
+#				err("Please specify either \""+mymode+"\" or \""+sys.argv[x]+"\", but not both.")
+#		elif sys.argv[x] in options:
+#			optionx=sys.argv[x]
+#			if (optionx=="--commitmsg") and (len(sys.argv)>=(x+1)):
+#				commitmessage=sys.argv[x+1]
+#				x=x+1
+#			elif (optionx=="--commitmsgfile") and (len(sys.argv)>=(x+1)):
+#				commitmessagefile=sys.argv[x+1]
+#				x=x+1
+#			elif (optionx=="--verbose"):
+#				verbose+=1
+#			elif (optionx=="--quiet"):
+#				quiet+=1
+#			elif optionx not in myoptions:
+#				myoptions.append(optionx)
+#		else:
+#			err_help("\""+sys.argv[x]+"\" is not a valid mode or option.")
+#		x=x+1
+#if mymode is None:
+#	mymode="scan"
+#if mymode=="help" or ("--help" in myoptions):
+#	help(exitstatus=0)
+#if ("--version" in myoptions):
+#	show_version()
+#if mymode=="last" or (mymode=="lfull"):
+#	last()
+#if mymode == "commit":
+#	while "--ignore-masked" in myoptions:
+#		myoptions.remove("--ignore-masked")
+
+opts, args = ParseOptions(sys.argv)
+mymode = opts.do
 
 from portage import normalize_path
 isCvs=False

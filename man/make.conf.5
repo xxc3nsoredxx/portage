@@ -5,11 +5,12 @@ make.conf \- custom settings for Portage
 .B /etc/make.conf
 .SH "DESCRIPTION"
 This file contains various variables that are used by Portage.
-Portage will check the currently\-defined environment variables
-first for any settings.  If no environment settings are found,
-Portage then checks /etc/make.conf.  If no setting is found
-in /etc/make.conf, Portage checks /etc/make.globals. If no
-setting is found there, the profile's default setting is grabbed
+This file should remain sourceable by bash; ie: source /etc/make.conf
+should never fail.  Portage will check the currently\-defined 
+environment variables first for any settings.  If no environment
+settings are found, Portage then checks /etc/make.conf.  If no 
+setting is found in /etc/make.conf, Portage checks /etc/make.globals.
+If no setting is found there, the profile's default setting is grabbed
 from /etc/make.profile/make.defaults. Please note that all user
 settings should be made in the environment or in /etc/make.conf,
 which is intended to be customized by the user.
