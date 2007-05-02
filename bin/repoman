@@ -22,6 +22,7 @@ from fileinput import input
 from grp import getgrnam
 from stat import S_ISDIR, ST_CTIME, ST_GID, ST_MTIME
 from optparse import OptionParser
+from portage import normalize_path
 
 try:
 	import cPickle as pickle
@@ -207,65 +208,46 @@ def show_version():
 	print exename+" "+version
 	sys.exit(0)
 	
-def last():
-	try:
-		#Retrieve and unpickle stats and fails from saved files
-		savedf=open('/var/cache/edb/repo.stats','r')
-		stats = pickle.load(savedf)
-		savedf.close()
-		savedf=open('/var/cache/edb/repo.fails','r')
-		fails = pickle.load(savedf)
-		savedf.close()
-	except SystemExit, e:
-		raise  # Need to propogate this
-	except:
-		err("Error retrieving last repoman run data; exiting.")
+class Stats(dict):
 
-	#dofail will be set to 1 if we have failed in at least one non-warning category
-	dofail=0
-	#dowarn will be set to 1 if we tripped any warnings
-	dowarn=0
-	#dofull will be set if we should print a "repoman full" informational message
-	dofull=0
+  def getLastStats(self):
+    stats = {'stats':'/var/cache/edb/repo.stats',
+             'fails':'/var/cache/edb/repo.fails'}
+    try:
+      for k,v stats.iteritems()
+        f = open(myfile)
+        self.data[k] = pickle.load(f)
+    except UnpickleError:
+      err("Failed to unpickle repostats for key %s and file %s" % k,v)
 
-	print
-	print green("RepoMan remembers...")
-	print
-	for x in qacats:
-		if stats[x]:
-			dowarn=1
-			if x not in qawarnings:
-				dofail=1
-		else:
-			continue
-		print "  "+ x.ljust(20),
-		if stats[x]==0:
-			print green(`stats[x]`)
-			continue
-		elif x in qawarnings:
-			print yellow(`stats[x]`)
-		else:
-			print red(`stats[x]`)
-		if mymode!="lfull":
-			if stats[x]<12:
-				for y in fails[x]:
-					print "   "+y
-			else:
-				dofull=1
-		else:
-			for y in fails[x]:
-				print "   "+y
-	print
-	if dofull:
-		print bold("Note: type \"repoman lfull\" for a complete listing of repomans last run.")
-		print
-	if dowarn and not dofail:
-		print green("RepoMan sez:"),"\"You only gave me a partial QA payment last time?\n              I took it, but I wasn't happy.\""
-	elif not dofail:
-		print green("RepoMan sez:"),"\"If everyone were like you, I'd be out of business!\""
-	print
-	sys.exit(1)
-
+  def print(self, mode):
+    """
+    Write the stats out to a file
+    """
+    dofull = False
+    print
+    print green("Repoman remembers...")
+    print
+    for k, v in self['stats']:
+      color = yellow
+      print " " + x.ljust(20),
+      if v == 0:
+        color = green
+      elif k not in qawarnings:
+        color = red
+      print color(`v`)
+      if mymode!="lfull":
+        if v < 12:
+          for y in self['fails'][k]:
+            print "   " + y
+        else:
+          dofull = True
+      else:
+        for y in self['fails'][k]
+          print "   " + y
+    if dofull:
+    print bold("Note: type \"repoman lfull\" for a complete listing of repomans last run.")
+    sys.exit(1)
 
 def ParseOptions(args):
 	"""
@@ -352,7 +334,6 @@ opts, args = ParseOptions(sys.argv)
 mymode = opts.do
 myoptions = opts
 
-from portage import normalize_path
 isCvs=False
 myreporoot=None
 if os.path.isdir("CVS"):
