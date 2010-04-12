@@ -157,6 +157,10 @@ class dbapi(object):
 			except KeyError:
 				continue
 			use = use.split()
+			if self.settings['MULTILIB_ABIS'].count(' ') is not 0:
+				if self.settings['ARCH'] == "amd64" or self.settings['ARCH'] == "ppc64":
+					if 'lib32' not in iuse:
+						iuse += ' lib32'
 			iuse = frozenset(x.lstrip('+-') for x in iuse.split())
 			missing_iuse = False
 			for x in atom.use.required:

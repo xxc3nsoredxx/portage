@@ -274,7 +274,8 @@ class config(object):
 		"PORTAGE_REPO_DUPLICATE_WARN",
 		"PORTAGE_RO_DISTDIRS",
 		"PORTAGE_RSYNC_EXTRA_OPTS", "PORTAGE_RSYNC_OPTS",
-		"PORTAGE_RSYNC_RETRIES", "PORTAGE_USE", "PORT_LOGDIR",
+		"PORTAGE_RSYNC_RETRIES", "PORTAGE_SYNC_STALE",
+		"PORTAGE_USE", "PORT_LOGDIR",
 		"QUICKPKG_DEFAULT_OPTS",
 		"RESUMECOMMAND", "RESUMECOMMAND_HTTP", "RESUMECOMMAND_HTTP",
 		"RESUMECOMMAND_SFTP", "SYNC", "USE_EXPAND_HIDDEN", "USE_ORDER",
@@ -1426,6 +1427,9 @@ class config(object):
 				pkg_configdict["PORTAGE_REPO_NAME"] = repository
 			slot = pkg_configdict["SLOT"]
 			iuse = pkg_configdict["IUSE"]
+			if self['MULTILIB_ABIS'].count(' ') is not 0:
+				if 'lib32' not in iuse and ( self['ARCH'] == "amd64" or self['ARCH'] == "ppc64" ):
+					iuse = iuse + ' lib32'
 			if pkg is None:
 				cpv_slot = "%s:%s" % (self.mycpv, slot)
 			else:

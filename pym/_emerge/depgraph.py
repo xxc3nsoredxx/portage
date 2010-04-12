@@ -2193,7 +2193,11 @@ class depgraph(object):
 		missing_iuse_reasons = []
 		for pkg in missing_use:
 			use = pkg.use.enabled
-			iuse = implicit_iuse.union(re.escape(x) for x in pkg.iuse.all)
+			cur_iuse = set(pkg.iuse.all)
+			if pkgsettings['MULTILIB_ABIS'].count(' ') is not 0 and 'lib32' not in cur_iuse:
+				if pkgsettings['ARCH'] == "amd64" or pkgsettings['ARCH'] == "ppc64":
+					cur_iuse.add("lib32")
+			iuse = implicit_iuse.union(re.escape(x) for x in cur_iuse)
 			iuse_re = re.compile("^(%s)$" % "|".join(iuse))
 			missing_iuse = []
 			for x in atom.use.required:
@@ -2589,7 +2593,10 @@ class depgraph(object):
 						old_iuse = set(filter_iuse_defaults(
 							vardb.aux_get(cpv, ["IUSE"])[0].split()))
 						cur_use = pkg.use.enabled
-						cur_iuse = pkg.iuse.all
+						cur_iuse = set(pkg.iuse.all)
+						if pkgsettings['MULTILIB_ABIS'].count(' ') is not 0:
+							if pkgsettings['ARCH'] == "amd64" or pkgsettings['ARCH'] == "ppc64":
+								cur_iuse.add("lib32")
 						reinstall_for_flags = \
 							self._reinstall_for_flags(
 							forced_flags, old_use, old_iuse,
@@ -3341,7 +3348,9 @@ class depgraph(object):
 		if replacement_portage == running_portage:
 			replacement_portage = None
 
-		if replacement_portage is not None:
+		if replacement_portage is not None and \
+			(running_portage is None or \
+			(running_portage.cpv != replacement_portage.cpv)):
 			# update from running_portage to replacement_portage asap
 			asap_nodes.append(replacement_portage)
 
@@ -3363,12 +3372,16 @@ class depgraph(object):
 
 		# Merge libc asap, in order to account for implicit
 		# dependencies. See bug #303567.
-		libc_pkg = self._dynamic_config.mydbapi[running_root].match_pkgs(
-			portage.const.LIBC_PACKAGE_ATOM)
-		if libc_pkg:
-			libc_pkg = libc_pkg[0]
-			if libc_pkg.operation == 'merge':
-				asap_nodes.append(libc_pkg)
+		for root in (running_root,):
+			libc_pkg = self._dynamic_config.mydbapi[root].match_pkgs(
+				portage.const.LIBC_PACKAGE_ATOM)
+			if libc_pkg:
+				libc_pkg = libc_pkg[0]
+				if libc_pkg.operation == 'merge':
+					# Only add a dep when the version changes.
+					if not libc_pkg.root_config.trees[
+						'vartree'].dbapi.cpv_exists(libc_pkg.cpv):
+						asap_nodes.append(libc_pkg)
 
 		def gather_deps(ignore_priority, mergeable_nodes,
 			selected_nodes, node):
@@ -3904,7 +3917,7 @@ class depgraph(object):
 			tempgraph.remove(node)
 		display_order.reverse()
 		self._frozen_config.myopts.pop("--quiet", None)
-		self._frozen_config.myopts.pop("--verbose", None)
+		self._frozen_config.myopts["--verbose"] = True
 		self._frozen_config.myopts["--tree"] = True
 		portage.writemsg("\n\n", noiselevel=-1)
 		self.display(display_order)
@@ -4309,6 +4322,12 @@ class depgraph(object):
 						if flag in pkg.iuse.all]
 					cur_iuse = sorted(pkg.iuse.all)
 
+					if pkgsettings['MULTILIB_ABIS'].count(' ') is not 0:
+						if pkgsettings['ARCH'] == "amd64" or pkgsettings['ARCH'] == "ppc64":
+							cur_use = [flag for flag in pkg.use.enabled \
+								if flag in pkg.iuse.all or flag in 'lib32']
+							if 'lib32' not in cur_iuse:
+								cur_iuse.append("lib32")
 					if myoldbest and myinslotlist:
 						previous_cpv = myoldbest[0]
 					else:
@@ -5617,6 +5636,9 @@ def get_mask_info(root_config, cpv, pkgsettings,
 			db.aux_get(cpv, db_keys)))
 	except KeyError:
 		metadata = None
+	if pkgsettings['MULTILIB_ABIS'].count(' ') is not 0:
+		if 'lib32' not in metadata["IUSE"] and ( pkgsettings['ARCH'] == "amd64" or pkgsettings['ARCH'] == "ppc64" ):
+			metadata["IUSE"] += ' lib32'
 
 	if metadata is None:
 		mreasons = ["corruption"]
