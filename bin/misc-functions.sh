@@ -1,7 +1,6 @@
 #!/bin/bash
 # Copyright 1999-2009 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Id$
 #
 # Miscellaneous shell functions that make use of the ebuild env but don't need
 # to be included directly in ebuild.sh.
@@ -332,6 +331,15 @@ install_qa_check() {
 		die "Aborting due to QA concerns: ${INSTALLTOD} files installed in ${D}/${D}"
 		unset INSTALLTOD
 	fi
+
+	# Sanity check syntax errors in init.d scripts
+	for d in /etc/conf.d /etc/init.d ; do
+		[[ -d ${D}/${d} ]] || continue
+		for i in "${D}"/${d}/* ; do
+			[[ -L ${i} ]] && continue
+			bash -n "${i}" || die "The init.d file has syntax errors: ${i}"
+		done
+	done
 
 	# this should help to ensure that all (most?) shared libraries are executable
 	# and that all libtool scripts / static libraries are not executable

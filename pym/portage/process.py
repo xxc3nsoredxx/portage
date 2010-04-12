@@ -1,7 +1,6 @@
 # portage.py -- core Portage functionality
 # Copyright 1998-2009 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Id$
 
 
 import atexit
@@ -342,6 +341,9 @@ def _exec(binary, mycommand, opt_name, fd_pipes, env, gid, groups, uid, umask,
 	# Set up the command's argument list.
 	myargs = [opt_name]
 	myargs.extend(mycommand[1:])
+
+	# Quiet killing of subprocesses by SIGPIPE (see bug #309001).
+	signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 	# Set up the command's pipes.
 	my_fds = {}

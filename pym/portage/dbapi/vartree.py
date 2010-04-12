@@ -1,6 +1,5 @@
 # Copyright 1998-2009 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Id$
 
 __all__ = ["PreservedLibsRegistry", "LinkageMap",
 	"vardbapi", "vartree", "dblink"] + \
@@ -849,7 +848,7 @@ class vardbapi(dbapi):
 			["BUILD_TIME", "CHOST", "COUNTER", "DEPEND", "DESCRIPTION",
 			"EAPI", "HOMEPAGE", "IUSE", "KEYWORDS",
 			"LICENSE", "PDEPEND", "PROPERTIES", "PROVIDE", "RDEPEND",
-			"repository", "RESTRICT" , "SLOT", "USE"])
+			"repository", "RESTRICT" , "SLOT", "USE", "DEFINED_PHASES"])
 		self._aux_cache_obj = None
 		self._aux_cache_filename = os.path.join(self.root,
 			CACHE_PATH, "vdb_metadata.pickle")
@@ -3474,6 +3473,10 @@ class dblink(object):
 		if retval:
 			return retval
 
+		self.settings["REPLACING_VERSIONS"] = " ".join( 
+			[portage.versions.cpv_getversion(other.mycpv) for other in others_in_slot] )
+		self.settings.backup_changes("REPLACING_VERSIONS")
+
 		if slot_matches:
 			# Used by self.isprotected().
 			max_dblnk = None
@@ -3891,6 +3894,8 @@ class dblink(object):
 			emerge_log(_(" === Unmerging... (%s)") % (dblnk.mycpv,))
 			others_in_slot.remove(dblnk) # dblnk will unmerge itself now
 			dblnk._linkmap_broken = self._linkmap_broken
+			dblnk.settings["REPLACED_BY_VERSION"] = portage.versions.cpv_getversion(self.mycpv)
+			dblnk.settings.backup_changes("REPLACED_BY_VERSION")
 			unmerge_rval = dblnk.unmerge(trimworld=0,
 				ldpath_mtimes=prev_mtimes, others_in_slot=others_in_slot)
 

@@ -1,6 +1,5 @@
 # Copyright 2010 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Id$
 
 __all__ = [
 	'autouse', 'best_from_dict', 'check_config_instance', 'config',
@@ -179,7 +178,8 @@ class config(object):
 		"PORTAGE_BIN_PATH",
 		"PORTAGE_BUILDDIR", "PORTAGE_COLORMAP",
 		"PORTAGE_CONFIGROOT", "PORTAGE_DEBUG", "PORTAGE_DEPCACHEDIR",
-		"PORTAGE_GID", "PORTAGE_INST_GID", "PORTAGE_INST_UID",
+		"PORTAGE_GID",
+		"PORTAGE_INST_GID", "PORTAGE_INST_UID",
 		"PORTAGE_IUSE",
 		"PORTAGE_LOG_FILE", "PORTAGE_MASTER_PID",
 		"PORTAGE_PYM_PATH", "PORTAGE_QUIET",
@@ -187,6 +187,7 @@ class config(object):
 		"PORTAGE_TMPDIR", "PORTAGE_UPDATE_ENV",
 		"PORTAGE_VERBOSE", "PORTAGE_WORKDIR_MODE",
 		"PORTDIR", "PORTDIR_OVERLAY", "PREROOTPATH", "PROFILE_PATHS",
+		"REPLACING_VERSIONS", "REPLACED_BY_VERSION",
 		"ROOT", "ROOTPATH", "T", "TMP", "TMPDIR",
 		"USE_EXPAND", "USE_ORDER", "WORKDIR",
 		"XARGS",
@@ -2578,6 +2579,14 @@ class config(object):
 
 		if phase == 'depend':
 			mydict.pop('FILESDIR', None)
+
+		if phase not in ("pretend", "setup", "preinst", "postinst") or \
+			eapi in ("0", "1", "2", "3"):
+			mydict.pop("REPLACING_VERSIONS", None)
+
+		if phase not in ("prerm", "postrm") or \
+			eapi in ("0", "1", "2", "3"):
+			mydict.pop("REPLACED_BY_VERSION", None)
 
 		return mydict
 

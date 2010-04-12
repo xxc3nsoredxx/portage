@@ -1,6 +1,5 @@
 # Copyright 1999-2009 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Id$
 
 from __future__ import print_function
 
@@ -1212,6 +1211,16 @@ def emerge_main():
 	adjust_configs(myopts, trees)
 	apply_priorities(settings)
 
+	if myaction == 'version':
+		writemsg_stdout(getportageversion(
+			settings["PORTDIR"], settings["ROOT"],
+			settings.profile_path, settings["CHOST"],
+			trees[settings["ROOT"]]["vartree"].dbapi) + '\n', noiselevel=-1)
+		return 0
+	elif myaction == 'help':
+		_emerge.help.help(myopts, portage.output.havecolor)
+		return 0
+
 	spinner = stdout_spinner()
 	if "candy" in settings.features:
 		spinner.update = spinner.update_scroll
@@ -1347,15 +1356,6 @@ def emerge_main():
 			settings.get('TERM') == 'dumb' or \
 			not sys.stdout.isatty():
 			spinner.update = spinner.update_basic
-
-	if myaction == 'version':
-		print(getportageversion(settings["PORTDIR"], settings["ROOT"],
-			settings.profile_path, settings["CHOST"],
-			trees[settings["ROOT"]]["vartree"].dbapi))
-		return 0
-	elif myaction == "help":
-		_emerge.help.help(myopts, portage.output.havecolor)
-		return 0
 
 	if "--debug" in myopts:
 		print("myaction", myaction)
@@ -1498,12 +1498,21 @@ def emerge_main():
 
 		# Ensure atoms are valid before calling unmerge().
 		vardb = trees[settings["ROOT"]]["vartree"].dbapi
+		portdb = trees[settings["ROOT"]]["porttree"].dbapi
+		bindb = trees[settings["ROOT"]]["bintree"].dbapi
 		valid_atoms = []
 		for x in myfiles:
 			if is_valid_package_atom(x):
 				try:
-					valid_atoms.append(
-						dep_expand(x, mydb=vardb, settings=settings))
+					#look at the installed files first, if there is no match
+					#look at the ebuilds, since EAPI 4 allows running pkg_info
+					#on non-installed packages
+					valid_atom = dep_expand(x, mydb=vardb, settings=settings)
+					if valid_atom.cp.split("/")[0] == "null":
+						valid_atom = dep_expand(x, mydb=portdb, settings=settings)
+					if valid_atom.cp.split("/")[0] == "null" and "--usepkg" in myopts:
+						valid_atom = dep_expand(x, mydb=bindb, settings=settings)
+					valid_atoms.append(valid_atom)
 				except portage.exception.AmbiguousPackageName as e:
 					msg = "The short ebuild name \"" + x + \
 						"\" is ambiguous.  Please specify " + \

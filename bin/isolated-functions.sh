@@ -1,6 +1,6 @@
-# Copyright 1999-2009 Gentoo Foundation
+#!/bin/bash
+# Copyright 1999-2010 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Id$
 
 # We need this next line for "die" and "assert". It expands
 # It _must_ preceed all the calls to die and assert.
@@ -326,10 +326,10 @@ _eend() {
 	fi
 
 	if [[ ${RC_ENDCOL} == "yes" ]] ; then
-		echo -e "${ENDCOL}  ${msg}"
+		echo -e "${ENDCOL} ${msg}"
 	else
 		[[ ${LAST_E_CMD} == ebegin ]] || LAST_E_LEN=0
-		printf "%$(( COLS - LAST_E_LEN - 6 ))s%b\n" '' "${msg}"
+		printf "%$(( COLS - LAST_E_LEN - 7 ))s%b\n" '' "${msg}"
 	fi
 
 	return ${retval}
@@ -397,7 +397,7 @@ get_KV() {
 }
 
 unset_colors() {
-	COLS="25 80"
+	COLS=80
 	ENDCOL=
 
 	GOOD=
@@ -412,13 +412,10 @@ set_colors() {
 	COLS=${COLUMNS:-0}      # bash's internal COLUMNS variable
 	(( COLS == 0 )) && COLS=$(set -- $(stty size 2>/dev/null) ; echo $2)
 	(( COLS > 0 )) || (( COLS = 80 ))
-	COLS=$((${COLS} - 8))	# width of [ ok ] == 7
-	# Adjust COLS so that eend works properly on a standard BSD console.
-	[[ $TERM = cons25 || $TERM = dumb ]] && ((COLS--))
 
 	# Now, ${ENDCOL} will move us to the end of the
 	# column;  irregardless of character width
-	ENDCOL=$'\e[A\e['${COLS}'C'
+	ENDCOL=$'\e[A\e['$(( COLS - 8 ))'C'
 	if [ -n "${PORTAGE_COLORMAP}" ] ; then
 		eval ${PORTAGE_COLORMAP}
 	else
@@ -531,7 +528,7 @@ save_ebuild_env() {
 			hasg hasgq hasv hasq qa_source qa_call \
 			addread addwrite adddeny addpredict _sb_append_var \
 			lchown lchgrp esyslog use usev useq has_version portageq \
-			best_version use_with use_enable register_die_hook check_KV \
+			best_version use_with use_enable register_die_hook \
 			keepdir unpack strip_duplicate_slashes econf einstall \
 			dyn_setup dyn_unpack dyn_clean into insinto exeinto docinto \
 			insopts diropts exeopts libopts \
@@ -539,8 +536,7 @@ save_ebuild_env() {
 			abort_test abort_install dyn_prepare dyn_configure \
 			dyn_compile dyn_test dyn_install \
 			dyn_preinst dyn_help debug-print debug-print-function \
-			debug-print-section inherit EXPORT_FUNCTIONS newdepend newrdepend \
-			newpdepend do_newdepend remove_path_entry \
+			debug-print-section inherit EXPORT_FUNCTIONS remove_path_entry \
 			save_ebuild_env filter_readonly_variables preprocess_ebuild_env \
 			source_all_bashrcs ebuild_main \
 			ebuild_phase ebuild_phase_with_hooks \
@@ -560,7 +556,8 @@ save_ebuild_env() {
 			PORTAGE_BASHRC PORTAGE_BASHRCS_SOURCED \
 			PORTAGE_BINPKG_TAR_OPTS PORTAGE_BINPKG_TMPFILE PORTAGE_BUILDDIR \
 			PORTAGE_COLORMAP PORTAGE_CONFIGROOT PORTAGE_DEBUG \
-			PORTAGE_DEPCACHEDIR PORTAGE_GID PORTAGE_INST_GID \
+			PORTAGE_DEPCACHEDIR PORTAGE_GID \
+			PORTAGE_INST_GID \
 			PORTAGE_INST_UID PORTAGE_LOG_FILE PORTAGE_MASTER_PID \
 			PORTAGE_NONFATAL PORTAGE_QUIET \
 			PORTAGE_REPO_NAME PORTAGE_RESTRICT PORTAGE_UPDATE_ENV \
@@ -569,6 +566,7 @@ save_ebuild_env() {
 			PROFILE_PATHS PWORKDIR QA_INTERCEPTORS \
 			RC_DEFAULT_INDENT RC_DOT_PATTERN RC_ENDCOL \
 			RC_INDENTATION READONLY_EBUILD_METADATA READONLY_PORTAGE_VARS \
+			REPLACING_VERSIONS REPLACED_BY_VERSION \
 			ROOT ROOTPATH RPMDIR TEMP TMP TMPDIR USE_EXPAND \
 			WARN XARGS _RC_GET_KV_CACHE
 

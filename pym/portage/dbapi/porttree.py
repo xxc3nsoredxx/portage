@@ -1,6 +1,5 @@
 # Copyright 1998-2009 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Id$
 
 __all__ = [
 	"close_portdbapi_caches", "FetchlistDict", "portagetree", "portdbapi"
@@ -403,7 +402,7 @@ class portdbapi(dbapi):
 		self._aux_cache_keys = set(
 			["DEPEND", "EAPI", "INHERITED", "IUSE", "KEYWORDS", "LICENSE",
 			"PDEPEND", "PROPERTIES", "PROVIDE", "RDEPEND", "repository",
-			"RESTRICT", "SLOT"])
+			"RESTRICT", "SLOT", "DEFINED_PHASES"])
 
 		self._aux_cache = {}
 		self._broken_ebuilds = set()

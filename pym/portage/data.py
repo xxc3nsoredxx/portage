@@ -1,7 +1,6 @@
 # data.py -- Calculated/Discovered Data Values
 # Copyright 1998-2009 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Id$
 
 import os, sys, pwd, grp, platform
 
@@ -77,8 +76,8 @@ except KeyError:
 
 #Discover the uid and gid of the portage user/group
 try:
-	portage_uid=pwd.getpwnam("portage")[2]
-	portage_gid=grp.getgrnam("portage")[2]
+	portage_uid = pwd.getpwnam('portage')[2]
+	portage_gid = grp.getgrnam('portage')[2]
 	if secpass < 1 and portage_gid in os.getgroups():
 		secpass=1
 except KeyError:
@@ -99,20 +98,25 @@ except KeyError:
 else:
 	userpriv_groups = [portage_gid]
 	if secpass >= 2:
-		# Get a list of group IDs for the portage user. Do not use
-		# grp.getgrall() since it is known to trigger spurious
-		# SIGPIPE problems with nss_ldap.
-		try:
-			from subprocess import getstatusoutput
-		except ImportError:
-			from commands import getstatusoutput
-		mystatus, myoutput = getstatusoutput("id -G portage")
-		if mystatus == os.EX_OK:
-			for x in myoutput.split():
-				try:
-					userpriv_groups.append(int(x))
-				except ValueError:
-					pass
-				del x
-			userpriv_groups = list(set(userpriv_groups))
-		del getstatusoutput, mystatus, myoutput
+		class _LazyUserprivGroups(portage.proxy.objectproxy.ObjectProxy):
+			def _get_target(self):
+				global userpriv_groups
+				if userpriv_groups is not self:
+					return userpriv_groups
+				userpriv_groups = _userpriv_groups
+				# Get a list of group IDs for the portage user. Do not use
+				# grp.getgrall() since it is known to trigger spurious
+				# SIGPIPE problems with nss_ldap.
+				mystatus, myoutput = \
+					portage.subprocess_getstatusoutput("id -G %s" % 'portage')
+				if mystatus == os.EX_OK:
+					for x in myoutput.split():
+						try:
+							userpriv_groups.append(int(x))
+						except ValueError:
+							pass
+					userpriv_groups[:] = sorted(set(userpriv_groups))
+				return userpriv_groups
+
+		_userpriv_groups = userpriv_groups
+		userpriv_groups = _LazyUserprivGroups()

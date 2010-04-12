@@ -1,6 +1,5 @@
 # Copyright 1999-2009 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Id$
 
 from __future__ import print_function
 
@@ -2180,6 +2179,8 @@ class depgraph(object):
 						missing_use.append(pkg)
 						if not mreasons:
 							continue
+					if pkg.built and not mreasons:
+						mreasons = ["use flag configuration mismatch"]
 				masked_packages.append(
 					(root_config, pkgsettings, cpv, metadata, mreasons))
 

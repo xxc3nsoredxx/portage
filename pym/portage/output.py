@@ -1,6 +1,5 @@
 # Copyright 1998-2009 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Id$
 
 __docformat__ = "epytext"
 
@@ -487,9 +486,6 @@ class EOutput(object):
 		lines, columns = get_term_size()
 		if columns <= 0:
 			columns = 80
-		# Adjust columns so that eend works properly on a standard BSD console.
-		if os.environ.get("TERM") in ("cons25", "dumb"):
-			columns = columns - 1
 		self.term_columns = columns
 		sys.stdout.flush()
 		sys.stderr.flush()
@@ -518,7 +514,7 @@ class EOutput(object):
 		if not self.quiet:
 			out = sys.stdout
 			self._write(out,
-				"%*s%s\n" % ((self.term_columns - self.__last_e_len - 6),
+				"%*s%s\n" % ((self.term_columns - self.__last_e_len - 7),
 				"", status_brackets))
 
 	def ebegin(self, msg):
@@ -532,7 +528,7 @@ class EOutput(object):
 		msg += " ..."
 		if not self.quiet:
 			self.einfon(msg)
-		self.__last_e_len = len(msg) + 4
+		self.__last_e_len = len(msg) + 3
 		self.__last_e_cmd = "ebegin"
 
 	def eend(self, errno, *msg):
