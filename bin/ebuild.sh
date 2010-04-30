@@ -667,7 +667,7 @@ dyn_pretend() {
 
 dyn_setup() {
 	for LOOP_ABI in $(get_abi_list); do
-		set_abi ${LOOP_ABI}; source "${T}"/environment || die
+		is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
 
 	ebuild_phase_with_hooks pkg_setup
 
@@ -679,7 +679,7 @@ dyn_setup() {
 dyn_unpack() {
 	local newstuff="no"
 	for LOOP_ABI in $(get_abi_list); do
-		is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
+		set_abi ${LOOP_ABI}; source "${T}"/environment || die
 
 	if [ -e "${WORKDIR}" ]; then
 		local x

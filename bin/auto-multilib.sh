@@ -173,7 +173,6 @@ set_abi() {
 	export ABI="${abi}"
 	echo ">>> ABI=${ABI}"
 	if [[ -f ${PORTAGE_BUILDDIR}/abi-code/environment."${ABI}" ]]; then
-		[ -n "${SAVE_ABI}" ] && local ABI=${SAVE_ABI} && _save_abi_env "${ABI_SAVE}"
 		ABI=${abi} _restore_abi_env "${ABI}"
 	else
 		_save_abi_env "INIT"
