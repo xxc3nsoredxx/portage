@@ -2570,7 +2570,7 @@ class depgraph(object):
 					if atom.use:
 						missing_iuse = False
 						for x in atom.use.required:
-							if not pkg.iuse.is_valid_flag(x):
+							if not ( pkg.iuse.is_valid_flag(x) or x in "lib32"):
 								missing_iuse = True
 								break
 						if missing_iuse:
