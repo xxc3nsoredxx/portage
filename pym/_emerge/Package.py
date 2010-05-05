@@ -161,6 +161,9 @@ class Package(Task):
 			enabled = []
 			disabled = []
 			other = []
+			#if mysettings.get['MULTILIB_ABIS'].count(' ') != 0:
+			#	if ( pkgsettings['ARCH'] == "amd64" or pkgsettings['ARCH'] == "ppc64" ):
+			other.append("lib32")
 			for x in tokens:
 				prefix = x[:1]
 				if prefix == "+":

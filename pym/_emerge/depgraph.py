@@ -2214,11 +2214,7 @@ class depgraph(object):
 		missing_iuse_reasons = []
 		for pkg in missing_use:
 			use = pkg.use.enabled
-			cur_iuse = set(pkg.iuse.all)
-			if pkgsettings['MULTILIB_ABIS'].count(' ') is not 0 and 'lib32' not in cur_iuse:
-				if pkgsettings['ARCH'] == "amd64" or pkgsettings['ARCH'] == "ppc64":
-					cur_iuse.add("lib32")
-			iuse = implicit_iuse.union(re.escape(x) for x in cur_iuse)
+			iuse = implicit_iuse.union(re.escape(x) for x in pkg.iuse.all)
 			iuse_re = re.compile("^(%s)$" % "|".join(iuse))
 			missing_iuse = []
 			for x in atom.use.required:
@@ -2570,7 +2566,7 @@ class depgraph(object):
 					if atom.use:
 						missing_iuse = False
 						for x in atom.use.required:
-							if not ( pkg.iuse.is_valid_flag(x) or x in "lib32"):
+							if not pkg.iuse.is_valid_flag(x):
 								missing_iuse = True
 								break
 						if missing_iuse:
@@ -2653,10 +2649,7 @@ class depgraph(object):
 						old_iuse = set(filter_iuse_defaults(
 							vardb.aux_get(cpv, ["IUSE"])[0].split()))
 						cur_use = pkg.use.enabled
-						cur_iuse = set(pkg.iuse.all)
-						if pkgsettings['MULTILIB_ABIS'].count(' ') is not 0:
-							if pkgsettings['ARCH'] == "amd64" or pkgsettings['ARCH'] == "ppc64":
-								cur_iuse.add("lib32")
+						cur_iuse = pkg.iuse.all
 						reinstall_for_flags = \
 							self._reinstall_for_flags(
 							forced_flags, old_use, old_iuse,
@@ -4382,12 +4375,6 @@ class depgraph(object):
 						if flag in pkg.iuse.all]
 					cur_iuse = sorted(pkg.iuse.all)
 
-					if pkgsettings['MULTILIB_ABIS'].count(' ') is not 0:
-						if pkgsettings['ARCH'] == "amd64" or pkgsettings['ARCH'] == "ppc64":
-							cur_use = [flag for flag in pkg.use.enabled \
-								if flag in pkg.iuse.all or flag in 'lib32']
-							if 'lib32' not in cur_iuse:
-								cur_iuse.append("lib32")
 					if myoldbest and myinslotlist:
 						previous_cpv = myoldbest[0]
 					else:
@@ -5696,9 +5683,6 @@ def get_mask_info(root_config, cpv, pkgsettings,
 			db.aux_get(cpv, db_keys)))
 	except KeyError:
 		metadata = None
-	if pkgsettings['MULTILIB_ABIS'].count(' ') is not 0:
-		if 'lib32' not in metadata["IUSE"] and ( pkgsettings['ARCH'] == "amd64" or pkgsettings['ARCH'] == "ppc64" ):
-			metadata["IUSE"] += ' lib32'
 
 	if metadata is None:
 		mreasons = ["corruption"]

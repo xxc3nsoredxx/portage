@@ -97,9 +97,10 @@ def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 						raise portage.exception.ParseError(
 							"invalid atom: '%s'" % x)
 
-			if myuse is not None and isinstance(x, Atom) and x.use:
-				if x.use.conditional:
-					x = x.evaluate_conditionals(myuse)
+		if not repoman and \
+			myuse is not None and isinstance(x, Atom) and x.use:
+			if x.use.conditional:
+				x = x.evaluate_conditionals(myuse)
 
 		mykey = x.cp
 		if not mykey.startswith("virtual/"):

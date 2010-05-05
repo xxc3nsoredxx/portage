@@ -1246,6 +1246,11 @@ def emerge_main():
 	adjust_configs(myopts, trees)
 	apply_priorities(settings)
 
+	if settings.get("NO_AUTO_FLAG", "") is "":
+		writemsg_level(bad("!!! Failed to find vars from extra profile") + "\n",level=logging.ERROR, noiselevel=-1)
+		writemsg_level(bad("!!! Please make sure that you did follow the instructions and included the extra profile\n"),level=logging.ERROR, noiselevel=-1)
+		return 1
+
 	if myaction == 'version':
 		writemsg_stdout(getportageversion(
 			settings["PORTDIR"], settings["ROOT"],
