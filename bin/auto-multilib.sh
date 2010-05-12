@@ -168,6 +168,7 @@ set_abi() {
 	fi
 
 	echo "${abi}" > ${PORTAGE_BUILDDIR}/.abi || die "IO Failure -- Failed to create .abi."
+	[[ $UID == 0 ]] && chown portage:portage ${PORTAGE_BUILDDIR}/.abi
 
 	# Export variables we need for toolchain
 	export ABI="${abi}"
