@@ -667,7 +667,12 @@ dyn_pretend() {
 
 dyn_setup() {
 	for LOOP_ABI in $(get_abi_list); do
-		is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
+		set_abi ${LOOP_ABI}
+		if is_ebuild; then
+			 source "${T}"/environment || die
+		else
+			rm -f "${T}"/environment
+		fi
 
 	ebuild_phase_with_hooks pkg_setup
 
@@ -679,7 +684,7 @@ dyn_setup() {
 dyn_unpack() {
 	local newstuff="no"
 	for LOOP_ABI in $(get_abi_list); do
-		set_abi ${LOOP_ABI}; source "${T}"/environment || die
+		is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
 
 	if [ -e "${WORKDIR}" ]; then
 		local x
@@ -1150,9 +1155,9 @@ dyn_install() {
 
 		if is_auto-multilib ; then
 			_finalize_abi_install
-			cp "${PORTAGE_BUILDDIR}"/abi-code/environment.${LOOP_ABI} "${PORTAGE_BUILDDIR}"/build-info/ || die
-			unset_abi; source "${T}"/environment || die
+			cp "${T}"/environment "${PORTAGE_BUILDDIR}"/build-info/environment.${LOOP_ABI} || die
 			if is_ebuild; then
+				unset_abi; source "${T}"/environment || die
 				touch "$PORTAGE_BUILDDIR"/.installed."${LOOP_ABI}" || die "IO Failure -- Failed to 'touch .installed.${LOOP_ABI}'"
 			fi
 		fi
@@ -1841,7 +1846,7 @@ preprocess_ebuild_env() {
 		# phases, these variables are normally preserved.
 		filter_opts+=" --filter-features --filter-locale --filter-path --filter-sandbox"
 	fi
-	filter_readonly_variables ${filter_opts} < "${T}"/environment \
+	filter_readonly_variables $1 ${filter_opts} < "${T}"/environment \
 		> "${T}"/environment.filtered || return $?
 	unset filter_opts
 	mv "${T}"/environment.filtered "${T}"/environment || return $?
@@ -2177,7 +2182,7 @@ ebuild_main() {
 						;;
 				esac
 				# >/dev/null = backward compactibility for prerm/postrm
-				source "${T}"/environment 2>/dev/null|| die
+				source "${T}"/environment 2>/dev/null || die
 			fi
 			export SANDBOX_ON="0"
 			if [ "${PORTAGE_DEBUG}" != "1" ] || [ "${-/x/}" != "$-" ]; then
