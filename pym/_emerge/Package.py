@@ -161,9 +161,6 @@ class Package(Task):
 			enabled = []
 			disabled = []
 			other = []
-			#if mysettings.get['MULTILIB_ABIS'].count(' ') != 0:
-			#	if ( pkgsettings['ARCH'] == "amd64" or pkgsettings['ARCH'] == "ppc64" ):
-			other.append("lib32")
 			for x in tokens:
 				prefix = x[:1]
 				if prefix == "+":
@@ -297,6 +294,19 @@ class _PackageMetadataWrapper(_PackageMetadataWrapperBase):
 		self._pkg.inherited = v
 
 	def _set_iuse(self, k, v):
+		if self._pkg.root_config.settings['MULTILIB_ABIS'].count(' ') != 0:
+			for multilib_abis in self._pkg.root_config.settings.get("MULTILIB_ABIS", []).split(' '):
+				if multilib_abis not in v:
+					if multilib_abis in self._pkg.root_config.settings.get("DEFAULT_ABI"):
+						v = v + " +multilib_abi_" + multilib_abis
+						#print v
+					else:
+						v = v + " multilib_abi_" + multilib_abis
+						#print v
+				else:
+					if multilib_abis in self._pkg.root_config.settings.get("DEFAULT_ABI"):
+						v = v.replace("multilib_abi_" + multilib_abis,"+multilib_abis_" + multilib_abis)
+					#print v
 		self._pkg.iuse = self._pkg._iuse(
 			v.split(), self._pkg.root_config.settings._iuse_implicit_re)
 

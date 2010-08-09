@@ -1283,6 +1283,7 @@ def action_info(settings, trees, myopts, myfiles):
 
 	myvars = portage.util.unique_array(myvars)
 	use_expand = settings.get('USE_EXPAND', '').split()
+	use_expand.append("MULTILIB_ABIS")
 	use_expand.sort()
 	use_expand_hidden = set(
 		settings.get('USE_EXPAND_HIDDEN', '').upper().split())

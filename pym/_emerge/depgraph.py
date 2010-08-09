@@ -4395,6 +4395,7 @@ class depgraph(object):
 					old_use = [flag for flag in old_use if flag in old_iuse]
 
 					use_expand = pkgsettings["USE_EXPAND"].lower().split()
+					use_expand.append("multilib_abi")
 					use_expand.sort()
 					use_expand.reverse()
 					use_expand_hidden = \

@@ -97,12 +97,14 @@ tc-getPROG() {
 }
 
 has_multilib_profile() {
-	[ -n "${MULTILIB_ABIS}" -a "${MULTILIB_ABIS}" != "${MULTILIB_ABIS/ /}" ]
+	[[ -n "${MULTILIB_ABIS}" && "${MULTILIB_ABIS}" != "${MULTILIB_ABIS/ /}" ]]
 }
 
 is_auto-multilib() {
-	if ( [[ "${ARCH}" == "amd64" ]] || [[ "${ARCH}" == "ppc64" ]] ) && has_multilib_profile && use lib32 && ! hasq multilib-native ${INHERITED} && ! use multilib; then
-		return 0
+	if has_multilib_profile && ! hasq multilib-native ${INHERITED} && ! use multilib; then
+		for i in ${MULTILIB_ABIS} ; do
+			use multilib_abi_"${i}" && [[ "${i}" != "${DEFAULT_ABI}" ]] && return 0
+		done
 	fi
 	return 1
 }
@@ -115,11 +117,8 @@ get_abi_order() {
 	local order= dodefault=
 
 	if is_auto-multilib; then
-		order=${DEFAULT_ABI}
-		for x in ${MULTILIB_ABIS}; do
-			if [ "${x}" != "${DEFAULT_ABI}" ]; then
-				order="${order} ${x}"
-			fi
+		for x in ${MULTILIB_ABIS} ; do
+			use multilib_abi_"${x}" && order="${order} ${x}"
 		done
 	else
 		order=${DEFAULT_ABI}
@@ -205,7 +204,11 @@ unset_abi() {
 	fi
 	_save_abi_env "${ABI}"
 	export ABI=${DEFAULT_ABI}
-	_restore_abi_env "${ABI}"
+	if [[ -f ${PORTAGE_BUILDDIR}/abi-code/environment."${ABI}" ]]; then
+		_restore_abi_env "${ABI}"
+	else
+		set_abi "${ABI}"
+	fi
 }
 
 _get_abi_string() {
@@ -330,18 +333,20 @@ _finalize_abi_install() {
 		base=${PORTAGE_BUILDDIR}/abi-code/gentoo-multilib
 		local files_differ=
 		for dir in ${dirs}; do
-			cd "${base}${dir}/gentoo-multilib/${DEFAULT_ABI}" || die
-			for i in $(find . -type f); do
-				for diffabi in ${ALTERNATE_ABIS}; do
-					diff -q "${i}" ../${diffabi}/"${i}" >/dev/null || files_differ=1
+			if use multilib_abi_"${DEFAULT_ABI}" ; then
+				cd "${base}${dir}/gentoo-multilib/${DEFAULT_ABI}" || die
+				for i in $(find . -type f); do
+					for diffabi in ${ALTERNATE_ABIS}; do
+						diff -q "${i}" ../${diffabi}/"${i}" >/dev/null || files_differ=1
+					done
+					if [ -z "${files_differ}" ]; then
+						[ -d "${D}${dir}/${i%/*}" ] || mkdir -p "${D}${dir}/${i%/*}"
+						mv ${base}${dir}/gentoo-multilib/${DEFAULT_ABI}/"${i}" "${D}${dir}/${i}" || die "$DEFAULT_ABI failed"
+						rm -rf ${base}${dir}/gentoo-multilib/*/"${i}"
+					fi
+					files_differ=
 				done
-				if [ -z "${files_differ}" ]; then
-					[ -d "${D}${dir}/${i%/*}" ] || mkdir -p "${D}${dir}/${i%/*}"
-					mv ${base}${dir}/gentoo-multilib/${DEFAULT_ABI}/"${i}" "${D}${dir}/${i}" || die "$DEFAULT_ABI failed"
-					rm -rf ${base}${dir}/gentoo-multilib/*/"${i}"
-				fi
-				files_differ=
-			done
+			fi
 		done
 		pushd "${base}" >/dev/null
 		find . | tar -c -T - -f - | tar -x --no-same-owner -f - -C ${D}

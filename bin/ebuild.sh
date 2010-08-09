@@ -666,6 +666,13 @@ dyn_pretend() {
 }
 
 dyn_setup() {
+	if ! is_auto-multilib && ! use multilib_abi_"${DEFAULT_ABI}" ; then
+		ewarn
+		ewarn "You disabled all ABIs"
+		ewarn "You should enable at least one ABI"
+		ewarn "Enabling the default ABI now"
+		ewarn
+	fi
 	for LOOP_ABI in $(get_abi_list); do
 		set_abi ${LOOP_ABI}
 		if is_ebuild; then
@@ -1193,7 +1200,13 @@ dyn_install() {
 			[[ -n $x ]] && echo "$x" > $f
 		done
 	fi
-	has_multilib_profile && echo "${IUSE} lib32"	> IUSE
+	if has_multilib_profile ; then
+		local i= x=
+		for i in ${MULTILIB_ABIS} ; do
+			x+=" multilib_abi_${i}"
+		done
+		echo "${IUSE}${x}"	> IUSE
+	fi
 	echo "${USE}"       > USE
 	echo "${EAPI:-0}"   > EAPI
 	if is_auto-multilib; then
@@ -2210,7 +2223,7 @@ ebuild_main() {
 						#install a per-ABI environment
 						if [[ -f "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 ]] ; then
 							preprocess_ebuild_env --filter-metadata
-							bzcat "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${DEFAULT_ABI}.bz2 > "${T}"/environment || die
+							bzcat "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 > "${T}"/environment || die
 						fi
 						;;
 				esac

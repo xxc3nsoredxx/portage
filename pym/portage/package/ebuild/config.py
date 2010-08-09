@@ -1633,8 +1633,8 @@ class config(object):
 		iuse_implicit.add("test")
 
 		if self['MULTILIB_ABIS'].count(' ') != 0:
-			if ( self['ARCH'] == "amd64" or self['ARCH'] == "ppc64" ):
-				iuse_implicit.add("lib32")
+			for multilib_abis in self.get('MULTILIB_ABIS', []).split(' '):
+				iuse_implicit.add("multilib_abi_" + multilib_abis)
 
 		return iuse_implicit
 
@@ -2225,6 +2225,7 @@ class config(object):
 			self.configdict["auto"]["USE"] = ""
 
 		use_expand = self.get("USE_EXPAND", "").split()
+		use_expand.append("MULTILIB_ABI")
 		use_expand_dict = self._use_expand_dict
 		use_expand_dict.clear()
 		for k in use_expand:
