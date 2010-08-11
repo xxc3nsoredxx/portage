@@ -716,6 +716,8 @@ class config(object):
 					self.mygcfg = {}
 			self.configlist.append(self.mygcfg)
 			self.configdict["defaults"]=self.configlist[-1]
+			if self.configdict["defaults"].get("MULTILIB_ABIS", "").count(' ') != 0:
+				self.configdict["defaults"]["USE"] = self.configdict["defaults"].get("USE", "") + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 
 			self.mygcfg = getconfig(
 				os.path.join(config_root, MAKE_CONF_FILE),
@@ -1469,6 +1471,8 @@ class config(object):
 		defaults = " ".join(defaults)
 		if defaults != self.configdict["defaults"].get("USE",""):
 			self.configdict["defaults"]["USE"] = defaults
+			if self.configdict["defaults"].get("MULTILIB_ABIS", "").count(' ') != 0:
+				self.configdict["defaults"]["USE"] = self.configdict["defaults"].get("USE", "") + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 			has_changed = True
 
 		useforce = self._getUseForce(cpv_slot)
