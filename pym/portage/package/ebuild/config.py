@@ -1469,10 +1469,10 @@ class config(object):
 				defaults.insert(pos, self.make_defaults_use[i])
 			pos = len(defaults)
 		defaults = " ".join(defaults)
+		if self.configdict["defaults"].get("MULTILIB_ABIS", "").count(' ') != 0:
+			defaults = defaults + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 		if defaults != self.configdict["defaults"].get("USE",""):
 			self.configdict["defaults"]["USE"] = defaults
-			if self.configdict["defaults"].get("MULTILIB_ABIS", "").count(' ') != 0:
-				self.configdict["defaults"]["USE"] = self.configdict["defaults"].get("USE", "") + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 			has_changed = True
 
 		useforce = self._getUseForce(cpv_slot)
