@@ -297,16 +297,7 @@ class _PackageMetadataWrapper(_PackageMetadataWrapperBase):
 		if self._pkg.root_config.settings['MULTILIB_ABIS'].count(' ') != 0:
 			for multilib_abis in self._pkg.root_config.settings.get("MULTILIB_ABIS", []).split(' '):
 				if multilib_abis not in v:
-					if multilib_abis in self._pkg.root_config.settings.get("DEFAULT_ABI"):
-						v = v + " +multilib_abi_" + multilib_abis
-						#print v
-					else:
-						v = v + " multilib_abi_" + multilib_abis
-						#print v
-				else:
-					if multilib_abis in self._pkg.root_config.settings.get("DEFAULT_ABI"):
-						v = v.replace("multilib_abi_" + multilib_abis,"+multilib_abis_" + multilib_abis)
-					#print v
+					v = v + " multilib_abi_" + multilib_abis
 		self._pkg.iuse = self._pkg._iuse(
 			v.split(), self._pkg.root_config.settings._iuse_implicit_re)
 
