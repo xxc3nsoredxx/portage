@@ -296,8 +296,7 @@ class _PackageMetadataWrapper(_PackageMetadataWrapperBase):
 	def _set_iuse(self, k, v):
 		if self._pkg.root_config.settings['MULTILIB_ABIS'].count(' ') != 0:
 			for multilib_abis in self._pkg.root_config.settings.get("MULTILIB_ABIS", []).split(' '):
-				if multilib_abis not in v:
-					v = v + " multilib_abi_" + multilib_abis
+				v = v + " multilib_abi_" + multilib_abis
 		self._pkg.iuse = self._pkg._iuse(
 			v.split(), self._pkg.root_config.settings._iuse_implicit_re)
 
