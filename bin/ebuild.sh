@@ -141,9 +141,11 @@ useq() {
 
 	# Make sure we have this USE flag in IUSE
 	elif [[ -n $PORTAGE_IUSE && -n $EBUILD_PHASE ]] ; then
+		if [[ $u != multilib ]]; then
 			[[ $u =~ $PORTAGE_IUSE ]] || \
 				eqawarn "QA Notice: USE Flag '${u}' not" \
 					"in IUSE for ${CATEGORY}/${PF}"
+		fi
 	fi
 
 	if hasq ${u} ${USE} ; then
@@ -2243,7 +2245,6 @@ ebuild_main() {
 			ebuild_phase_with_hooks pkg_${EBUILD_SH_ARGS}
 			set +x
 		fi
-<<<<<<< HEAD
 		;;
 	prerm|postrm|postinst)
 		for LOOP_ABI in $(get_abi_order); do
