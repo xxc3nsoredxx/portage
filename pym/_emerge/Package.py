@@ -1,4 +1,4 @@
-# Copyright 1999-2009 Gentoo Foundation
+# Copyright 1999-2010 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 import re
@@ -6,8 +6,9 @@ import sys
 from itertools import chain
 import portage
 from portage.cache.mappings import slot_dict_class
-from portage.dep import isvalidatom, paren_reduce, use_reduce, \
-	paren_normalize, paren_enclose, _slot_re
+from portage.dep import isvalidatom, use_reduce, \
+	paren_enclose, _slot_re
+from portage.eapi import eapi_has_iuse_defaults, eapi_has_required_use
 from _emerge.Task import Task
 
 if sys.hexversion >= 0x3000000:
@@ -23,19 +24,20 @@ class Package(Task):
 		"category", "counter", "cp", "cpv_split",
 		"inherited", "invalid", "iuse", "masks", "mtime",
 		"pf", "pv_split", "root", "slot", "slot_atom", "visible",) + \
-	("_use",)
+	("_raw_metadata", "_use",)
 
 	metadata_keys = [
 		"BUILD_TIME", "CHOST", "COUNTER", "DEPEND", "EAPI",
 		"INHERITED", "IUSE", "KEYWORDS",
 		"LICENSE", "PDEPEND", "PROVIDE", "RDEPEND",
 		"repository", "PROPERTIES", "RESTRICT", "SLOT", "USE",
-		"_mtime_", "DEFINED_PHASES"]
+		"_mtime_", "DEFINED_PHASES", "REQUIRED_USE"]
 
 	def __init__(self, **kwargs):
 		Task.__init__(self, **kwargs)
 		self.root = self.root_config.root
-		self.metadata = _PackageMetadataWrapper(self, self.metadata)
+		self._raw_metadata = _PackageMetadataWrapperBase(self.metadata)
+		self.metadata = _PackageMetadataWrapper(self, self._raw_metadata)
 		if not self.built:
 			self.metadata['CHOST'] = self.root_config.settings.get('CHOST', '')
 		self.cp = portage.cpv_getkey(self.cpv)
@@ -46,12 +48,26 @@ class Package(Task):
 			# Avoid an InvalidAtom exception when creating slot_atom.
 			# This package instance will be masked due to empty SLOT.
 			slot = '0'
+		if (self.iuse.enabled or self.iuse.disabled) and \
+			not eapi_has_iuse_defaults(self.metadata["EAPI"]):
+			self._invalid_metadata('IUSE.invalid',
+				"IUSE contains defaults, but EAPI doesn't allow them")
+		if self.metadata.get("REQUIRED_USE") and \
+			not eapi_has_required_use(self.metadata["EAPI"]):
+			self._invalid_metadata('REQUIRED_USE.invalid',
+				"REQUIRED_USE set, but EAPI doesn't allow it")
 		self.slot_atom = portage.dep.Atom("%s:%s" % (self.cp, slot))
 		self.category, self.pf = portage.catsplit(self.cpv)
 		self.cpv_split = portage.catpkgsplit(self.cpv)
 		self.pv_split = self.cpv_split[1:]
 		self.masks = self._masks()
 		self.visible = self._visible(self.masks)
+
+	def copy(self):
+		return Package(built=self.built, cpv=self.cpv, depth=self.depth,
+			installed=self.installed, metadata=self._raw_metadata,
+			onlydeps=self.onlydeps, operation=self.operation,
+			root_config=self.root_config, type_name=self.type_name)
 
 	def _masks(self):
 		masks = {}
@@ -137,6 +153,38 @@ class Package(Task):
 			self.invalid[msg_type] = msgs
 		msgs.append(msg)
 
+	def __str__(self):
+		if self.operation is None:
+			self.operation = "merge"
+			if self.onlydeps or self.installed:
+				self.operation = "nomerge"
+
+		if self.operation == "merge":
+			if self.type_name == "binary":
+				cpv_color = "PKG_BINARY_MERGE"
+			else:
+				cpv_color = "PKG_MERGE"
+		elif self.operation == "uninstall":
+			cpv_color = "PKG_UNINSTALL"
+		else:
+			cpv_color = "PKG_NOMERGE"
+
+		s = "(%s, %s" \
+			% (portage.output.colorize(cpv_color, self.cpv) , self.type_name)
+
+		if self.type_name == "installed":
+			if self.root != "/":
+				s += " in '%s'" % self.root
+			if self.operation == "uninstall":
+				s += " scheduled for uninstall"
+		else:
+			if self.operation == "merge":
+				s += " scheduled for merge"
+				if self.root != "/":
+					s += " to '%s'" % self.root
+		s += ")"
+		return s
+
 	class _use_class(object):
 
 		__slots__ = ("__weakref__", "enabled")
@@ -153,11 +201,11 @@ class Package(Task):
 	class _iuse(object):
 
 		__slots__ = ("__weakref__", "all", "enabled", "disabled",
-			"tokens") + ("_iuse_implicit_regex",)
+			"tokens") + ("_iuse_implicit_match",)
 
-		def __init__(self, tokens, iuse_implicit_regex):
+		def __init__(self, tokens, iuse_implicit_match):
 			self.tokens = tuple(tokens)
-			self._iuse_implicit_regex = iuse_implicit_regex
+			self._iuse_implicit_match = iuse_implicit_match
 			enabled = []
 			disabled = []
 			other = []
@@ -173,13 +221,32 @@ class Package(Task):
 			self.disabled = frozenset(disabled)
 			self.all = frozenset(chain(enabled, disabled, other))
 
-		def is_valid_flag(self, flag):
+		def is_valid_flag(self, flags):
 			"""
-			@returns: True if flag is a valid USE value which may
+			@returns: True if all flags are valid USE values which may
 				be specified in USE dependencies, False otherwise.
 			"""
-			return flag in self.all or \
-				self._iuse_implicit_regex.match(flag) is not None
+			if isinstance(flags, basestring):
+				flags = [flags]
+
+			for flag in flags:
+				if not flag in self.all and \
+					not self._iuse_implicit_match(flag):
+					return False
+			return True
+		
+		def get_missing_iuse(self, flags):
+			"""
+			@returns: A list of flags missing from IUSE.
+			"""
+			if isinstance(flags, basestring):
+				flags = [flags]
+			missing_iuse = []
+			for flag in flags:
+				if not flag in self.all and \
+					not self._iuse_implicit_match(flag):
+					missing_iuse.append(flag)
+			return missing_iuse
 
 	def _get_hash_key(self):
 		hash_key = getattr(self, "_hash_key", None)
@@ -234,7 +301,7 @@ class _PackageMetadataWrapper(_PackageMetadataWrapperBase):
 
 	__slots__ = ("_pkg",)
 	_wrapped_keys = frozenset(
-		["COUNTER", "INHERITED", "IUSE", "SLOT", "_mtime_"])
+		["COUNTER", "INHERITED", "IUSE", "SLOT", "USE", "_mtime_"])
 	_use_conditional_keys = frozenset(
 		['LICENSE', 'PROPERTIES', 'PROVIDE', 'RESTRICT',])
 
@@ -243,7 +310,7 @@ class _PackageMetadataWrapper(_PackageMetadataWrapperBase):
 		self._pkg = pkg
 		if not pkg.built:
 			# USE is lazy, but we want it to show up in self.keys().
-			self['USE'] = ''
+			_PackageMetadataWrapperBase.__setitem__(self, 'USE', '')
 
 		self.update(metadata)
 
@@ -252,8 +319,8 @@ class _PackageMetadataWrapper(_PackageMetadataWrapperBase):
 		if k in self._use_conditional_keys:
 			if self._pkg.root_config.settings.local_config and '?' in v:
 				try:
-					v = paren_enclose(paren_normalize(use_reduce(
-						paren_reduce(v), uselist=self._pkg.use.enabled)))
+					v = paren_enclose(use_reduce(v, uselist=self._pkg.use.enabled, \
+						is_valid_flag=self._pkg.iuse.is_valid_flag))
 				except portage.exception.InvalidDependString:
 					# This error should already have been registered via
 					# self._pkg._invalid_metadata().
@@ -268,7 +335,7 @@ class _PackageMetadataWrapper(_PackageMetadataWrapperBase):
 					'porttree'].dbapi.doebuild_settings
 				pkgsettings.setcpv(self._pkg)
 				v = pkgsettings["PORTAGE_USE"]
-				self['USE'] = v
+				_PackageMetadataWrapperBase.__setitem__(self, 'USE', v)
 
 		return v
 
@@ -278,12 +345,12 @@ class _PackageMetadataWrapper(_PackageMetadataWrapperBase):
 			getattr(self, "_set_" + k.lower())(k, v)
 		elif k in self._use_conditional_keys:
 			try:
-				reduced = use_reduce(paren_reduce(v), matchall=1)
+				reduced = use_reduce(v, matchall=1, flat=True)
 			except portage.exception.InvalidDependString as e:
 				self._pkg._invalid_metadata(k + ".syntax", "%s: %s" % (k, e))
 			else:
 				if reduced and k == 'PROVIDE':
-					for x in portage.flatten(reduced):
+					for x in reduced:
 						if not isvalidatom(x):
 							self._pkg._invalid_metadata(k + ".syntax",
 								"%s: %s" % (k, x))
@@ -298,7 +365,7 @@ class _PackageMetadataWrapper(_PackageMetadataWrapperBase):
 			for multilib_abis in self._pkg.root_config.settings.get("MULTILIB_ABIS", []).split(' '):
 				v = v + " multilib_abi_" + multilib_abis
 		self._pkg.iuse = self._pkg._iuse(
-			v.split(), self._pkg.root_config.settings._iuse_implicit_re)
+			v.split(), self._pkg.root_config.settings._iuse_implicit_match)
 
 	def _set_slot(self, k, v):
 		self._pkg.slot = v
@@ -310,6 +377,18 @@ class _PackageMetadataWrapper(_PackageMetadataWrapperBase):
 			except ValueError:
 				v = 0
 		self._pkg.counter = v
+
+	def _set_use(self, k, v):
+		# Force regeneration of _use attribute
+		self._pkg._use = None
+		# Use raw metadata to restore USE conditional values
+		# to unevaluated state
+		raw_metadata = self._pkg._raw_metadata
+		for x in self._use_conditional_keys:
+			try:
+				self[x] = raw_metadata[x]
+			except KeyError:
+				pass
 
 	def _set__mtime_(self, k, v):
 		if isinstance(v, basestring):

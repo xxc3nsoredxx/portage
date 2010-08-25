@@ -2,9 +2,9 @@
 # Distributed under the terms of the GNU General Public License v2
 
 import sys
-from portage.dep import Atom, best_match_to_list, match_from_list
+from portage.dep import Atom, ExtendedAtomDict, best_match_to_list, match_from_list
 from portage.exception import InvalidAtom
-from portage.versions import cpv_getkey
+from portage.versions import catsplit, cpv_getkey
 
 if sys.hexversion >= 0x3000000:
 	basestring = str
@@ -21,12 +21,12 @@ class PackageSet(object):
 	
 	def __init__(self):
 		self._atoms = set()
-		self._atommap = {}
+		self._atommap = ExtendedAtomDict(set)
 		self._loaded = False
 		self._loading = False
 		self.errors = []
 		self._nonatoms = set()
-		self.world_candidate = True
+		self.world_candidate = False
 
 	def __contains__(self, atom):
 		self._load()
@@ -66,7 +66,7 @@ class PackageSet(object):
 		self._load()
 		return self._nonatoms.copy()
 
-	def _setAtoms(self, atoms):
+	def _setAtoms(self, atoms, allow_wildcard=False):
 		self._atoms.clear()
 		self._nonatoms.clear()
 		for a in atoms:
@@ -76,10 +76,12 @@ class PackageSet(object):
 				if not a:
 					continue
 				try:
-					a = Atom(a)
+					a = Atom(a, allow_wildcard=True)
 				except InvalidAtom:
 					self._nonatoms.add(a)
 					continue
+			if not allow_wildcard and a.extended_syntax:
+				raise InvalidAtom("extended atom syntax not allowed here")
 			self._atoms.add(a)
 
 		self._updateAtomMap()
@@ -109,15 +111,18 @@ class PackageSet(object):
 			self._atommap.clear()
 			atoms = self._atoms
 		for a in atoms:
-			self._atommap.setdefault(a.cp, set())
-			self._atommap[a.cp].add(a)
+			self._atommap.setdefault(a.cp, set()).add(a)
 	
 	# Not sure if this one should really be in PackageSet
-	def findAtomForPackage(self, pkg):
+	def findAtomForPackage(self, pkg, modified_use=None):
 		"""Return the best match for a given package from the arguments, or
 		None if there are no matches.  This matches virtual arguments against
 		the PROVIDE metadata.  This can raise an InvalidDependString exception
 		if an error occurs while parsing PROVIDE."""
+
+		if modified_use is not None and modified_use is not pkg.use.enabled:
+			pkg = pkg.copy()
+			pkg.metadata["USE"] = " ".join(modified_use)
 
 		# Atoms matched via PROVIDE must be temporarily transformed since
 		# match_from_list() only works correctly when atom.cp == pkg.cp.
@@ -126,7 +131,7 @@ class PackageSet(object):
 			if atom.cp == pkg.cp:
 				rev_transform[atom] = atom
 			else:
-				rev_transform[Atom(atom.replace(atom.cp, pkg.cp, 1))] = atom
+				rev_transform[Atom(atom.replace(atom.cp, pkg.cp, 1), allow_wildcard=True)] = atom
 		best_match = best_match_to_list(pkg, iter(rev_transform))
 		if best_match:
 			return rev_transform[best_match]
@@ -141,6 +146,7 @@ class PackageSet(object):
 		cpv_slot_list = [pkg]
 		cp = cpv_getkey(pkg.cpv)
 		self._load() # make sure the atoms are loaded
+
 		atoms = self._atommap.get(cp)
 		if atoms:
 			for atom in atoms:
@@ -164,6 +170,10 @@ class PackageSet(object):
 
 class EditablePackageSet(PackageSet):
 
+	def __init__(self, allow_wildcard=False):
+		super(EditablePackageSet, self).__init__()
+		self._allow_wildcard = allow_wildcard
+		
 	def update(self, atoms):
 		self._load()
 		modified = False
@@ -171,11 +181,13 @@ class EditablePackageSet(PackageSet):
 		for a in atoms:
 			if not isinstance(a, Atom):
 				try:
-					a = Atom(a)
+					a = Atom(a, allow_wildcard=True)
 				except InvalidAtom:
 					modified = True
 					self._nonatoms.add(a)
 					continue
+			if not self._allow_wildcard and a.extended_syntax:
+				raise InvalidAtom("extended atom syntax not allowed here")
 			normal_atoms.append(a)
 
 		if normal_atoms:
@@ -189,7 +201,7 @@ class EditablePackageSet(PackageSet):
 		self.update([atom])
 
 	def replace(self, atoms):
-		self._setAtoms(atoms)
+		self._setAtoms(atoms, allow_wildcard=self._allow_wildcard)
 		self.write()
 
 	def remove(self, atom):
@@ -211,8 +223,8 @@ class EditablePackageSet(PackageSet):
 		raise NotImplementedError()
 
 class InternalPackageSet(EditablePackageSet):
-	def __init__(self, initial_atoms=None):
-		super(InternalPackageSet, self).__init__()
+	def __init__(self, initial_atoms=None, allow_wildcard=False):
+		super(InternalPackageSet, self).__init__(allow_wildcard=allow_wildcard)
 		if initial_atoms != None:
 			self.update(initial_atoms)
 

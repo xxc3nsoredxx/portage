@@ -67,7 +67,7 @@ packages deemed necessary for your system to run properly. \fBworld\fR
 encompasses both the \fBselected\fR and \fBsystem\fR sets. [See
 \fBFILES\fR below for more information.] Other sets can exist depending
 on the current configuration. The default set configuration is located
-in \fB/usr/share/portage/config/sets.conf\fR. Note that a \fIset\fR
+in the \fB/usr/share/portage/config/sets\fR directory. Note that a \fIset\fR
 is generally used in conjunction with \fB\-\-update\fR. When used as 
 arguments to \fBemerge\fR sets have to be prefixed with \fB@\fR to be
 recognized. Use the \fB\-\-list\-sets\fR action to display a list of
@@ -134,7 +134,7 @@ unmerge matched packages that have no reverse dependencies. Use
 dependencies.
 .TP
 .BR "\-\-deselect[=n]"
-Remove atoms from the world file. This action is implied
+Remove atoms and/or sets from the world file. This action is implied
 by uninstall actions, including \fB-\-depclean\fR,
 \fB-\-prune\fR and \fB-\-unmerge\fR. Use \fB-\-deselect=n\fR
 in order to prevent uninstall actions from removing
@@ -284,6 +284,15 @@ acceptance of the first choice. This option is
 intended to be set in the \fBmake.conf\fR(5)
 \fBEMERGE_DEFAULT_OPTS\fR variable.
 .TP
+.BR "\-\-autounmask[=n]"
+Automatically unmask packages. If any configuration
+changes are required, then they will be displayed
+after the merge list and emerge will immediately
+abort. If the displayed configuration changes are
+satisfactory, you should copy and paste them into
+the specified configuration file(s). Currently,
+this only works for unstable KEYWORDS masks.
+.TP
 .BR \-\-backtrack=COUNT
 Specifies an integer number of times to backtrack if
 dependency calculation fails due to a conflict or an
@@ -353,6 +362,12 @@ listed in the dependencies of a package.  Also see \fB\-\-with\-bdeps\fR for
 behavior with respect to build time dependencies that are not strictly
 required.
 .TP
+.BR "\-\-depclean\-lib\-check[=n]"
+Account for library link-level dependencies during
+\fB-\-depclean\fR and \fB-\-prune\fR actions. This
+option is enabled by default. In some cases this can
+be somewhat time\-consuming.
+.TP
 .BR "\-\-emptytree " (\fB\-e\fR)
 Reinstalls target atoms and their entire deep
 dependency tree, as though no packages are currently
@@ -360,7 +375,7 @@ installed. You should run this with \fB\-\-pretend\fR
 first to make sure the result is what you expect.
 .TP
 .BR "\-\-exclude " ATOMS
-A comma separated list of package names or slot atoms.
+A space separated list of package names or slot atoms.
 Emerge won't  install any ebuild or binary package that
 matches any of the given package atoms.
 .TP
@@ -462,6 +477,13 @@ for later updating.
 Only merge (or pretend to merge) the dependencies of the packages
 specified, not the packages themselves.
 .TP
+.BR "\-\-package\-moves[=n]"
+Perform package moves when necessary. This option
+is enabled by default. \fBWARNING:\fR This option
+should remain enabled under normal circumstances.
+Do not disable it unless you know what you are
+doing.
+.TP
 .BR "\-\-pretend " (\fB\-p\fR)
 Instead of actually performing the merge, simply display what *would*
 have been installed if \fB\-\-pretend\fR weren't used.  Using \fB\-\-pretend\fR
@@ -503,6 +525,13 @@ BUILD_TIME package metadata. This option is enabled
 automatically when using binary packages
 (\fB\-\-usepkgonly\fR or \fB\-\-getbinpkgonly\fR) together with
 \fB\-\-update\fR and \fB\-\-deep\fR.
+.TP
+.BR "\-\-rebuilt\-binaries\-timestamp=TIMESTAMP"
+This option modifies emerge's behaviour only if
+\fB\-\-rebuilt\-binaries\fR is given. Only binaries that
+have a BUILD_TIME that is larger than the given TIMESTAMP
+and that is larger than that of the installed package will
+be considered by the rebuilt\-binaries logic.
 .TP
 .BR "\-\-reinstall changed\-use"
 Tells emerge to include installed packages where USE flags have
@@ -798,7 +827,7 @@ little bit untidy, it does prevent potentially valuable config files from being
 deleted, which is of paramount importance.
 .LP
 Protected directories are set using the \fICONFIG_PROTECT\fR variable, normally
-defined in /etc/make.globals. Directory exceptions to the CONFIG_PROTECTed
+defined in make.globals. Directory exceptions to the CONFIG_PROTECTed
 directories can be specified using the \fICONFIG_PROTECT_MASK\fR variable. To find
 files that need to be updated in /etc, type \fBfind /etc \-iname \'._cfg????_*\'\fR.
 .LP
@@ -839,7 +868,7 @@ Zac Medico <zmedico@gentoo.org>
 Here is a common list of files you will probably be interested in.  For a 
 complete listing, please refer to the \fBportage\fR(5) man page.
 .TP
-.B /usr/share/portage/config/sets.conf
+.B /usr/share/portage/config/sets/
 Contains the default set configuration.
 .TP
 .B /var/lib/portage/world
@@ -874,7 +903,7 @@ Contains a list of default packages used to resolve virtual dependencies.
 Contains a list of packages used for the base system.  The \fBsystem\fR
 and \fBworld\fR sets consult this file.  \fBDo not edit this file\fR.
 .TP
-.B /etc/make.globals
+.B /usr/share/portage/config/make.globals
 Contains the default variables for the build process.  \fBDo not edit
 this file\fR.
 .SH "SEE ALSO"

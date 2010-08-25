@@ -2,13 +2,13 @@
 .SH "NAME"
 make.conf \- custom settings for Portage
 .SH "SYNOPSIS"
-.B /etc/make.conf
+\fB/etc/make.conf\fR and \fB/etc/portage/make.conf\fR
 .SH "DESCRIPTION"
 This file contains various variables that are used by Portage.
 Portage will check the currently\-defined environment variables
 first for any settings.  If no environment settings are found,
 Portage then checks /etc/make.conf.  If no setting is found
-in /etc/make.conf, Portage checks /etc/make.globals. If no
+in make.conf, Portage checks make.globals. If no
 setting is found there, the profile's default setting is grabbed
 from /etc/make.profile/make.defaults. Please note that all user
 settings should be made in the environment or in /etc/make.conf,
@@ -19,6 +19,9 @@ and ACCEPT_KEYWORDS.  Incremental variables are propagated down from
 make.defaults to make.globals to make.conf to the environment
 settings.  Clearing these variables requires a clear\-all as in:
 export USE="\-*"
+.br
+In order to create per\-package environment settings, refer to
+\fBpackage.env\fR in \fBportage\fR(5).
 .SH "VARIABLES"
 .TP
 \fBACCEPT_CHOSTS\fR = \fI[space delimited list of CHOST values]\fR
@@ -60,7 +63,7 @@ ACCEPT_LICENSE="-* @FSF-APPROVED"
 \fBACCEPT_PROPERTIES\fR = \fI[space delimited list of properties]\fR
 This variable is used to mask packages based on PROPERTIES restrictions.
 In addition to property names, the \fI*\fR and \fI-*\fR wildcard tokens are
-also supported. This varable can be temporarily overridden using the
+also supported. This variable can be temporarily overridden using the
 \fB\-\-accept\-properties\fR option of \fBemerge\fR(1).
 See \fBebuild\fR(5) for more information about PROPERTIES. 
 .br
@@ -91,7 +94,9 @@ This controls the space use limitations for ccache.  The default is 2 gigabytes
 .TP
 .B CFLAGS CXXFLAGS
 Use these variables to set the desired optimization/CPU instruction settings
-for applications that you compile.  Nearly all ebuild files will take advantage
+for applications that you compile.  These two variables are passed to the C
+and C++ compilers, respectively. (CXX is used to refer to the C++ compiler
+within many buildsystems.) Nearly all ebuild files will take advantage
 of your custom settings, resulting in a Gentoo Linux that is fully customized
 to your specifications.  Please use sane settings as some packages will fail to
 compile/run if the optimizations are too extreme.
@@ -183,7 +188,7 @@ If it is set to any value pauses are ignored.
 Contains additional options that \fBeconf\fR will append to configure
 script arguments (see \fBebuild\fR(5)).
 .TP
-\fBFEATURES\fR = \fI"sandbox ccache"\fR
+\fBFEATURES\fR = \fI"sandbox"\fR
 Defines actions portage takes by default. This is an incremental variable.
 Most of these settings are for developer use, but some are available to
 non-developers as well. The \fBsandbox\fR feature is very important and
@@ -213,11 +218,24 @@ Build binary packages for just packages in the system set.
 Enable portage support for the ccache package.  If the ccache dir is not 
 present in the user's environment, then portage will default to 
 ${PORTAGE_TMPDIR}/ccache.
+
+\fBWarning\fR: This feature is known to cause numerous compilation failures.
+Sometimes ccache will retain stale code objects or corrupted files, which can
+lead to packages that cannot be emerged. If this happens (if you receive errors
+like "File not recognized: File truncated"), try recompiling the application
+with ccache disabled before reporting a bug. Unless you are doing development
+work, do not enable ccache.
 .TP
 .B collision\-protect
 A QA\-feature to ensure that a package doesn't overwrite files it doesn't own.
 The \fICOLLISION_IGNORE\fR variable can be used to selectively disable this
 feature. Also see the related \fIprotect\-owned\fR feature.
+.TP
+.B compress\-build\-logs
+The causes all build logs to be compressed while they are being written.
+Log file names have an extension that is appropriate for the compression
+type. Currently, only \fBgzip\fR(1) compression is supported, so build
+logs will have a '.gz' extension when this feature is enabled.
 .TP
 .B digest
 Autogenerate digests for packages when running the \fBemerge\fR(1) command.  If
@@ -269,6 +287,10 @@ then be reused since this feature disables most of the clean phase that runs
 prior to each build. Due to lack of proper cleanup, this feature can
 interfere with normal emerge operation and therefore it should not be left
 enabled for more than a short period of time.
+.TP
+.B fixlafiles
+Modifies .la files to not include other .la files and some other
+fixes (order of flags, duplicated entries, ...)
 .TP
 .B lmirror
 When \fImirror\fR is enabled in \fBFEATURES\fR, fetch files even
@@ -336,10 +358,12 @@ Parse \fBEAPI\fR from the head of the ebuild (first 30 lines). This feature
 is only intended for experimental purposes and should not be enabled under
 normal circumstances.
 .TP
-.B parse\-eapi\-glep\-55
-Parse \fBEAPI\fR from the file extension of the ebuild. This feature
-is only intended for experimental purposes and should not be enabled under
-normal circumstances.
+.B prelink\-checksums
+If \fBprelink\fR(8) is installed then use it to undo any prelinks on files
+before computing checksums for merge and unmerge. This feature is
+useful only if \fBprelink\fR(8) is installed and accurate checksums (despite
+prelinking) are needed for some reason such as for checking the integrity of
+installed files or because the \fIunmerge\-orphans\fR feature is disabled.
 .TP
 .B preserve\-libs
 Preserve libraries when the sonames change during upgrade or downgrade.
@@ -441,6 +465,9 @@ If a file is not claimed by another package in the same slot and it is not
 protected by \fICONFIG_PROTECT\fR, unmerge it even if the modification time or
 checksum differs from the file that was originally installed.
 .TP
+.B unknown\-features\-warn
+Warn if FEATURES contains one or more unknown values.
+.TP
 .B userfetch
 When portage is run as root, drop privileges to portage:portage during the
 fetching of package sources.
@@ -487,6 +514,18 @@ TODO.gz. The \fBINSTALL_MASK\fR is processed just before a package is merged.
 Also supported is a \fBPKG_INSTALL_MASK\fR variable that behaves exactly like
 \fBINSTALL_MASK\fR except that it is processed just before creation of a binary
 package.
+.TP
+.B LDFLAGS
+A list of flags to pass to the compiler when the linker will be called. See
+\fBld\fR(1) for linker flags, but don't forget that these flags will be passed
+directly to the compiler. Thus, you must use '-Wl' to escape the flags
+which only the linker understands (see \fBgcc\fR(1)).
+
+\fB***warning***\fR
+.br
+Setting this and other *FLAGS variables arbitrarily may cause compile or
+runtime failures. Bug reports submitted when nonstandard values are
+enabled for these flags may be closed as INVALID.
 .TP
 .B MAKEOPTS
 Use this variable if you want to use parallel make.  For example, if you
@@ -786,10 +825,10 @@ Saleem Abdulrasool <compnerd@gentoo.org>
 .fi
 .SH "FILES"
 .TP
-.B /etc/make.conf
+\fB/etc/make.conf\fR and \fB/etc/portage/make.conf\fR
 Contains variables for the build\-process and overwrites those in make.defaults.
 .TP
-.B /etc/make.globals
+.B /usr/share/portage/config/make.globals
 Contains the default variables for the build\-process, you should edit \fI/etc/make.conf\fR instead.
 .TP
 .B /etc/portage/color.map

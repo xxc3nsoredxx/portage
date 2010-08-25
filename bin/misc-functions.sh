@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 1999-2009 Gentoo Foundation
+# Copyright 1999-2010 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 #
 # Miscellaneous shell functions that make use of the ebuild env but don't need
@@ -42,6 +42,7 @@ install_symlink_html_docs() {
 }
 
 install_qa_check() {
+	local f
 	[[ -d "${D}" ]] || return 0
 	cd "${D}" || die "cd failed"
 
@@ -51,6 +52,7 @@ install_qa_check() {
 	ecompress --dequeue
 
 	# Now we look for all world writable files.
+	local i
 	for i in $(find "${D}/" -type f -perm -2); do
 		vecho -ne '\a'
 		vecho "QA Security Notice:"
@@ -62,7 +64,7 @@ install_qa_check() {
 
 	if type -P scanelf > /dev/null && ! hasq binchecks ${RESTRICT}; then
 		local qa_var insecure_rpath=0 tmp_quiet=${PORTAGE_QUIET}
-		local f x
+		local x
 
 		# display warnings when using stricter because we die afterwards
 		if has stricter ${FEATURES} ; then
@@ -333,16 +335,20 @@ install_qa_check() {
 	fi
 
 	# Sanity check syntax errors in init.d scripts
+	local d
 	for d in /etc/conf.d /etc/init.d ; do
 		[[ -d ${D}/${d} ]] || continue
 		for i in "${D}"/${d}/* ; do
 			[[ -L ${i} ]] && continue
+			# if empty conf.d/init.d dir exists (baselayout), then i will be "/etc/conf.d/*" and not exist
+			[[ ! -e ${i} ]] && continue
 			bash -n "${i}" || die "The init.d file has syntax errors: ${i}"
 		done
 	done
 
 	# this should help to ensure that all (most?) shared libraries are executable
 	# and that all libtool scripts / static libraries are not executable
+	local j
 	for i in "${D}"opt/*/lib{,32,64} \
 	         "${D}"lib{,32,64}       \
 	         "${D}"usr/lib{,32,64}   \
@@ -351,17 +357,7 @@ install_qa_check() {
 
 		for j in "${i}"/*.so.* "${i}"/*.so ; do
 			[[ ! -e ${j} ]] && continue
-			if [[ -L ${j} ]] ; then
-				linkdest=$(readlink "${j}")
-				if [[ ${linkdest} == /* ]] ; then
-					vecho -ne '\a\n'
-					eqawarn "QA Notice: Found an absolute symlink in a library directory:"
-					eqawarn "           ${j#${D}} -> ${linkdest}"
-					eqawarn "           It should be a relative symlink if in the same directory"
-					eqawarn "           or a linker script if it crosses the /usr boundary."
-				fi
-				continue
-			fi
+			[[ -L ${j} ]] && continue
 			[[ -x ${j} ]] && continue
 			vecho "making executable: ${j#${D}}"
 			chmod +x "${j}"
@@ -374,6 +370,19 @@ install_qa_check() {
 			vecho "removing executable bit: ${j#${D}}"
 			chmod -x "${j}"
 		done
+
+		for j in "${i}"/*.{a,dll,dylib,sl,so}.* "${i}"/*.{a,dll,dylib,sl,so} ; do
+			[[ ! -e ${j} ]] && continue
+			[[ ! -L ${j} ]] && continue
+			linkdest=$(readlink "${j}")
+			if [[ ${linkdest} == /* ]] ; then
+				vecho -ne '\a\n'
+				eqawarn "QA Notice: Found an absolute symlink in a library directory:"
+				eqawarn "           ${j#${D}} -> ${linkdest}"
+				eqawarn "           It should be a relative symlink if in the same directory"
+				eqawarn "           or a linker script if it crosses the /usr boundary."
+			fi
+		done
 	done
 
 	# When installing static libraries into /usr/lib and shared libraries into 
@@ -381,6 +390,7 @@ install_qa_check() {
 	# the static library, or gcc will utilize the static lib when linking :(.
 	# http://bugs.gentoo.org/4411
 	abort="no"
+	local a s
 	for a in "${D}"usr/lib*/*.a ; do
 		s=${a%.a}.so
 		if [[ ! -e ${s} ]] ; then
@@ -433,13 +443,44 @@ install_qa_check() {
 			": warning: is used uninitialized in this function$" # we'll ignore "may" and "might"
 			": warning: comparisons like X<=Y<=Z do not have their mathematical meaning$"
 			": warning: null argument where non-null required "
+			": warning: array subscript is below array bounds$"
+			": warning: array subscript is above array bounds$"
+			": warning: attempt to free a non-heap object"
+			": warning: .* called with .*bigger.* than .* destination buffer$"
+			": warning: call to .* will always overflow destination buffer$"
+			": warning: assuming pointer wraparound does not occur when comparing "
+			": warning: hex escape sequence out of range$"
+			": warning: [^ ]*-hand operand of comma .*has no effect$"
+			": warning: converting to non-pointer type .* from NULL"
+			": warning: NULL used in arithmetic$"
+			": warning: passing NULL to non-pointer argument"
+			": warning: the address of [^ ]* will always evaluate as"
+			": warning: the address of [^ ]* will never be NULL"
+			": warning: too few arguments for format"
+			": warning: reference to local variable .* returned"
+			": warning: returning reference to temporary"
+			": warning: function returns address of local variable"
+			# this may be valid code :/
+			#": warning: multi-character character constant$"
+			# need to check these two ...
+			#": warning: assuming signed overflow does not occur when "
+			#": warning: comparison with string literal results in unspecified behav"
+			# yacc/lex likes to trigger this one
+			#": warning: extra tokens at end of .* directive"
+			# only gcc itself triggers this ?
+			#": warning: .*noreturn.* function does return"
+			# these throw false positives when 0 is used instead of NULL
+			#": warning: missing sentinel in function call"
+			#": warning: not enough variable arguments to fit a sentinel"
 		)
 		abort="no"
 		i=0
+		local grep_cmd=grep
+		[[ $PORTAGE_LOG_FILE = *.gz ]] && grep_cmd=zgrep
 		while [[ -n ${msgs[${i}]} ]] ; do
 			m=${msgs[$((i++))]}
 			# force C locale to work around slow unicode locales #160234
-			f=$(LC_ALL=C grep "${m}" "${PORTAGE_LOG_FILE}")
+			f=$(LC_ALL=C $grep_cmd "${m}" "${PORTAGE_LOG_FILE}")
 			if [[ -n ${f} ]] ; then
 				vecho -ne '\a\n'
 				eqawarn "QA Notice: Package has poor programming practices which may compile"
@@ -449,9 +490,11 @@ install_qa_check() {
 				abort="yes"
 			fi
 		done
+		local cat_cmd=cat
+		[[ $PORTAGE_LOG_FILE = *.gz ]] && cat_cmd=zcat
 		[[ $reset_debug = 1 ]] && set -x
-		f=$(cat "${PORTAGE_LOG_FILE}" | \
-			EPYTHON= "$PORTAGE_BIN_PATH"/check-implicit-pointer-usage.py)
+		f=$($cat_cmd "${PORTAGE_LOG_FILE}" | \
+			"${PORTAGE_PYTHON:-/usr/bin/python}" "$PORTAGE_BIN_PATH"/check-implicit-pointer-usage.py || die "check-implicit-pointer-usage.py failed")
 		if [[ -n ${f} ]] ; then
 
 			# In the future this will be a forced "die". In preparation,
@@ -500,17 +543,6 @@ install_qa_check() {
 		fi
 	fi
 
-	# Compiled python objects do not belong in /usr/share (FHS violation)
-	# and can be a pain when upgrading python
-	f=$([ -d "${D}"/usr/share ] && \
-		find "${D}"usr/share -name '*.py[co]' | sed "s:${D}:/:")
-	if [[ -n ${f} ]] ; then
-		vecho -ne '\a\n'
-		eqawarn "QA Notice: Precompiled python object files do not belong in /usr/share"
-		eqawarn "${f}"
-		vecho -ne '\a\n'
-	fi
-
 	# Portage regenerates this on the installed system.
 	rm -f "${D}"/usr/share/info/dir{,.gz,.bz2}
 
@@ -518,7 +550,7 @@ install_qa_check() {
 	   [[ -x /usr/bin/file && -x /usr/bin/find ]] && \
 	   [[ -n ${MULTILIB_STRICT_DIRS} && -n ${MULTILIB_STRICT_DENY} ]]
 	then
-		local abort=no firstrun=yes
+		local abort=no dir file firstrun=yes
 		MULTILIB_STRICT_EXEMPT=$(echo ${MULTILIB_STRICT_EXEMPT} | sed -e 's:\([(|)]\):\\\1:g')
 		for dir in ${MULTILIB_STRICT_DIRS} ; do
 			[[ -d ${D}/${dir} ]] || continue
@@ -546,6 +578,7 @@ install_mask() {
 	# we don't want globbing for initial expansion, but afterwards, we do
 	local shopts=$-
 	set -o noglob
+	local no_inst
 	for no_inst in ${install_mask}; do
 		set +o noglob
 		quiet_mode || einfo "Removing ${no_inst}"
@@ -588,6 +621,7 @@ preinst_mask() {
 	cd "${T}"
 
 	# remove man pages, info pages, docs if requested
+	local f
 	for f in man info doc; do
 		if hasq no${f} $FEATURES; then
 			INSTALL_MASK="${INSTALL_MASK} /usr/share/${f}"
@@ -644,7 +678,7 @@ preinst_suid_scan() {
 	fi
 	# total suid control.
 	if hasq suidctl $FEATURES; then
-		local sfconf
+		local i sfconf x
 		sfconf=${PORTAGE_CONFIGROOT}etc/portage/suidctl.conf
 		# sandbox prevents us from writing directly
 		# to files outside of the sandbox, but this
@@ -720,8 +754,8 @@ dyn_package() {
 	tar $tar_options -cf - $PORTAGE_BINPKG_TAR_OPTS -C "${D}" . | \
 		bzip2 -cf > "$PORTAGE_BINPKG_TMPFILE"
 	assert "failed to pack binary package: '$PORTAGE_BINPKG_TMPFILE'"
-	EPYTHON= PYTHONPATH=${PORTAGE_PYM_PATH}${PYTHONPATH:+:}${PYTHONPATH} \
-		"$PORTAGE_BIN_PATH"/xpak-helper.py recompose \
+	PYTHONPATH=${PORTAGE_PYM_PATH}${PYTHONPATH:+:}${PYTHONPATH} \
+		"${PORTAGE_PYTHON:-/usr/bin/python}" "$PORTAGE_BIN_PATH"/xpak-helper.py recompose \
 		"$PORTAGE_BINPKG_TMPFILE" "$PORTAGE_BUILDDIR/build-info"
 	if [ $? -ne 0 ]; then
 		rm -f "${PORTAGE_BINPKG_TMPFILE}"
@@ -813,9 +847,9 @@ if [ -n "${MISC_FUNCTIONS_ARGS}" ]; then
 	for x in ${MISC_FUNCTIONS_ARGS}; do
 		${x}
 	done
+	unset x
+	[[ -n $PORTAGE_EBUILD_EXIT_FILE ]] && > "$PORTAGE_EBUILD_EXIT_FILE"
+	[[ -n $PORTAGE_IPC_DAEMON ]] && "$PORTAGE_BIN_PATH"/ebuild-ipc exit 0
 fi
-
-[ -n "${EBUILD_EXIT_STATUS_FILE}" ] && \
-	touch "${EBUILD_EXIT_STATUS_FILE}" &>/dev/null
 
 :

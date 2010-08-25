@@ -10,13 +10,15 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.output:EOutput,colorize',
 	'portage.package.ebuild.doebuild:_vdb_use_conditional_atoms',
 	'portage.update:update_dbentries',
-	'portage.util:ensure_dirs,normalize_path,writemsg,writemsg_stdout',
+	'portage.util:atomic_ofstream,ensure_dirs,normalize_path,' + \
+		'writemsg,writemsg_stdout',
 	'portage.util.listdir:listdir',
 	'portage.versions:best,catpkgsplit,catsplit',
 )
 
 from portage.cache.mappings import slot_dict_class
 from portage.dbapi.virtual import fakedbapi
+from portage.dep import use_reduce, paren_enclose
 from portage.exception import InvalidPackageName, \
 	PermissionDenied, PortageException
 from portage.localization import _
@@ -33,7 +35,6 @@ import errno
 import re
 import stat
 import sys
-import warnings
 from itertools import chain
 
 if sys.hexversion >= 0x3000000:
@@ -53,7 +54,8 @@ class bindbapi(fakedbapi):
 		self._aux_cache_keys = set(
 			["BUILD_TIME", "CHOST", "DEPEND", "EAPI", "IUSE", "KEYWORDS",
 			"LICENSE", "PDEPEND", "PROPERTIES", "PROVIDE",
-			"RDEPEND", "repository", "RESTRICT", "SLOT", "USE", "DEFINED_PHASES"])
+			"RDEPEND", "repository", "RESTRICT", "SLOT", "USE", "DEFINED_PHASES",
+			"REQUIRED_USE"])
 		self._aux_cache_slot_dict = slot_dict_class(self._aux_cache_keys)
 		self._aux_cache = {}
 
@@ -158,6 +160,41 @@ class bindbapi(fakedbapi):
 			self.bintree.populate()
 		return fakedbapi.cpv_all(self)
 
+def _pkgindex_cpv_map_latest_build(pkgindex):
+	"""
+	Given a PackageIndex instance, create a dict of cpv -> metadata map.
+	If multiple packages have identical CPV values, prefer the package
+	with latest BUILD_TIME value.
+	@param pkgindex: A PackageIndex instance.
+	@type pkgindex: PackageIndex
+	@rtype: dict
+	@returns: a dict containing entry for the give cpv.
+	"""
+	cpv_map = {}
+
+	for d in pkgindex.packages:
+		cpv = d["CPV"]
+
+		btime = d.get('BUILD_TIME', '')
+		try:
+			btime = int(btime)
+		except ValueError:
+			btime = None
+
+		other_d = cpv_map.get(cpv)
+		if other_d is not None:
+			other_btime = other_d.get('BUILD_TIME', '')
+			try:
+				other_btime = int(other_btime)
+			except ValueError:
+				other_btime = None
+			if other_btime and (not btime or other_btime > btime):
+				continue
+
+		cpv_map[cpv] = d
+
+	return cpv_map
+
 class binarytree(object):
 	"this tree scans for a list of all packages available in PKGDIR"
 	def __init__(self, root, pkgdir, virtual=None, settings=None):
@@ -188,7 +225,8 @@ class binarytree(object):
 			self._pkgindex_aux_keys = \
 				["BUILD_TIME", "CHOST", "DEPEND", "DESCRIPTION", "EAPI",
 				"IUSE", "KEYWORDS", "LICENSE", "PDEPEND", "PROPERTIES",
-				"PROVIDE", "RDEPEND", "repository", "SLOT", "USE", "DEFINED_PHASES"]
+				"PROVIDE", "RDEPEND", "repository", "SLOT", "USE", "DEFINED_PHASES",
+				"REQUIRED_USE"]
 			self._pkgindex_aux_keys = list(self._pkgindex_aux_keys)
 			self._pkgindex_use_evaluated_keys = \
 				("LICENSE", "RDEPEND", "DEPEND",
@@ -213,7 +251,8 @@ class binarytree(object):
 				"RESTRICT": "",
 				"SLOT"    : "0",
 				"USE"     : "",
-				"DEFINED_PHASES" : ""
+				"DEFINED_PHASES" : "",
+				"REQUIRED_USE" : ""
 			}
 			self._pkgindex_inherited_keys = ["CHOST", "repository"]
 			self._pkgindex_default_header_data = {
@@ -234,25 +273,7 @@ class binarytree(object):
 				chain(*self._pkgindex_translated_keys)
 			))
 
-	def _get_remotepkgs(self):
-		warnings.warn("Use binarytree._remotepkgs insead of binarytree.remotepkgs",
-			DeprecationWarning)
-		return self.__remotepkgs
-
-	def _set_remotepkgs(self, remotepkgs):
-		warnings.warn("Use binarytree._remotepkgs insead of binarytree.remotepkgs",
-			DeprecationWarning)
-		self.__remotepkgs = remotepkgs
-
-	def _del_remotepkgs(self):
-		warnings.warn("Use binarytree._remotepkgs insead of binarytree.remotepkgs",
-			DeprecationWarning)
-		del self.__remotepkgs
-
-	remotepkgs = property(_get_remotepkgs, _set_remotepkgs, _del_remotepkgs,
-		"Deprecated self.remotepkgs, only for backward compatibility")
-
-	def move_ent(self, mylist):
+	def move_ent(self, mylist, repo_match=None):
 		if not self.populated:
 			self.populate()
 		origcp = mylist[1]
@@ -270,6 +291,10 @@ class binarytree(object):
 			mycpv_cp = portage.cpv_getkey(mycpv)
 			if mycpv_cp != origcp:
 				# Ignore PROVIDE virtual match.
+				continue
+			if repo_match is not None \
+				and not repo_match(self.dbapi.aux_get(mycpv,
+					['repository'])[0]):
 				continue
 			mynewcpv = mycpv.replace(mycpv_cp, str(newcp), 1)
 			myoldpkg = catsplit(mycpv)[1]
@@ -461,14 +486,8 @@ class binarytree(object):
 		_movefile(src_path, dest_path, mysettings=self.settings)
 		self._pkg_paths[cpv] = mypath
 
-	def populate(self, getbinpkgs=0, getbinpkgsonly=None):
+	def populate(self, getbinpkgs=0):
 		"populates the binarytree"
-
-		if getbinpkgsonly is not None:
-			warnings.warn(
-				"portage.dbapi.bintree.binarytree.populate(): " + \
-				"getbinpkgsonly parameter is deprecated",
-				DeprecationWarning, stacklevel=2)
 
 		if self._populating:
 			return
@@ -696,12 +715,9 @@ class binarytree(object):
 				del pkgindex.packages[:]
 				pkgindex.packages.extend(iter(metadata.values()))
 				self._update_pkgindex_header(pkgindex.header)
-				from portage.util import atomic_ofstream
 				f = atomic_ofstream(self._pkgindex_file)
-				try:
-					pkgindex.write(f)
-				finally:
-					f.close()
+				pkgindex.write(f)
+				f.close()
 
 		if getbinpkgs and not self.settings["PORTAGE_BINHOST"]:
 			writemsg(_("!!! PORTAGE_BINHOST unset, but use is requested.\n"),
@@ -768,7 +784,6 @@ class binarytree(object):
 				pkgindex = None
 			if pkgindex is rmt_idx:
 				pkgindex.modified = False # don't update the header
-				from portage.util import atomic_ofstream, ensure_dirs
 				try:
 					ensure_dirs(os.path.dirname(pkgindex_file))
 					f = atomic_ofstream(pkgindex_file)
@@ -780,9 +795,8 @@ class binarytree(object):
 					# The current user doesn't have permission to cache the
 					# file, but that's alright.
 			if pkgindex:
-				self._remotepkgs = {}
-				for d in pkgindex.packages:
-					self._remotepkgs[d["CPV"]] = d
+				# Organize remote package list as a cpv -> metadata map.
+				self._remotepkgs = _pkgindex_cpv_map_latest_build(pkgindex)
 				self._remote_has_index = True
 				self._remote_base_uri = pkgindex.header.get("URI", base_url)
 				self.__remotepkgs = {}
@@ -932,8 +946,13 @@ class binarytree(object):
 				wantnewlockfile=1)
 			if filename is not None:
 				new_filename = self.getname(cpv)
-				self._ensure_dir(os.path.dirname(new_filename))
-				_movefile(filename, new_filename, mysettings=self.settings)
+				try:
+					samefile = os.path.samefile(filename, new_filename)
+				except OSError:
+					samefile = False
+				if not samefile:
+					self._ensure_dir(os.path.dirname(new_filename))
+					_movefile(filename, new_filename, mysettings=self.settings)
 			if self._all_directory and \
 				self.getname(cpv).split(os.path.sep)[-2] == "All":
 				self._create_symlink(cpv)
@@ -981,12 +1000,9 @@ class binarytree(object):
 			pkgindex.packages.append(d)
 
 			self._update_pkgindex_header(pkgindex.header)
-			from portage.util import atomic_ofstream
 			f = atomic_ofstream(os.path.join(self.pkgdir, "Packages"))
-			try:
-				pkgindex.write(f)
-			finally:
-				f.close()
+			pkgindex.write(f)
+			f.close()
 		finally:
 			if pkgindex_lock:
 				unlockfile(pkgindex_lock)
@@ -1068,13 +1084,10 @@ class binarytree(object):
 		use = [f for f in use if f in iuse]
 		use.sort()
 		metadata["USE"] = " ".join(use)
-		from portage.dep import paren_reduce, use_reduce, \
-			paren_normalize, paren_enclose
 		for k in self._pkgindex_use_evaluated_keys:
 			try:
-				deps = paren_reduce(metadata[k])
+				deps = metadata[k]
 				deps = use_reduce(deps, uselist=raw_use)
-				deps = paren_normalize(deps)
 				deps = paren_enclose(deps)
 			except portage.exception.InvalidDependString as e:
 				writemsg("%s: %s\n" % (k, str(e)),

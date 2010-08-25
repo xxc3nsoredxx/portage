@@ -11,7 +11,6 @@ import errno
 import logging
 import re
 import sys
-import warnings
 
 try:
 	from configparser import SafeConfigParser, ParsingError
@@ -19,19 +18,23 @@ except ImportError:
 	from ConfigParser import SafeConfigParser, ParsingError
 
 import portage
+portage.proxy.lazyimport.lazyimport(globals(),
+	'portage.data:portage_gid',
+)
 from portage import bsd_chflags, eapi_is_supported, \
 	load_mod, os, selinux, _encodings, _unicode_encode, _unicode_decode
 from portage.const import CACHE_PATH, CUSTOM_PROFILE_PATH, \
 	DEPCACHE_PATH, GLOBAL_CONFIG_PATH, INCREMENTALS, MAKE_CONF_FILE, \
 	MODULES_FILE_PATH, PORTAGE_BIN_PATH, PORTAGE_PYM_PATH, \
-	PRIVATE_PATH, PROFILE_PATH, USER_CONFIG_PATH, USER_VIRTUALS_FILE
-from portage.data import portage_gid
+	PRIVATE_PATH, PROFILE_PATH, SUPPORTED_FEATURES, USER_CONFIG_PATH, \
+	USER_VIRTUALS_FILE
 from portage.dbapi import dbapi
 from portage.dbapi.porttree import portdbapi
 from portage.dbapi.vartree import vartree
-from portage.dep import Atom, best_match_to_list, dep_opconvert, \
-	flatten, isvalidatom, match_from_list, match_to_list, \
-	paren_reduce, remove_slot, use_reduce
+from portage.dep import Atom, \
+	isvalidatom, match_from_list, \
+	remove_slot, use_reduce
+from portage.eapi import eapi_exports_AA, eapi_supports_prefix, eapi_exports_replace_vars
 from portage.env.loaders import KeyValuePairFileLoader
 from portage.exception import DirectoryNotFound, InvalidAtom, \
 	InvalidDependString, ParseError, PortageException
@@ -43,6 +46,10 @@ from portage.util import ensure_dirs, getconfig, grabdict, \
 	normalize_path, shlex_split, stack_dictlist, stack_dicts, stack_lists, \
 	writemsg, writemsg_level
 from portage.versions import catpkgsplit, catsplit, cpv_getkey
+
+from portage.package.ebuild._config.features_set import features_set
+from portage.package.ebuild._config.LicenseManager import LicenseManager
+from portage.package.ebuild._config.helper import ordered_by_atom_specificity, prune_incremental
 
 if sys.hexversion >= 0x3000000:
 	basestring = str
@@ -105,6 +112,24 @@ def _lazy_iuse_regex(iuse_implicit):
 	regex = regex.replace("\\.\\*", ".*")
 	return regex
 
+class _iuse_implicit_match_cache(object):
+
+	def __init__(self, settings):
+		self._iuse_implicit_re = re.compile("^(%s)$" % \
+			"|".join(settings._get_implicit_iuse()))
+		self._cache = {}
+
+	def __call__(self, flag):
+		"""
+		Returns True if the flag is matched, False otherwise.
+		"""
+		try:
+			return self._cache[flag]
+		except KeyError:
+			m = self._iuse_implicit_re.match(flag) is not None
+			self._cache[flag] = m
+			return m
+
 class _local_repo_config(object):
 	__slots__ = ('aliases', 'eclass_overrides', 'masters', 'name',)
 	def __init__(self, name, repo_opts):
@@ -137,7 +162,7 @@ class config(object):
 	"""
 
 	_setcpv_aux_keys = ('DEFINED_PHASES', 'DEPEND', 'EAPI',
-		'INHERITED', 'IUSE', 'KEYWORDS', 'LICENSE', 'PDEPEND',
+		'INHERITED', 'IUSE', 'REQUIRED_USE', 'KEYWORDS', 'LICENSE', 'PDEPEND',
 		'PROPERTIES', 'PROVIDE', 'RDEPEND', 'SLOT',
 		'repository', 'RESTRICT', 'LICENSE',)
 
@@ -165,7 +190,7 @@ class config(object):
 	_environ_whitelist += [
 		"ACCEPT_LICENSE", "BASH_ENV", "BUILD_PREFIX", "D",
 		"DISTDIR", "DOC_SYMLINKS_DIR", "EAPI", "EBUILD",
-		"EBUILD_EXIT_STATUS_FILE", "EBUILD_FORCE_TEST",
+		"EBUILD_FORCE_TEST",
 		"EBUILD_PHASE", "ECLASSDIR", "ECLASS_DEPTH", "ED",
 		"EMERGE_FROM", "EPREFIX", "EROOT",
 		"FEATURES", "FILESDIR", "HOME", "NOCOLOR", "PATH",
@@ -178,13 +203,14 @@ class config(object):
 		"PORTAGE_BIN_PATH",
 		"PORTAGE_BUILDDIR", "PORTAGE_COLORMAP",
 		"PORTAGE_CONFIGROOT", "PORTAGE_DEBUG", "PORTAGE_DEPCACHEDIR",
-		"PORTAGE_GID",
+		"PORTAGE_EBUILD_EXIT_FILE", "PORTAGE_FEATURES",
+		"PORTAGE_GID", "PORTAGE_GRPNAME",
 		"PORTAGE_INST_GID", "PORTAGE_INST_UID",
-		"PORTAGE_IUSE",
+		"PORTAGE_IPC_DAEMON", "PORTAGE_IUSE",
 		"PORTAGE_LOG_FILE", "PORTAGE_MASTER_PID",
-		"PORTAGE_PYM_PATH", "PORTAGE_QUIET",
+		"PORTAGE_PYM_PATH", "PORTAGE_PYTHON", "PORTAGE_QUIET",
 		"PORTAGE_REPO_NAME", "PORTAGE_RESTRICT",
-		"PORTAGE_TMPDIR", "PORTAGE_UPDATE_ENV",
+		"PORTAGE_TMPDIR", "PORTAGE_UPDATE_ENV", "PORTAGE_USERNAME",
 		"PORTAGE_VERBOSE", "PORTAGE_WORKDIR_MODE",
 		"PORTDIR", "PORTDIR_OVERLAY", "PREROOTPATH", "PROFILE_PATHS",
 		"REPLACING_VERSIONS", "REPLACED_BY_VERSION",
@@ -284,7 +310,6 @@ class config(object):
 
 	_environ_filter = frozenset(_environ_filter)
 
-	_undef_lic_groups = set()
 	_default_globals = (
 		('ACCEPT_LICENSE',           '* -@EULA'),
 		('ACCEPT_PROPERTIES',        '*'),
@@ -296,7 +321,7 @@ class config(object):
 
 	def __init__(self, clone=None, mycpv=None, config_profile_path=None,
 		config_incrementals=None, config_root=None, target_root=None,
-		local_config=True, env=None):
+		_eprefix=None, local_config=True, env=None):
 		"""
 		@param clone: If provided, init will use deepcopy to copy by value the instance.
 		@type clone: Instance of config class.
@@ -312,6 +337,8 @@ class config(object):
 		@type config_root: String
 		@param target_root: __init__ override of $ROOT env variable.
 		@type target_root: String
+		@param _eprefix: set the EPREFIX variable (private, used by internal tests)
+		@type _eprefix: String
 		@param local_config: Enables loading of local config (/etc/portage); used most by repoman to
 		ignore local config (keywording and unmasking)
 		@type local_config: Boolean
@@ -319,6 +346,10 @@ class config(object):
 			Defaults to os.environ if unspecified.
 		@type env: dict
 		"""
+
+		# rename local _eprefix variable for convenience
+		eprefix = _eprefix
+		del _eprefix
 
 		# When initializing the global portage.settings instance, avoid
 		# raising exceptions whenever possible since exceptions thrown
@@ -331,14 +362,14 @@ class config(object):
 		self.locked   = 0
 		self.mycpv    = None
 		self._setcpv_args_hash = None
-		self.puse     = []
+		self.puse     = ""
+		self._penv    = []
 		self.modifiedkeys = []
 		self.uvlist = []
 		self._accept_chost_re = None
-		self._accept_license = None
-		self._accept_license_str = None
-		self._license_groups = {}
+		self._license_manager = LicenseManager()
 		self._accept_properties = None
+		self._features_overrides = []
 
 		self.virtuals = {}
 		self.virts_p = {}
@@ -371,7 +402,8 @@ class config(object):
 			self.packages = clone.packages
 			self.useforce_list = clone.useforce_list
 			self.usemask_list = clone.usemask_list
-			self._iuse_implicit_re = clone._iuse_implicit_re
+			self._iuse_implicit_match = clone._iuse_implicit_match
+			self._non_user_variables = clone._non_user_variables
 
 			self.user_profile_dir = copy.deepcopy(clone.user_profile_dir)
 			self.local_config = copy.deepcopy(clone.local_config)
@@ -393,6 +425,7 @@ class config(object):
 			self.useforce      = copy.deepcopy(clone.useforce)
 			self.puseforce_list = copy.deepcopy(clone.puseforce_list)
 			self.puse     = copy.deepcopy(clone.puse)
+			self._penv = copy.deepcopy(clone._penv)
 			self.make_defaults_use = copy.deepcopy(clone.make_defaults_use)
 			self.pkgprofileuse = copy.deepcopy(clone.pkgprofileuse)
 			self.mycpv    = copy.deepcopy(clone.mycpv)
@@ -416,17 +449,20 @@ class config(object):
 			self.pusedict   = copy.deepcopy(clone.pusedict)
 			self.pkeywordsdict = copy.deepcopy(clone.pkeywordsdict)
 			self._pkeywords_list = copy.deepcopy(clone._pkeywords_list)
+			self._p_accept_keywords = copy.deepcopy(clone._p_accept_keywords)
 			self.pmaskdict = copy.deepcopy(clone.pmaskdict)
 			self.punmaskdict = copy.deepcopy(clone.punmaskdict)
 			self.prevmaskdict = copy.deepcopy(clone.prevmaskdict)
 			self.pprovideddict = copy.deepcopy(clone.pprovideddict)
-			self.features = copy.deepcopy(clone.features)
+			self.features = features_set(self)
+			self.features._features = copy.deepcopy(clone.features._features)
+			self._features_overrides = copy.deepcopy(clone._features_overrides)
 
-			self._accept_license = copy.deepcopy(clone._accept_license)
-			self._plicensedict = copy.deepcopy(clone._plicensedict)
-			self._license_groups = copy.deepcopy(clone._license_groups)
+			self._license_manager = copy.deepcopy(clone._license_manager)
 			self._accept_properties = copy.deepcopy(clone._accept_properties)
 			self._ppropertiesdict = copy.deepcopy(clone._ppropertiesdict)
+			self._penvdict = copy.deepcopy(clone._penvdict)
+			self._expand_map = copy.deepcopy(clone._expand_map)
 
 		else:
 
@@ -437,15 +473,16 @@ class config(object):
 						noiselevel=-1)
 					raise DirectoryNotFound(var)
 
+			if eprefix is None:
+				eprefix = ""
 			if config_root is None:
-				config_root = "/"
+				config_root = eprefix + os.sep
 
 			config_root = normalize_path(os.path.abspath(
 				config_root)).rstrip(os.path.sep) + os.path.sep
 
 			check_var_directory("PORTAGE_CONFIGROOT", config_root)
-
-			self.depcachedir = DEPCACHE_PATH
+			abs_user_config = os.path.join(config_root, USER_CONFIG_PATH)
 
 			if not config_profile_path:
 				config_profile_path = \
@@ -453,7 +490,12 @@ class config(object):
 				if os.path.isdir(config_profile_path):
 					self.profile_path = config_profile_path
 				else:
-					self.profile_path = None
+					config_profile_path = \
+						os.path.join(abs_user_config, 'make.profile')
+					if os.path.isdir(config_profile_path):
+						self.profile_path = config_profile_path
+					else:
+						self.profile_path = None
 			else:
 				self.profile_path = config_profile_path
 
@@ -461,8 +503,8 @@ class config(object):
 				self.incrementals = INCREMENTALS
 			else:
 				self.incrementals = config_incrementals
-			if not isinstance(self.incrementals, tuple):
-				self.incrementals = tuple(self.incrementals)
+			if not isinstance(self.incrementals, frozenset):
+				self.incrementals = frozenset(self.incrementals)
 
 			self.module_priority    = ("user", "default")
 			self.modules            = {}
@@ -561,10 +603,30 @@ class config(object):
 				os.path.join(x, "package.keywords"), recursive=1) \
 				for x in self.profiles]
 			for pkeyworddict in rawpkeywords:
+				if not pkeyworddict:
+					# Omit non-existent files from the stack. This isn't
+					# feasible for package.use (among other package.*
+					# files such as package.use.mask) since it is stacked
+					# in layers with make.defaults USE, and the layer
+					# indices need to align.
+					continue
 				cpdict = {}
 				for k, v in pkeyworddict.items():
 					cpdict.setdefault(k.cp, {})[k] = v
 				self._pkeywords_list.append(cpdict)
+
+			self._p_accept_keywords = []
+			raw_p_accept_keywords = [grabdict_package(
+				os.path.join(x, "package.accept_keywords"), recursive=1) \
+				for x in self.profiles]
+			for d in raw_p_accept_keywords:
+				if not d:
+					# Omit non-existent files from the stack.
+					continue
+				cpdict = {}
+				for k, v in d.items():
+					cpdict.setdefault(k.cp, {})[k] = tuple(v)
+				self._p_accept_keywords.append(cpdict)
 
 			# get profile-masked use flags -- INCREMENTAL Child over parent
 			self.usemask_list = tuple(
@@ -615,9 +677,12 @@ class config(object):
 
 			make_conf = getconfig(
 				os.path.join(config_root, MAKE_CONF_FILE),
-				tolerant=tolerant, allow_sourcing=True)
-			if make_conf is None:
-				make_conf = {}
+				tolerant=tolerant, allow_sourcing=True) or {}
+
+			make_conf.update(getconfig(
+				os.path.join(abs_user_config, 'make.conf'),
+				tolerant=tolerant, allow_sourcing=True,
+				expand=make_conf) or {})
 
 			# Allow ROOT setting to come from make.conf if it's not overridden
 			# by the constructor argument (from the calling environment).
@@ -633,6 +698,8 @@ class config(object):
 
 			ensure_dirs(target_root)
 			check_var_directory("ROOT", target_root)
+
+			eroot = target_root.rstrip(os.sep) + eprefix + os.sep
 
 			# The expand_map is used for variable substitution
 			# in getconfig() calls, and the getconfig() calls
@@ -650,8 +717,9 @@ class config(object):
 			# interaction with the calling environment that might
 			# lead to unexpected results.
 			expand_map = {}
+			self._expand_map = expand_map
 
-			env_d = getconfig(os.path.join(target_root, "etc", "profile.env"),
+			env_d = getconfig(os.path.join(eroot, "etc", "profile.env"),
 				expand=expand_map)
 			# env_d will be None if profile.env doesn't exist.
 			if env_d:
@@ -683,8 +751,30 @@ class config(object):
 			self.configdict["env"] = LazyItemsDict(self.backupenv)
 
 			# make.globals should not be relative to config_root
-			# because it only contains constants.
-			for x in (GLOBAL_CONFIG_PATH, "/etc"):
+			# because it only contains constants. However, if EPREFIX
+			# is set then there are two possible scenarios:
+			# 1) If $ROOT == "/" then make.globals should be
+			#    relative to EPREFIX.
+			# 2) If $ROOT != "/" then the correct location of
+			#    make.globals needs to be specified in the constructor
+			#    parameters, since it's a property of the host system
+			#    (and the current config represents the target system).
+			global_config_path = GLOBAL_CONFIG_PATH
+			if eprefix:
+				if target_root == "/":
+					# case (1) above
+					global_config_path = os.path.join(eprefix,
+						GLOBAL_CONFIG_PATH.lstrip(os.sep))
+				else:
+					# case (2) above
+					# For now, just assume make.globals is relative
+					# to EPREFIX.
+					# TODO: Pass in more info to the constructor,
+					# so we know the host system configuration.
+					global_config_path = os.path.join(eprefix,
+						GLOBAL_CONFIG_PATH.lstrip(os.sep))
+
+			for x in (global_config_path,):
 				self.mygcfg = getconfig(os.path.join(x, "make.globals"),
 					expand=expand_map)
 				if self.mygcfg:
@@ -711,7 +801,7 @@ class config(object):
 					else:
 						self.make_defaults_use.append("")
 				self.mygcfg = stack_dicts(mygcfg_dlists,
-					incrementals=INCREMENTALS)
+					incrementals=self.incrementals)
 				if self.mygcfg is None:
 					self.mygcfg = {}
 			self.configlist.append(self.mygcfg)
@@ -721,14 +811,24 @@ class config(object):
 
 			self.mygcfg = getconfig(
 				os.path.join(config_root, MAKE_CONF_FILE),
-				tolerant=tolerant, allow_sourcing=True, expand=expand_map)
-			if self.mygcfg is None:
-				self.mygcfg = {}
+				tolerant=tolerant, allow_sourcing=True,
+				expand=expand_map) or {}
+
+			self.mygcfg.update(getconfig(
+				os.path.join(abs_user_config, 'make.conf'),
+				tolerant=tolerant, allow_sourcing=True,
+				expand=expand_map) or {})
 
 			# Don't allow the user to override certain variables in make.conf
 			profile_only_variables = self.configdict["defaults"].get(
 				"PROFILE_ONLY_VARIABLES", "").split()
 			profile_only_variables = stack_lists([profile_only_variables])
+			non_user_variables = set()
+			non_user_variables.update(profile_only_variables)
+			non_user_variables.update(self._env_blacklist)
+			non_user_variables = frozenset(non_user_variables)
+			self._non_user_variables = non_user_variables
+
 			for k in profile_only_variables:
 				self.mygcfg.pop(k, None)
 
@@ -766,18 +866,16 @@ class config(object):
 			self["ROOT"] = target_root
 			self.backup_changes("ROOT")
 
-			# Prefix forward compatability, set EPREFIX to the empty string
-			self["EPREFIX"] = ''
+			self["EPREFIX"] = eprefix
 			self.backup_changes("EPREFIX")
-			self["EROOT"] = target_root
+			self["EROOT"] = eroot
 			self.backup_changes("EROOT")
 
-			self.pusedict = {}
-			self.pkeywordsdict = {}
-			self._plicensedict = {}
-			self._ppropertiesdict = {}
-			self.punmaskdict = {}
-			abs_user_config = os.path.join(config_root, USER_CONFIG_PATH)
+			self.pusedict = portage.dep.ExtendedAtomDict(dict)
+			self.pkeywordsdict = portage.dep.ExtendedAtomDict(dict)
+			self._ppropertiesdict = portage.dep.ExtendedAtomDict(dict)
+			self._penvdict = portage.dep.ExtendedAtomDict(dict)
+			self.punmaskdict = portage.dep.ExtendedAtomDict(list)
 
 			# locations for "categories" and "arch.list" files
 			locations = [os.path.join(self["PORTDIR"], "profiles")]
@@ -810,54 +908,94 @@ class config(object):
 			
 			pmask_locations.extend(overlay_profiles)
 
+			# package.mask and package.unmask
+			pkgmasklines = []
+			pkgunmasklines = []
+			for x in pmask_locations:
+				pkgmasklines.append(grabfile_package(
+					os.path.join(x, "package.mask"), recursive=1))
+				pkgunmasklines.append(grabfile_package(
+					os.path.join(x, "package.unmask"), recursive=1))
+
 			if local_config:
 				locations.append(abs_user_config)
-				pmask_locations.append(abs_user_config)
+				
+				pkgmasklines.append(grabfile_package(
+					os.path.join(abs_user_config, "package.mask"), recursive=1, allow_wildcard=True))
+				pkgunmasklines.append(grabfile_package(
+					os.path.join(abs_user_config, "package.unmask"), recursive=1, allow_wildcard=True))
+
 				pusedict = grabdict_package(
-					os.path.join(abs_user_config, "package.use"), recursive=1)
+					os.path.join(abs_user_config, "package.use"), recursive=1, allow_wildcard=True)
+				v = pusedict.pop("*/*", None)
+				if v is not None:
+					if "USE" in self.configdict["conf"]:
+						self.configdict["conf"]["USE"] += " " + " ".join(v)
+					else:
+						self.configdict["conf"]["USE"] = " ".join(v)
 				for k, v in pusedict.items():
 					self.pusedict.setdefault(k.cp, {})[k] = v
 
-				#package.keywords
+				# package.accept_keywords and package.keywords
 				pkgdict = grabdict_package(
 					os.path.join(abs_user_config, "package.keywords"),
-					recursive=1)
+					recursive=1, allow_wildcard=True)
+
+				for k, v in grabdict_package(
+					os.path.join(abs_user_config, "package.accept_keywords"),
+					recursive=1, allow_wildcard=True).items():
+					pkgdict.setdefault(k, []).extend(v)
+
+				accept_keywords_defaults = \
+					self.configdict["defaults"].get("ACCEPT_KEYWORDS", "").split()
+				accept_keywords_defaults = tuple('~' + keyword for keyword in \
+					accept_keywords_defaults if keyword[:1] not in "~-")
 				for k, v in pkgdict.items():
 					# default to ~arch if no specific keyword is given
 					if not v:
-						mykeywordlist = []
-						if self.configdict["defaults"] and \
-							"ACCEPT_KEYWORDS" in self.configdict["defaults"]:
-							groups = self.configdict["defaults"]["ACCEPT_KEYWORDS"].split()
-						else:
-							groups = []
-						for keyword in groups:
-							if not keyword[0] in "~-":
-								mykeywordlist.append("~"+keyword)
-						v = mykeywordlist
+						v = accept_keywords_defaults
 					self.pkeywordsdict.setdefault(k.cp, {})[k] = v
 
 				#package.license
-				licdict = grabdict_package(os.path.join(
-					abs_user_config, "package.license"), recursive=1)
-				for k, v in licdict.items():
-					cp = k.cp
-					cp_dict = self._plicensedict.get(cp)
-					if not cp_dict:
-						cp_dict = {}
-						self._plicensedict[cp] = cp_dict
-					cp_dict[k] = self.expandLicenseTokens(v)
+				self._license_manager.read_config_files(abs_user_config)
+				self.configdict["conf"]["ACCEPT_LICENSE"] = \
+					self._license_manager.extract_global_changes(\
+						self.configdict["conf"].get("ACCEPT_LICENSE", ""))
 
 				#package.properties
 				propdict = grabdict_package(os.path.join(
-					abs_user_config, "package.properties"), recursive=1)
+					abs_user_config, "package.properties"), recursive=1, allow_wildcard=True)
+				v = propdict.pop("*/*", None)
+				if v is not None:
+					if "ACCEPT_PROPERTIES" in self.configdict["conf"]:
+						self.configdict["conf"]["ACCEPT_PROPERTIES"] += " " + " ".join(v)
+					else:
+						self.configdict["conf"]["ACCEPT_PROPERTIES"] = " ".join(v)
 				for k, v in propdict.items():
-					cp = k.cp
-					cp_dict = self._ppropertiesdict.get(cp)
-					if not cp_dict:
-						cp_dict = {}
-						self._ppropertiesdict[cp] = cp_dict
-					cp_dict[k] = v
+					self._ppropertiesdict.setdefault(k.cp, {})[k] = v
+
+				#package.env
+				penvdict = grabdict_package(os.path.join(
+					abs_user_config, "package.env"), recursive=1, allow_wildcard=True)
+				v = penvdict.pop("*/*", None)
+				if v is not None:
+					global_wildcard_conf = {}
+					self._grab_pkg_env(v, global_wildcard_conf)
+					incrementals = self.incrementals
+					conf_configdict = self.configdict["conf"]
+					for k, v in global_wildcard_conf.items():
+						if k in incrementals:
+							if k in conf_configdict:
+								conf_configdict[k] = \
+									conf_configdict[k] + " " + v
+							else:
+								conf_configdict[k] = v
+						else:
+							conf_configdict[k] = v
+						expand_map[k] = v
+
+				for k, v in penvdict.items():
+					self._penvdict.setdefault(k.cp, {})[k] = v
 
 				self._local_repo_configs = {}
 				self._local_repo_conf_path = \
@@ -906,18 +1044,10 @@ class config(object):
 			archlist = stack_lists(archlist, incremental=1)
 			self.configdict["conf"]["PORTAGE_ARCHLIST"] = " ".join(archlist)
 
-			# package.mask and package.unmask
-			pkgmasklines = []
-			pkgunmasklines = []
-			for x in pmask_locations:
-				pkgmasklines.append(grabfile_package(
-					os.path.join(x, "package.mask"), recursive=1))
-				pkgunmasklines.append(grabfile_package(
-					os.path.join(x, "package.unmask"), recursive=1))
 			pkgmasklines = stack_lists(pkgmasklines, incremental=1)
 			pkgunmasklines = stack_lists(pkgunmasklines, incremental=1)
 
-			self.pmaskdict = {}
+			self.pmaskdict = portage.dep.ExtendedAtomDict(list)
 			for x in pkgmasklines:
 				self.pmaskdict.setdefault(x.cp, []).append(x)
 
@@ -963,11 +1093,7 @@ class config(object):
 					self.pprovideddict[mycatpkg]=[x]
 
 			# parse licensegroups
-			license_groups = self._license_groups
-			for x in locations:
-				for k, v in grabdict(
-					os.path.join(x, "license_groups")).items():
-					license_groups.setdefault(k, []).extend(v)
+			self._license_manager.parse_license_groups(locations)
 
 			# reasonable defaults; this is important as without USE_ORDER,
 			# USE will always be "" (nothing set)!
@@ -976,6 +1102,23 @@ class config(object):
 
 			self["PORTAGE_GID"] = str(portage_gid)
 			self.backup_changes("PORTAGE_GID")
+
+			self.depcachedir = DEPCACHE_PATH
+			if eprefix:
+				# See comments about make.globals and EPREFIX
+				# above. DEPCACHE_PATH is similar.
+				if target_root == "/":
+					# case (1) above
+					self.depcachedir = os.path.join(eprefix,
+						DEPCACHE_PATH.lstrip(os.sep))
+				else:
+					# case (2) above
+					# For now, just assume DEPCACHE_PATH is relative
+					# to EPREFIX.
+					# TODO: Pass in more info to the constructor,
+					# so we know the host system configuration.
+					self.depcachedir = os.path.join(eprefix,
+						DEPCACHE_PATH.lstrip(os.sep))
 
 			if self.get("PORTAGE_DEPCACHEDIR", None):
 				self.depcachedir = self["PORTAGE_DEPCACHEDIR"]
@@ -1007,17 +1150,10 @@ class config(object):
 			if bsd_chflags:
 				self.features.add('chflags')
 
-			self["FEATURES"] = " ".join(sorted(self.features))
-			self.backup_changes("FEATURES")
-			global _glep_55_enabled, _validate_cache_for_unsupported_eapis
 			if 'parse-eapi-ebuild-head' in self.features:
-				_validate_cache_for_unsupported_eapis = False
-			if 'parse-eapi-glep-55' in self.features:
-				_validate_cache_for_unsupported_eapis = False
-				_glep_55_enabled = True
+				portage._validate_cache_for_unsupported_eapis = False
 
-			self._iuse_implicit_re = re.compile("^(%s)$" % \
-				"|".join(self._get_implicit_iuse()))
+			self._iuse_implicit_match = _iuse_implicit_match_cache(self)
 
 		for k in self._case_insensitive_vars:
 			if k in self:
@@ -1031,7 +1167,7 @@ class config(object):
 		"""
 		Create a few directories that are critical to portage operation
 		"""
-		if not os.access(self["ROOT"], os.W_OK):
+		if not os.access(self["EROOT"], os.W_OK):
 			return
 
 		#                                gid, mode, mask, preserve_perms
@@ -1044,7 +1180,7 @@ class config(object):
 
 		for mypath, (gid, mode, modemask, preserve_perms) \
 			in dir_mode_map.items():
-			mydir = os.path.join(self["ROOT"], mypath)
+			mydir = os.path.join(self["EROOT"], mypath)
 			if preserve_perms and os.path.isdir(mydir):
 				# Only adjust permissions on some directories if
 				# they don't exist yet. This gives freedom to the
@@ -1062,49 +1198,7 @@ class config(object):
 		""" Take a token from ACCEPT_LICENSE or package.license and expand it
 		if it's a group token (indicated by @) or just return it if it's not a
 		group.  If a group is negated then negate all group elements."""
-		expanded_tokens = []
-		for x in tokens:
-			expanded_tokens.extend(self._expandLicenseToken(x, None))
-		return expanded_tokens
-
-	def _expandLicenseToken(self, token, traversed_groups):
-		negate = False
-		rValue = []
-		if token.startswith("-"):
-			negate = True
-			license_name = token[1:]
-		else:
-			license_name = token
-		if not license_name.startswith("@"):
-			rValue.append(token)
-			return rValue
-		group_name = license_name[1:]
-		if traversed_groups is None:
-			traversed_groups = set()
-		license_group = self._license_groups.get(group_name)
-		if group_name in traversed_groups:
-			writemsg(_("Circular license group reference"
-				" detected in '%s'\n") % group_name, noiselevel=-1)
-			rValue.append("@"+group_name)
-		elif license_group:
-			traversed_groups.add(group_name)
-			for l in license_group:
-				if l.startswith("-"):
-					writemsg(_("Skipping invalid element %s"
-						" in license group '%s'\n") % (l, group_name),
-						noiselevel=-1)
-				else:
-					rValue.extend(self._expandLicenseToken(l, traversed_groups))
-		else:
-			if self._license_groups and \
-				group_name not in self._undef_lic_groups:
-				self._undef_lic_groups.add(group_name)
-				writemsg(_("Undefined license group '%s'\n") % group_name,
-					noiselevel=-1)
-			rValue.append("@"+group_name)
-		if negate:
-			rValue = ["-" + token for token in rValue]
-		return rValue
+		return self._license_manager.expandLicenseTokens(tokens)
 
 	def validate(self):
 		"""Validate miscellaneous settings and display warnings if necessary.
@@ -1156,6 +1250,18 @@ class config(object):
 			not fakeroot_capable:
 			writemsg(_("!!! FEATURES=fakeroot is enabled, but the "
 				"fakeroot binary is not installed.\n"), noiselevel=-1)
+
+		if 'unknown-features-warn' in self.features:
+			unknown_features = []
+			for x in self.features:
+				if x not in SUPPORTED_FEATURES:
+					unknown_features.append(x)
+
+			if unknown_features:
+				writemsg(colorize("BAD",
+					_("FEATURES variable contains an unknown value(s): %s") % \
+					", ".join(unknown_features)) \
+					+ "\n", noiselevel=-1)
 
 	def loadVirtuals(self,root):
 		"""Not currently used by portage."""
@@ -1212,6 +1318,7 @@ class config(object):
 		if not keeping_pkg:
 			self.mycpv = None
 			self.puse = ""
+			del self._penv[:]
 			self.configdict["pkg"].clear()
 			self.configdict["pkginternal"].clear()
 			self.configdict["defaults"]["USE"] = \
@@ -1242,46 +1349,15 @@ class config(object):
 			use = self.built_use
 			if use is None:
 				use = frozenset(settings['PORTAGE_USE'].split())
-			values['ACCEPT_LICENSE'] = self._accept_license(use, settings)
+
+			values['ACCEPT_LICENSE'] = settings._license_manager.get_prunned_accept_license( \
+				settings.mycpv, use, settings['LICENSE'], settings['SLOT'])
 			values['PORTAGE_RESTRICT'] = self._restrict(use, settings)
 			return values
 
-		def _accept_license(self, use, settings):
-			"""
-			Generate a pruned version of ACCEPT_LICENSE, by intersection with
-			LICENSE. This is required since otherwise ACCEPT_LICENSE might be
-			too big (bigger than ARG_MAX), causing execve() calls to fail with
-			E2BIG errors as in bug #262647.
-			"""
-			try:
-				licenses = set(flatten(
-					use_reduce(paren_reduce(
-					settings['LICENSE']),
-					uselist=use)))
-			except InvalidDependString:
-				licenses = set()
-			licenses.discard('||')
-			if settings._accept_license:
-				acceptable_licenses = set()
-				for x in settings._accept_license:
-					if x == '*':
-						acceptable_licenses.update(licenses)
-					elif x == '-*':
-						acceptable_licenses.clear()
-					elif x[:1] == '-':
-						acceptable_licenses.discard(x[1:])
-					elif x in licenses:
-						acceptable_licenses.add(x)
-
-				licenses = acceptable_licenses
-			return ' '.join(sorted(licenses))
-
 		def _restrict(self, use, settings):
 			try:
-				restrict = set(flatten(
-					use_reduce(paren_reduce(
-					settings['RESTRICT']),
-					uselist=use)))
+				restrict = set(use_reduce(settings['RESTRICT'], uselist=use, flat=True))
 			except InvalidDependString:
 				restrict = set()
 			return ' '.join(sorted(restrict))
@@ -1385,10 +1461,12 @@ class config(object):
 
 		pkg = None
 		built_use = None
+		explicit_iuse = None
 		if not isinstance(mycpv, basestring):
 			pkg = mycpv
 			mycpv = pkg.cpv
 			mydb = pkg.metadata
+			explicit_iuse = pkg.iuse.all
 			args_hash = (mycpv, id(pkg))
 			if pkg.built:
 				built_use = pkg.use.enabled
@@ -1408,14 +1486,13 @@ class config(object):
 		iuse = ""
 		pkg_configdict = self.configdict["pkg"]
 		previous_iuse = pkg_configdict.get("IUSE")
+		previous_features = pkg_configdict.get("FEATURES")
 
 		aux_keys = self._setcpv_aux_keys
 
-		# Discard any existing metadata from the previous package, but
-		# preserve things like USE_EXPAND values and PORTAGE_USE which
-		# might be reused.
-		for k in aux_keys:
-			pkg_configdict.pop(k, None)
+		# Discard any existing metadata and package.env settings from
+		# the previous package instance.
+		pkg_configdict.clear()
 
 		pkg_configdict["CATEGORY"] = cat
 		pkg_configdict["PF"] = pf
@@ -1452,22 +1529,14 @@ class config(object):
 			has_changed = True
 
 		defaults = []
-		pos = 0
 		for i, pkgprofileuse_dict in enumerate(self.pkgprofileuse):
+			if self.make_defaults_use[i]:
+				defaults.append(self.make_defaults_use[i])
 			cpdict = pkgprofileuse_dict.get(cp)
 			if cpdict:
-				keys = list(cpdict)
-				while keys:
-					bestmatch = best_match_to_list(cpv_slot, keys)
-					if bestmatch:
-						keys.remove(bestmatch)
-						defaults.insert(pos, cpdict[bestmatch])
-					else:
-						break
-				del keys
-			if self.make_defaults_use[i]:
-				defaults.insert(pos, self.make_defaults_use[i])
-			pos = len(defaults)
+				pkg_defaults = ordered_by_atom_specificity(cpdict, cpv_slot)
+				if pkg_defaults:
+					defaults.extend(pkg_defaults)
 		defaults = " ".join(defaults)
 		if self.configdict["defaults"].get("MULTILIB_ABIS", "").count(' ') != 0:
 			defaults = defaults + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
@@ -1488,30 +1557,68 @@ class config(object):
 		self.puse = ""
 		cpdict = self.pusedict.get(cp)
 		if cpdict:
-			keys = list(cpdict)
-			while keys:
-				self.pusekey = best_match_to_list(cpv_slot, keys)
-				if self.pusekey:
-					keys.remove(self.pusekey)
-					self.puse = (" ".join(cpdict[self.pusekey])) + " " + self.puse
-				else:
-					break
-			del keys
+			puse_matches = ordered_by_atom_specificity(cpdict, cpv_slot)
+			if puse_matches:
+				puse_list = []
+				for x in puse_matches:
+					puse_list.extend(x)
+				self.puse = " ".join(puse_list)
 		if oldpuse != self.puse:
 			has_changed = True
 		self.configdict["pkg"]["PKGUSE"] = self.puse[:] # For saving to PUSE file
 		self.configdict["pkg"]["USE"]    = self.puse[:] # this gets appended to USE
 
+		if previous_features:
+			# The package from the previous setcpv call had package.env
+			# settings which modified FEATURES. Therefore, trigger a
+			# regenerate() call in order ensure that self.features
+			# is accurate.
+			has_changed = True
+
+		self._penv = []
+		cpdict = self._penvdict.get(cp)
+		if cpdict:
+			penv_matches = ordered_by_atom_specificity(cpdict, cpv_slot)
+			if penv_matches:
+				for x in penv_matches:
+					self._penv.extend(x)
+
+		protected_pkg_keys = set(pkg_configdict)
+		protected_pkg_keys.discard('USE')
+
+		# If there are _any_ package.env settings for this package
+		# then it automatically triggers config.reset(), in order
+		# to account for possible incremental interaction between
+		# package.use, package.env, and overrides from the calling
+		# environment (configdict['env']).
+		if self._penv:
+			has_changed = True
+			# USE is special because package.use settings override
+			# it. Discard any package.use settings here and they'll
+			# be added back later.
+			pkg_configdict.pop('USE', None)
+			self._grab_pkg_env(self._penv, pkg_configdict,
+				protected_keys=protected_pkg_keys)
+
+			# Now add package.use settings, which override USE from
+			# package.env
+			if self.puse:
+				if 'USE' in pkg_configdict:
+					pkg_configdict['USE'] = \
+						pkg_configdict['USE'] + " " + self.puse
+				else:
+					pkg_configdict['USE'] = self.puse
+
 		if has_changed:
 			self.reset(keeping_pkg=1,use_cache=use_cache)
+
+		env_configdict = self.configdict['env']
 
 		# Ensure that "pkg" values are always preferred over "env" values.
 		# This must occur _after_ the above reset() call, since reset()
 		# copies values from self.backupenv.
-		env_configdict = self.configdict['env']
-		for k in pkg_configdict:
-			if k != 'USE':
-				env_configdict.pop(k, None)
+		for k in protected_pkg_keys:
+			env_configdict.pop(k, None)
 
 		lazy_vars = self._lazy_vars(built_use, self)
 		env_configdict.addLazySingleton('ACCEPT_LICENSE',
@@ -1528,12 +1635,15 @@ class config(object):
 		# be done for every setcpv() call since practically every
 		# package has different IUSE.
 		use = set(self["USE"].split())
-		iuse_implicit = self._get_implicit_iuse()
-		iuse_implicit.update(x.lstrip("+-") for x in iuse.split())
+		if explicit_iuse is None:
+			explicit_iuse = frozenset(x.lstrip("+-") for x in iuse.split())
+		iuse_implicit_match = self._iuse_implicit_match
+		portage_iuse = self._get_implicit_iuse()
+		portage_iuse.update(explicit_iuse)
 
 		# PORTAGE_IUSE is not always needed so it's lazily evaluated.
-		self.configdict["pkg"].addLazySingleton(
-			"PORTAGE_IUSE", _lazy_iuse_regex, iuse_implicit)
+		self.configdict["env"].addLazySingleton(
+			"PORTAGE_IUSE", _lazy_iuse_regex, portage_iuse)
 
 		ebuild_force_test = self.get("EBUILD_FORCE_TEST") == "1"
 		if ebuild_force_test and \
@@ -1555,7 +1665,8 @@ class config(object):
 
 		# Allow _* flags from USE_EXPAND wildcards to pass through here.
 		use.difference_update([x for x in use \
-			if x not in iuse_implicit and x[-2:] != '_*'])
+			if (x not in explicit_iuse and \
+			not iuse_implicit_match(x)) and x[-2:] != '_*'])
 
 		# Use the calculated USE flags to regenerate the USE_EXPAND flags so
 		# that they are consistent. For optimal performance, use slice
@@ -1563,10 +1674,10 @@ class config(object):
 		use_expand_split = set(x.lower() for \
 			x in self.get('USE_EXPAND', '').split())
 		lazy_use_expand = self._lazy_use_expand(use, self.usemask,
-			iuse_implicit, use_expand_split, self._use_expand_dict)
+			portage_iuse, use_expand_split, self._use_expand_dict)
 
 		use_expand_iuses = {}
-		for x in iuse_implicit:
+		for x in portage_iuse:
 			x_split = x.split('_')
 			if len(x_split) == 1:
 				continue
@@ -1596,8 +1707,40 @@ class config(object):
 		# attribute since we still want to be able to see global USE
 		# settings for things like emerge --info.
 
-		self.configdict["pkg"]["PORTAGE_USE"] = \
+		self.configdict["env"]["PORTAGE_USE"] = \
 			" ".join(sorted(x for x in use if x[-2:] != '_*'))
+
+	def _grab_pkg_env(self, penv, container, protected_keys=None):
+		if protected_keys is None:
+			protected_keys = ()
+		abs_user_config = os.path.join(
+			self['PORTAGE_CONFIGROOT'], USER_CONFIG_PATH)
+		non_user_variables = self._non_user_variables
+		# Make a copy since we don't want per-package settings
+		# to pollute the global expand_map.
+		expand_map = self._expand_map.copy()
+		incrementals = self.incrementals
+		for envname in penv:
+			penvfile = os.path.join(abs_user_config, "env", envname)
+			penvconfig = getconfig(penvfile, expand=expand_map)
+			if penvconfig is None:
+				writemsg("!!! %s references non-existent file: %s\n" % \
+					(os.path.join(abs_user_config, 'package.env'), penvfile),
+					noiselevel=-1)
+			else:
+				for k, v in penvconfig.items():
+					if k in protected_keys or \
+						k in non_user_variables:
+						writemsg("!!! Illegal variable " + \
+							"'%s' assigned in '%s'\n" % \
+							(k, penvfile), noiselevel=-1)
+					elif k in incrementals:
+						if k in container:
+							container[k] = container[k] + " " + v
+						else:
+							container[k] = v
+					else:
+						container[k] = v
 
 	def _get_implicit_iuse(self):
 		"""
@@ -1647,22 +1790,14 @@ class config(object):
 		if cp is None:
 			cp = cpv_getkey(remove_slot(pkg))
 		usemask = []
-		pos = 0
 		for i, pusemask_dict in enumerate(self.pusemask_list):
+			if self.usemask_list[i]:
+				usemask.append(self.usemask_list[i])
 			cpdict = pusemask_dict.get(cp)
 			if cpdict:
-				keys = list(cpdict)
-				while keys:
-					best_match = best_match_to_list(pkg, keys)
-					if best_match:
-						keys.remove(best_match)
-						usemask.insert(pos, cpdict[best_match])
-					else:
-						break
-				del keys
-			if self.usemask_list[i]:
-				usemask.insert(pos, self.usemask_list[i])
-			pos = len(usemask)
+				pkg_usemask = ordered_by_atom_specificity(cpdict, pkg)
+				if pkg_usemask:
+					usemask.extend(pkg_usemask)
 		return set(stack_lists(usemask, incremental=True))
 
 	def _getUseForce(self, pkg):
@@ -1670,22 +1805,14 @@ class config(object):
 		if cp is None:
 			cp = cpv_getkey(remove_slot(pkg))
 		useforce = []
-		pos = 0
 		for i, puseforce_dict in enumerate(self.puseforce_list):
+			if self.useforce_list[i]:
+				useforce.append(self.useforce_list[i])
 			cpdict = puseforce_dict.get(cp)
 			if cpdict:
-				keys = list(cpdict)
-				while keys:
-					best_match = best_match_to_list(pkg, keys)
-					if best_match:
-						keys.remove(best_match)
-						useforce.insert(pos, cpdict[best_match])
-					else:
-						break
-				del keys
-			if self.useforce_list[i]:
-				useforce.insert(pos, self.useforce_list[i])
-			pos = len(useforce)
+				pkg_useforce = ordered_by_atom_specificity(cpdict, pkg)
+				if pkg_useforce:
+					useforce.extend(pkg_useforce)
 		return set(stack_lists(useforce, incremental=True))
 
 	def _getMaskAtom(self, cpv, metadata):
@@ -1745,20 +1872,14 @@ class config(object):
 	def _getKeywords(self, cpv, metadata):
 		cp = cpv_getkey(cpv)
 		pkg = "%s:%s" % (cpv, metadata["SLOT"])
-		keywords = [[x for x in metadata["KEYWORDS"].split() if x != "-*"]]
-		pos = len(keywords)
+		keywords = [[x for x in metadata.get("KEYWORDS", "").split() \
+			if x != "-*"]]
 		for pkeywords_dict in self._pkeywords_list:
 			cpdict = pkeywords_dict.get(cp)
 			if cpdict:
-				keys = list(cpdict)
-				while keys:
-					best_match = best_match_to_list(pkg, keys)
-					if best_match:
-						keys.remove(best_match)
-						keywords.insert(pos, cpdict[best_match])
-					else:
-						break
-			pos = len(keywords)
+				pkg_keywords = ordered_by_atom_specificity(cpdict, pkg)
+				if pkg_keywords:
+					keywords.extend(pkg_keywords)
 		return stack_lists(keywords, incremental=True)
 
 	def _getMissingKeywords(self, cpv, metadata):
@@ -1785,16 +1906,35 @@ class config(object):
 		mygroups = self._getKeywords(cpv, metadata)
 		# Repoman may modify this attribute as necessary.
 		pgroups = self["ACCEPT_KEYWORDS"].split()
-		match=0
-		cp = cpv_getkey(cpv)
-		pkgdict = self.pkeywordsdict.get(cp)
 		matches = False
+		cp = cpv_getkey(cpv)
+
+		if self._p_accept_keywords:
+			cpv_slot = "%s:%s" % (cpv, metadata["SLOT"])
+			accept_keywords_defaults = tuple('~' + keyword for keyword in \
+				pgroups if keyword[:1] not in "~-")
+			for d in self._p_accept_keywords:
+				cpdict = d.get(cp)
+				if cpdict:
+					pkg_accept_keywords = \
+						ordered_by_atom_specificity(cpdict, cpv_slot)
+					if pkg_accept_keywords:
+						for x in pkg_accept_keywords:
+							if not x:
+								x = accept_keywords_defaults
+							pgroups.extend(x)
+						matches = True
+
+		pkgdict = self.pkeywordsdict.get(cp)
 		if pkgdict:
-			cpv_slot_list = ["%s:%s" % (cpv, metadata["SLOT"])]
-			for atom, pkgkeywords in pkgdict.items():
-				if match_from_list(atom, cpv_slot_list):
-					matches = True
-					pgroups.extend(pkgkeywords)
+			cpv_slot = "%s:%s" % (cpv, metadata["SLOT"])
+			pkg_accept_keywords = \
+				ordered_by_atom_specificity(pkgdict, cpv_slot)
+			if pkg_accept_keywords:
+				for x in pkg_accept_keywords:
+					pgroups.extend(x)
+				matches = True
+
 		if matches or egroups:
 			pgroups.extend(egroups)
 			inc_pgroups = set()
@@ -1808,6 +1948,8 @@ class config(object):
 					inc_pgroups.add(x)
 			pgroups = inc_pgroups
 			del inc_pgroups
+
+		match = False
 		hasstable = False
 		hastesting = False
 		for gp in mygroups:
@@ -1852,70 +1994,8 @@ class config(object):
 		@rtype: List
 		@return: A list of licenses that have not been accepted.
 		"""
-		accept_license = self._accept_license
-		cpdict = self._plicensedict.get(cpv_getkey(cpv), None)
-		if cpdict:
-			accept_license = list(self._accept_license)
-			cpv_slot = "%s:%s" % (cpv, metadata["SLOT"])
-			for atom in match_to_list(cpv_slot, list(cpdict)):
-				accept_license.extend(cpdict[atom])
-
-		licenses = set(flatten(use_reduce(paren_reduce(
-			metadata["LICENSE"]), matchall=1)))
-		licenses.discard('||')
-
-		acceptable_licenses = set()
-		for x in accept_license:
-			if x == '*':
-				acceptable_licenses.update(licenses)
-			elif x == '-*':
-				acceptable_licenses.clear()
-			elif x[:1] == '-':
-				acceptable_licenses.discard(x[1:])
-			else:
-				acceptable_licenses.add(x)
-
-		license_str = metadata["LICENSE"]
-		if "?" in license_str:
-			use = metadata["USE"].split()
-		else:
-			use = []
-
-		license_struct = use_reduce(
-			paren_reduce(license_str), uselist=use)
-		license_struct = dep_opconvert(license_struct)
-		return self._getMaskedLicenses(license_struct, acceptable_licenses)
-
-	def _getMaskedLicenses(self, license_struct, acceptable_licenses):
-		if not license_struct:
-			return []
-		if license_struct[0] == "||":
-			ret = []
-			for element in license_struct[1:]:
-				if isinstance(element, list):
-					if element:
-						ret.append(self._getMaskedLicenses(
-							element, acceptable_licenses))
-						if not ret[-1]:
-							return []
-				else:
-					if element in acceptable_licenses:
-						return []
-					ret.append(element)
-			# Return all masked licenses, since we don't know which combination
-			# (if any) the user will decide to unmask.
-			return flatten(ret)
-
-		ret = []
-		for element in license_struct:
-			if isinstance(element, list):
-				if element:
-					ret.extend(self._getMaskedLicenses(element,
-						acceptable_licenses))
-			else:
-				if element not in acceptable_licenses:
-					ret.append(element)
-		return ret
+		return self._license_manager.getMissingLicenses( \
+			cpv, metadata["USE"], metadata["LICENSE"], metadata["SLOT"])
 
 	def _getMissingProperties(self, cpv, metadata):
 		"""
@@ -1932,15 +2012,18 @@ class config(object):
 		@return: A list of properties that have not been accepted.
 		"""
 		accept_properties = self._accept_properties
-		cpdict = self._ppropertiesdict.get(cpv_getkey(cpv), None)
+		cp = cpv_getkey(cpv)
+		cpdict = self._ppropertiesdict.get(cp)
 		if cpdict:
-			accept_properties = list(self._accept_properties)
 			cpv_slot = "%s:%s" % (cpv, metadata["SLOT"])
-			for atom in match_to_list(cpv_slot, list(cpdict)):
-				accept_properties.extend(cpdict[atom])
+			pproperties_list = ordered_by_atom_specificity(cpdict, cpv_slot)
+			if pproperties_list:
+				accept_properties = list(self._accept_properties)
+				for x in pproperties_list:
+					accept_properties.extend(x)
 
-		properties = set(flatten(use_reduce(paren_reduce(
-			metadata["PROPERTIES"]), matchall=1)))
+		properties_str = metadata.get("PROPERTIES", "")
+		properties = set(use_reduce(properties_str, matchall=1, flat=True))
 		properties.discard('||')
 
 		acceptable_properties = set()
@@ -1954,15 +2037,12 @@ class config(object):
 			else:
 				acceptable_properties.add(x)
 
-		properties_str = metadata["PROPERTIES"]
 		if "?" in properties_str:
 			use = metadata["USE"].split()
 		else:
 			use = []
 
-		properties_struct = use_reduce(
-			paren_reduce(properties_str), uselist=use)
-		properties_struct = dep_opconvert(properties_struct)
+		properties_struct = use_reduce(properties_str, uselist=use, opconvert=True)
 		return self._getMaskedProperties(properties_struct, acceptable_properties)
 
 	def _getMaskedProperties(self, properties_struct, acceptable_properties):
@@ -1973,17 +2053,18 @@ class config(object):
 			for element in properties_struct[1:]:
 				if isinstance(element, list):
 					if element:
-						ret.append(self._getMaskedProperties(
-							element, acceptable_properties))
-						if not ret[-1]:
+						tmp = self._getMaskedProperties(
+							element, acceptable_properties)
+						if not tmp:
 							return []
+						ret.extend(tmp)
 				else:
 					if element in acceptable_properties:
 						return[]
 					ret.append(element)
 			# Return all masked properties, since we don't know which combination
 			# (if any) the user will decide to unmask
-			return flatten(ret)
+			return ret
 
 		ret = []
 		for element in properties_struct:
@@ -2053,7 +2134,7 @@ class config(object):
 			myuse = mydbapi["USE"]
 		else:
 			myuse = mydbapi.aux_get(mycpv, ["USE"])[0]
-		virts = flatten(use_reduce(paren_reduce(provides), uselist=myuse.split()))
+		virts = use_reduce(provides, uselist=myuse.split(), flat=True)
 
 		modified = False
 		cp = Atom(cpv_getkey(mycpv))
@@ -2078,31 +2159,12 @@ class config(object):
 
 	def reload(self):
 		"""Reload things like /etc/profile.env that can change during runtime."""
-		env_d_filename = os.path.join(self["ROOT"], "etc", "profile.env")
+		env_d_filename = os.path.join(self["EROOT"], "etc", "profile.env")
 		self.configdict["env.d"].clear()
 		env_d = getconfig(env_d_filename, expand=False)
 		if env_d:
 			# env_d will be None if profile.env doesn't exist.
 			self.configdict["env.d"].update(env_d)
-
-	def _prune_incremental(self, split):
-		"""
-		Prune off any parts of an incremental variable that are
-		made irrelevant by the latest occuring * or -*. This
-		could be more aggressive but that might be confusing
-		and the point is just to reduce noise a bit.
-		"""
-		for i, x in enumerate(reversed(split)):
-			if x == '*':
-				split = split[-i-1:]
-				break
-			elif x == '-*':
-				if i == 0:
-					split = []
-				else:
-					split = split[-i:]
-				break
-		return split
 
 	def regenerate(self,useonly=0,use_cache=1):
 		"""
@@ -2134,16 +2196,10 @@ class config(object):
 		else:
 			myincrementals = self.incrementals
 		myincrementals = set(myincrementals)
-		# If self.features exists, it has already been stacked and may have
-		# been mutated, so don't stack it again or else any mutations will be
-		# reverted.
-		if "FEATURES" in myincrementals and hasattr(self, "features"):
-			myincrementals.remove("FEATURES")
 
-		if "USE" in myincrementals:
-			# Process USE last because it depends on USE_EXPAND which is also
-			# an incremental!
-			myincrementals.remove("USE")
+		# Process USE last because it depends on USE_EXPAND which is also
+		# an incremental!
+		myincrementals.discard("USE")
 
 		mydbs = self.configlist[:-1]
 		mydbs.append(self.backupenv)
@@ -2155,22 +2211,20 @@ class config(object):
 			mysplit = []
 			for curdb in mydbs:
 				mysplit.extend(curdb.get('ACCEPT_LICENSE', '').split())
-			mysplit = self._prune_incremental(mysplit)
+			mysplit = prune_incremental(mysplit)
 			accept_license_str = ' '.join(mysplit)
 			self.configlist[-1]['ACCEPT_LICENSE'] = accept_license_str
-			if accept_license_str != self._accept_license_str:
-				self._accept_license_str = accept_license_str
-				self._accept_license = tuple(self.expandLicenseTokens(mysplit))
+			self._license_manager.set_accept_license_str(accept_license_str)
 		else:
 			# repoman will accept any license
-			self._accept_license = ('*',)
+			self._license_manager.set_accept_license_str("*")
 
 		# ACCEPT_PROPERTIES works like ACCEPT_LICENSE, without groups
 		if self.local_config:
 			mysplit = []
 			for curdb in mydbs:
 				mysplit.extend(curdb.get('ACCEPT_PROPERTIES', '').split())
-			mysplit = self._prune_incremental(mysplit)
+			mysplit = prune_incremental(mysplit)
 			self.configlist[-1]['ACCEPT_PROPERTIES'] = ' '.join(mysplit)
 			if tuple(mysplit) != self._accept_properties:
 				self._accept_properties = tuple(mysplit)
@@ -2178,46 +2232,50 @@ class config(object):
 			# repoman will accept any property
 			self._accept_properties = ('*',)
 
-		for mykey in myincrementals:
-
-			myflags=[]
+		increment_lists = {}
+		for k in myincrementals:
+			incremental_list = []
+			increment_lists[k] = incremental_list
 			for curdb in mydbs:
-				if mykey not in curdb:
-					continue
-				#variables are already expanded
-				mysplit = curdb[mykey].split()
+				v = curdb.get(k)
+				if v is not None:
+					incremental_list.append(v.split())
+
+		if 'FEATURES' in increment_lists:
+			increment_lists['FEATURES'].append(self._features_overrides)
+
+		myflags = set()
+		for mykey, incremental_list in increment_lists.items():
+
+			myflags.clear()
+			for mysplit in incremental_list:
 
 				for x in mysplit:
 					if x=="-*":
 						# "-*" is a special "minus" var that means "unset all settings".
 						# so USE="-* gnome" will have *just* gnome enabled.
-						myflags = []
+						myflags.clear()
 						continue
 
 					if x[0]=="+":
 						# Not legal. People assume too much. Complain.
 						writemsg(colorize("BAD",
-							_("USE flags should not start with a '+': %s") % x) \
+							_("%s values should not start with a '+': %s") % (mykey,x)) \
 							+ "\n", noiselevel=-1)
 						x=x[1:]
 						if not x:
 							continue
 
 					if (x[0]=="-"):
-						if (x[1:] in myflags):
-							# Unset/Remove it.
-							del myflags[myflags.index(x[1:])]
+						myflags.discard(x[1:])
 						continue
 
 					# We got here, so add it now.
-					if x not in myflags:
-						myflags.append(x)
+					myflags.add(x)
 
-			myflags.sort()
 			#store setting in last element of configlist, the original environment:
 			if myflags or mykey in self:
-				self.configlist[-1][mykey] = " ".join(myflags)
-			del myflags
+				self.configlist[-1][mykey] = " ".join(sorted(myflags))
 
 		# Do the USE calculation last because it depends on USE_EXPAND.
 		if "auto" in self["USE_ORDER"].split(":"):
@@ -2245,6 +2303,9 @@ class config(object):
 
 		# For optimal performance, use slice
 		# comparison instead of startswith().
+		iuse = self.configdict["pkg"].get("IUSE")
+		if iuse is not None:
+			iuse = [x.lstrip("+-") for x in iuse.split()]
 		myflags = set()
 		for curdb in self.uvlist:
 			cur_use_expand = [x for x in use_expand if x in curdb]
@@ -2264,10 +2325,33 @@ class config(object):
 						continue
 
 				if x[0] == "-":
+					if x[-2:] == '_*':
+						prefix = x[1:-1]
+						prefix_len = len(prefix)
+						myflags.difference_update(
+							[y for y in myflags if \
+							y[:prefix_len] == prefix])
 					myflags.discard(x[1:])
 					continue
 
-				myflags.add(x)
+				if iuse is not None and x[-2:] == '_*':
+					# Expand wildcards here, so that cases like
+					# USE="linguas_* -linguas_en_US" work correctly.
+					prefix = x[:-1]
+					prefix_len = len(prefix)
+					has_iuse = False
+					for y in iuse:
+						if y[:prefix_len] == prefix:
+							has_iuse = True
+							myflags.add(y)
+					if not has_iuse:
+						# There are no matching IUSE, so allow the
+						# wildcard to pass through. This allows
+						# linguas_* to trigger unset LINGUAS in
+						# cases when no linguas_ flags are in IUSE.
+						myflags.add(x)
+				else:
+					myflags.add(x)
 
 			for var in cur_use_expand:
 				var_lower = var.lower()
@@ -2301,11 +2385,11 @@ class config(object):
 					myflags.add(var_lower + "_" + x)
 
 		if hasattr(self, "features"):
-			self.features.clear()
+			self.features._features.clear()
 		else:
-			self.features = set()
-		self.features.update(self.configlist[-1].get('FEATURES', '').split())
-		self['FEATURES'] = ' '.join(sorted(self.features))
+			self.features = features_set(self)
+		self.features._features.update(self.get('FEATURES', '').split())
+		self.features._sync_env_var()
 
 		myflags.update(self.useforce)
 		arch = self.configdict["defaults"].get("ARCH")
@@ -2317,13 +2401,7 @@ class config(object):
 
 		self.already_in_regenerate = 0
 
-	def get_virts_p(self, myroot=None):
-
-		if myroot is not None:
-			warnings.warn("The 'myroot' parameter for " + \
-				"portage.config.get_virts_p() is deprecated",
-				DeprecationWarning, stacklevel=2)
-
+	def get_virts_p(self):
 		if self.virts_p:
 			return self.virts_p
 		virts = self.getvirtuals()
@@ -2334,15 +2412,7 @@ class config(object):
 					self.virts_p[vkeysplit[1]] = virts[x]
 		return self.virts_p
 
-	def getvirtuals(self, myroot=None):
-		"""myroot is now ignored because, due to caching, it has always been
-		broken for all but the first call."""
-
-		if myroot is not None:
-			warnings.warn("The 'myroot' parameter for " + \
-				"portage.config.getvirtuals() is deprecated",
-				DeprecationWarning, stacklevel=2)
-
+	def getvirtuals(self):
 		myroot = self["ROOT"]
 		if self.virtuals:
 			return self.virtuals
@@ -2477,12 +2547,6 @@ class config(object):
 			raise KeyError(key)
 		return v
 
-	def has_key(self,mykey):
-		warnings.warn("portage.config.has_key() is deprecated, "
-			"use the in operator instead",
-			DeprecationWarning, stacklevel=2)
-		return mykey in self
-
 	def __contains__(self, mykey):
 		"""Called to implement membership test operators (in and not in)."""
 		for d in self.lookuplist:
@@ -2559,7 +2623,7 @@ class config(object):
 				# Do not allow anything to leak into the ebuild
 				# environment unless it is explicitly whitelisted.
 				# This ensures that variables unset by the ebuild
-				# remain unset.
+				# remain unset (bug #189417).
 				continue
 			mydict[x] = myvalue
 		if "HOME" not in mydict and "BUILD_PREFIX" in mydict:
@@ -2576,15 +2640,22 @@ class config(object):
 					if v is not None:
 						mydict[k] = v
 
+		# At some point we may want to stop exporting FEATURES to the ebuild
+		# environment, in order to prevent ebuilds from abusing it. In
+		# preparation for that, export it as PORTAGE_FEATURES so that bashrc
+		# users will be able to migrate any FEATURES conditional code to
+		# use this alternative variable.
+		mydict["PORTAGE_FEATURES"] = self["FEATURES"]
+
 		# Filtered by IUSE and implicit IUSE.
 		mydict["USE"] = self.get("PORTAGE_USE", "")
 
 		# Don't export AA to the ebuild environment in EAPIs that forbid it
-		if eapi not in ("0", "1", "2", "3", "3_pre2"):
+		if not eapi_exports_AA(eapi):
 			mydict.pop("AA", None)
 
 		# Prefix variables are supported starting with EAPI 3.
-		if phase == 'depend' or eapi in (None, "0", "1", "2"):
+		if phase == 'depend' or eapi is None or not eapi_supports_prefix(eapi):
 			mydict.pop("ED", None)
 			mydict.pop("EPREFIX", None)
 			mydict.pop("EROOT", None)
@@ -2593,11 +2664,11 @@ class config(object):
 			mydict.pop('FILESDIR', None)
 
 		if phase not in ("pretend", "setup", "preinst", "postinst") or \
-			eapi in ("0", "1", "2", "3"):
+			not eapi_exports_replace_vars(eapi):
 			mydict.pop("REPLACING_VERSIONS", None)
 
 		if phase not in ("prerm", "postrm") or \
-			eapi in ("0", "1", "2", "3"):
+			not eapi_exports_replace_vars(eapi):
 			mydict.pop("REPLACED_BY_VERSION", None)
 
 		return mydict
@@ -2612,8 +2683,11 @@ class config(object):
 		return self._thirdpartymirrors
 
 	def archlist(self):
-		return flatten([[myarch, "~" + myarch] \
-			for myarch in self["PORTAGE_ARCHLIST"].split()])
+		_archlist = []
+		for myarch in self["PORTAGE_ARCHLIST"].split():
+			_archlist.append(myarch)
+			_archlist.append("~" + myarch)
+		return _archlist
 
 	def selinux_enabled(self):
 		if getattr(self, "_selinux_enabled", None) is None:

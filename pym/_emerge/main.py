@@ -1,4 +1,4 @@
-# Copyright 1999-2009 Gentoo Foundation
+# Copyright 1999-2010 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import print_function
@@ -25,15 +25,13 @@ good = create_color_func("GOOD")
 bad = create_color_func("BAD")
 
 import portage.elog
-import portage.dep
-portage.dep._dep_check_strict = True
 import portage.util
 import portage.locks
 import portage.exception
 from portage.data import secpass
 from portage.dbapi.dep_expand import dep_expand
 from portage.util import normalize_path as normpath
-from portage.util import writemsg, writemsg_level, writemsg_stdout
+from portage.util import shlex_split, writemsg_level, writemsg_stdout
 from portage.sets import SETPREFIX
 from portage._global_updates import _global_updates
 
@@ -320,7 +318,7 @@ def post_emerge(root_config, myopts, mtimedb, retval):
 	settings.regenerate()
 	settings.lock()
 
-	config_protect = settings.get("CONFIG_PROTECT","").split()
+	config_protect = shlex_split(settings.get("CONFIG_PROTECT", ""))
 	infodirs = settings.get("INFOPATH","").split(":") + \
 		settings.get("INFODIR","").split(":")
 
@@ -388,8 +386,10 @@ def insert_optional_args(args):
 	new_args = []
 
 	default_arg_opts = {
+		'--autounmask'           : ('n',),
 		'--complete-graph' : ('n',),
 		'--deep'       : valid_integers,
+		'--depclean-lib-check'   : ('n',),
 		'--deselect'   : ('n',),
 		'--binpkg-respect-use'   : ('n', 'y',),
 		'--fail-clean'           : ('n',),
@@ -397,6 +397,7 @@ def insert_optional_args(args):
 		'--getbinpkgonly'        : ('n',),
 		'--jobs'       : valid_integers,
 		'--keep-going'           : ('n',),
+		'--package-moves'        : ('n',),
 		'--rebuilt-binaries'     : ('n',),
 		'--root-deps'  : ('rdeps',),
 		'--select'               : ('n',),
@@ -513,6 +514,13 @@ def parse_opts(tmpcmdline, silent=False):
 
 	longopt_aliases = {"--cols":"--columns", "--skip-first":"--skipfirst"}
 	argument_options = {
+
+		"--autounmask": {
+			"help"    : "automatically unmask packages",
+			"type"    : "choice",
+			"choices" : ("True", "n")
+		},
+
 		"--accept-properties": {
 			"help":"temporarily override ACCEPT_PROPERTIES",
 			"action":"store"
@@ -554,18 +562,24 @@ def parse_opts(tmpcmdline, silent=False):
 			"action" : "store"
 		},
 
+		"--depclean-lib-check": {
+			"help"    : "check for consumers of libraries before removing them",
+			"type"    : "choice",
+			"choices" : ("True", "n")
+		},
+
 		"--deselect": {
-			"help"    : "remove atoms from the world file",
+			"help"    : "remove atoms/sets from the world file",
 			"type"    : "choice",
 			"choices" : ("True", "n")
 		},
 
 		"--exclude": {
-			"help"   :"A comma separated list of package names or slot atoms. " + \
+			"help"   :"A space separated list of package names or slot atoms. " + \
 				"Emerge won't  install any ebuild or binary package that " + \
 				"matches any of the given package atoms.",
 
-			"action" : "store"
+			"action" : "append"
 		},
 
 		"--fail-clean": {
@@ -631,11 +645,23 @@ def parse_opts(tmpcmdline, silent=False):
 			"choices"  : ("True", "n")
 		},
 
+		"--package-moves": {
+			"help"     : "perform package moves when necessary",
+			"type"     : "choice",
+			"choices"  : ("True", "n")
+		},
+
 		"--rebuilt-binaries": {
 			"help"     : "replace installed packages with binary " + \
 			             "packages that have been rebuilt",
 			"type"     : "choice",
 			"choices"  : ("True", "n")
+		},
+		
+		"--rebuilt-binaries-timestamp": {
+			"help"   : "use only binaries that are newer than this " + \
+			           "timestamp for --rebuilt-binaries",
+			"action" : "store"
 		},
 
 		"--root": {
@@ -715,6 +741,9 @@ def parse_opts(tmpcmdline, silent=False):
 
 	myoptions, myargs = parser.parse_args(args=tmpcmdline)
 
+	if myoptions.autounmask in ("True",):
+		myoptions.autounmask = True
+
 	if myoptions.changed_use is not False:
 		myoptions.reinstall = "changed-use"
 		myoptions.changed_use = False
@@ -732,16 +761,19 @@ def parse_opts(tmpcmdline, silent=False):
 	else:
 		myoptions.complete_graph = None
 
+	if myoptions.depclean_lib_check in ("True",):
+		myoptions.depclean_lib_check = True
+
 	if myoptions.exclude:
 		exclude = []
 		bad_atoms = []
-		for x in myoptions.exclude.split(","):
+		for x in ' '.join(myoptions.exclude).split():
 			bad_atom = False
 			try:
-				atom = portage.dep.Atom(x)
+				atom = portage.dep.Atom(x, allow_wildcard=True)
 			except portage.exception.InvalidAtom:
 				try:
-					atom = portage.dep.Atom("null/"+x)
+					atom = portage.dep.Atom("*/"+x, allow_wildcard=True)
 				except portage.exception.InvalidAtom:
 					bad_atom = True
 			
@@ -754,10 +786,8 @@ def parse_opts(tmpcmdline, silent=False):
 					exclude.append(atom)
 
 		if bad_atoms and not silent:
-			parser.error("Invalid Atom(s) in --exclude parameter: '%s' (only package names and slot atoms allowed)\n" % \
+			parser.error("Invalid Atom(s) in --exclude parameter: '%s' (only package names and slot atoms (with widlcards) allowed)\n" % \
 				(",".join(bad_atoms),))
-
-		myoptions.exclude = exclude
 
 	if myoptions.fail_clean == "True":
 		myoptions.fail_clean = True
@@ -776,6 +806,9 @@ def parse_opts(tmpcmdline, silent=False):
 		myoptions.keep_going = True
 	else:
 		myoptions.keep_going = None
+
+	if myoptions.package_moves in ("True",):
+		myoptions.package_moves = True
 
 	if myoptions.rebuilt_binaries in ("True",):
 		myoptions.rebuilt_binaries = True
@@ -802,8 +835,8 @@ def parse_opts(tmpcmdline, silent=False):
 		if backtrack < 0:
 			backtrack = None
 			if not silent:
-				writemsg("!!! Invalid --backtrack parameter: '%s'\n" % \
-					(myoptions.backtrack,), noiselevel=-1)
+				parser.error("Invalid --backtrack parameter: '%s'\n" % \
+					(myoptions.backtrack,))
 
 		myoptions.backtrack = backtrack
 
@@ -820,8 +853,8 @@ def parse_opts(tmpcmdline, silent=False):
 		if deep is not True and deep < 0:
 			deep = None
 			if not silent:
-				writemsg("!!! Invalid --deep parameter: '%s'\n" % \
-					(myoptions.deep,), noiselevel=-1)
+				parser.error("Invalid --deep parameter: '%s'\n" % \
+					(myoptions.deep,))
 
 		myoptions.deep = deep
 
@@ -839,8 +872,8 @@ def parse_opts(tmpcmdline, silent=False):
 			jobs < 1:
 			jobs = None
 			if not silent:
-				writemsg("!!! Invalid --jobs parameter: '%s'\n" % \
-					(myoptions.jobs,), noiselevel=-1)
+				parser.error("Invalid --jobs parameter: '%s'\n" % \
+					(myoptions.jobs,))
 
 		myoptions.jobs = jobs
 
@@ -853,10 +886,24 @@ def parse_opts(tmpcmdline, silent=False):
 		if load_average <= 0.0:
 			load_average = None
 			if not silent:
-				writemsg("!!! Invalid --load-average parameter: '%s'\n" % \
-					(myoptions.load_average,), noiselevel=-1)
+				parser.error("Invalid --load-average parameter: '%s'\n" % \
+					(myoptions.load_average,))
 
 		myoptions.load_average = load_average
+	
+	if myoptions.rebuilt_binaries_timestamp:
+		try:
+			rebuilt_binaries_timestamp = int(myoptions.rebuilt_binaries_timestamp)
+		except ValueError:
+			rebuilt_binaries_timestamp = -1
+
+		if rebuilt_binaries_timestamp < 0:
+			rebuilt_binaries_timestamp = 0
+			if not silent:
+				parser.error("Invalid --rebuilt-binaries-timestamp parameter: '%s'\n" % \
+					(myoptions.rebuilt_binaries_timestamp,))
+
+		myoptions.rebuilt_binaries_timestamp = rebuilt_binaries_timestamp
 
 	if myoptions.use_ebuild_visibility in ("True",):
 		myoptions.use_ebuild_visibility = True
@@ -982,7 +1029,7 @@ def missing_sets_warning(root_config, missing_sets):
 	if root_config.sets:
 		msg.append("        sets defined: %s" % ", ".join(root_config.sets))
 	msg.append("        This usually means that '%s'" % \
-		(os.path.join(portage.const.GLOBAL_CONFIG_PATH, "sets.conf"),))
+		(os.path.join(portage.const.GLOBAL_CONFIG_PATH, "sets/portage.conf"),))
 	msg.append("        is missing or corrupt.")
 	msg.append("        Falling back to default world and system set configuration!!!")
 	for line in msg:
@@ -1194,6 +1241,7 @@ def check_procfs():
 def emerge_main():
 	global portage	# NFC why this is necessary now - genone
 	portage._disable_legacy_globals()
+	portage.dep._internal_warnings = True
 	# Disable color until we're sure that it should be enabled (after
 	# EMERGE_DEFAULT_OPTS has been parsed).
 	portage.output.havecolor = 0
@@ -1219,7 +1267,14 @@ def emerge_main():
 	if rval != os.EX_OK:
 		return rval
 
+	tmpcmdline = []
+	if "--ignore-default-opts" not in myopts:
+		tmpcmdline.extend(settings["EMERGE_DEFAULT_OPTS"].split())
+	tmpcmdline.extend(sys.argv[1:])
+	myaction, myopts, myfiles = parse_opts(tmpcmdline)
+
 	if myaction not in ('help', 'info', 'version') and \
+		myopts.get('--package-moves') != 'n' and \
 		_global_updates(trees, mtimedb["updates"]):
 		mtimedb.commit()
 		# Reload the whole config from scratch.
@@ -1229,12 +1284,6 @@ def emerge_main():
 	xterm_titles = "notitles" not in settings.features
 	if xterm_titles:
 		xtermTitle("emerge")
-
-	tmpcmdline = []
-	if "--ignore-default-opts" not in myopts:
-		tmpcmdline.extend(settings["EMERGE_DEFAULT_OPTS"].split())
-	tmpcmdline.extend(sys.argv[1:])
-	myaction, myopts, myfiles = parse_opts(tmpcmdline)
 
 	if "--digest" in myopts:
 		os.environ["FEATURES"] = os.environ.get("FEATURES","") + " digest"
@@ -1302,7 +1351,8 @@ def emerge_main():
 		# Freeze the portdbapi for performance (memoize all xmatch results).
 		mydb.freeze()
 
-		if "--usepkg" in myopts:
+		if myaction in ('search', None) and \
+			"--usepkg" in myopts:
 			# Populate the bintree with current --getbinpkg setting.
 			# This needs to happen before expand_set_arguments(), in case
 			# any sets use the bintree.
@@ -1561,7 +1611,7 @@ def emerge_main():
 					for line in textwrap.wrap(msg, 70):
 						writemsg_level("!!! %s\n" % (line,),
 							level=logging.ERROR, noiselevel=-1)
-					for i in e[0]:
+					for i in e.args[0]:
 						writemsg_level("    %s\n" % colorize("INFORM", i),
 							level=logging.ERROR, noiselevel=-1)
 					writemsg_level("\n", level=logging.ERROR, noiselevel=-1)

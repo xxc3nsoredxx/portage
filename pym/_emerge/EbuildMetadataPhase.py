@@ -34,9 +34,6 @@ class EbuildMetadataPhase(SubProcess):
 		ebuild_path = self.ebuild_path
 
 		eapi = None
-		if 'parse-eapi-glep-55' in settings.features:
-			pf, eapi = portage._split_ebuild_name_glep55(
-				os.path.basename(ebuild_path))
 		if eapi is None and \
 			'parse-eapi-ebuild-head' in settings.features:
 			eapi = portage._parse_eapi_ebuild_head(
@@ -49,7 +46,7 @@ class EbuildMetadataPhase(SubProcess):
 			if not portage.eapi_is_supported(eapi):
 				self.metadata_callback(self.cpv, self.ebuild_path,
 					self.repo_path, {'EAPI' : eapi}, self.ebuild_mtime)
-				self.returncode = os.EX_OK
+				self._set_returncode((self.pid, os.EX_OK))
 				self.wait()
 				return
 
@@ -101,7 +98,7 @@ class EbuildMetadataPhase(SubProcess):
 		if isinstance(retval, int):
 			# doebuild failed before spawning
 			self._unregister()
-			self.returncode = retval
+			self._set_returncode((self.pid, retval))
 			self.wait()
 			return
 
@@ -117,7 +114,6 @@ class EbuildMetadataPhase(SubProcess):
 				self.wait()
 
 		self._unregister_if_appropriate(event)
-		return self._registered
 
 	def _set_returncode(self, wait_retval):
 		SubProcess._set_returncode(self, wait_retval)

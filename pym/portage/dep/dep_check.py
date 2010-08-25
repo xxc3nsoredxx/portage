@@ -6,8 +6,10 @@ __all__ = ['dep_check', 'dep_eval', 'dep_wordreduce', 'dep_zapdeps']
 import logging
 
 import portage
-from portage.dep import Atom, dep_opconvert, match_from_list, paren_reduce, \
+from portage.dep import Atom, match_from_list, \
 	remove_slot, use_reduce
+from portage.eapi import eapi_has_strong_blocks, eapi_has_use_deps, eapi_has_slot_deps, \
+	eapi_has_use_dep_defaults
 from portage.exception import InvalidAtom, InvalidDependString, ParseError
 from portage.localization import _
 from portage.util import writemsg, writemsg_level
@@ -28,6 +30,7 @@ def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 	newsplit = []
 	mytrees = trees[myroot]
 	portdb = mytrees["porttree"].dbapi
+	pkg_use_enabled = mytrees.get("pkg_use_enabled")
 	atom_graph = mytrees.get("atom_graph")
 	parent = mytrees.get("parent")
 	virt_parent = mytrees.get("virt_parent")
@@ -57,32 +60,26 @@ def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 			continue
 
 		if not isinstance(x, Atom):
-			try:
-				x = Atom(x)
-			except InvalidAtom:
-				if portage.dep._dep_check_strict:
-					raise ParseError(
-						_("invalid atom: '%s'") % x)
-				else:
-					# Only real Atom instances are allowed past this point.
-					continue
-			else:
-				if x.blocker and x.blocker.overlap.forbid and \
-					eapi in ("0", "1") and portage.dep._dep_check_strict:
-					raise ParseError(
-						_("invalid atom: '%s'") % (x,))
-				if x.use and eapi in ("0", "1") and \
-					portage.dep._dep_check_strict:
-					raise ParseError(
-						_("invalid atom: '%s'") % (x,))
+			raise ParseError(
+				_("invalid token: '%s'") % x)
 
-		if repoman and x.use and x.use.conditional:
-			evaluated_atom = remove_slot(x)
-			if x.slot:
-				evaluated_atom += ":%s" % x.slot
-			evaluated_atom += str(x.use._eval_qa_conditionals(
-				use_mask, use_force))
-			x = Atom(evaluated_atom)
+		if x.blocker and x.blocker.overlap.forbid and \
+			not eapi_has_strong_blocks(eapi):
+			raise ParseError(
+				_("strong blocks are not allowed in EAPI %s: '%s'") % (eapi, x))
+		if x.use and not eapi_has_use_deps(eapi):
+			raise ParseError(
+				_("use deps are not allowed in EAPI %s: '%s'") % (eapi, x))
+		if x.slot and not eapi_has_slot_deps(eapi):
+			raise ParseError(
+				_("slot deps are not allowed in EAPI %s: '%s'") % (eapi, x))
+		if x.use and (x.use.missing_enabled or x.use.missing_disabled) \
+			and not eapi_has_use_dep_defaults(eapi):
+			raise ParseError(
+				_("use dep defaults are not allowed in EAPI %s: '%s'") % (eapi, x))
+
+		if repoman:
+			x = x._eval_qa_conditionals(use_mask, use_force)
 
 		if not repoman :
 			for multilib_abis in mysettings.get("MULTILIB_ABIS", []).split(' '):
@@ -99,7 +96,7 @@ def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 								"invalid atom: '%s'" % x)
 
 		if not repoman and \
-			myuse is not None and isinstance(x, Atom) and x.use:
+			myuse is not None and x.use:
 			if x.use.conditional:
 				x = x.evaluate_conditionals(myuse)
 
@@ -119,7 +116,8 @@ def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 				atom_graph.add(x, graph_parent)
 			continue
 
-		if repoman or not hasattr(portdb, 'match_pkgs'):
+		if repoman or not hasattr(portdb, 'match_pkgs') or \
+			pkg_use_enabled is None:
 			if portdb.cp_list(x.cp):
 				newsplit.append(x)
 			else:
@@ -168,7 +166,7 @@ def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 			# should enforce this.
 			depstring = pkg.metadata['RDEPEND']
 			pkg_kwargs = kwargs.copy()
-			pkg_kwargs["myuse"] = pkg.use.enabled
+			pkg_kwargs["myuse"] = pkg_use_enabled(pkg)
 			if edebug:
 				writemsg_level(_("Virtual Parent:      %s\n") \
 					% (pkg,), noiselevel=-1, level=logging.DEBUG)
@@ -538,12 +536,6 @@ def dep_check(depstring, mydbapi, mysettings, use="yes", mode=None, myuse=None,
 		# WE ALSO CANNOT USE SETTINGS
 		myusesplit=[]
 
-	#convert parenthesis to sublists
-	try:
-		mysplit = paren_reduce(depstring)
-	except InvalidDependString as e:
-		return [0, str(e)]
-
 	mymasks = set()
 	useforce = set()
 	useforce.add(mysettings["ARCH"])
@@ -561,13 +553,10 @@ def dep_check(depstring, mydbapi, mysettings, use="yes", mode=None, myuse=None,
 		useforce.update(mysettings.useforce)
 		useforce.difference_update(mymasks)
 	try:
-		mysplit = use_reduce(mysplit, uselist=myusesplit,
-			masklist=mymasks, matchall=(use=="all"), excludeall=useforce)
+		mysplit = use_reduce(depstring, uselist=myusesplit, masklist=mymasks, \
+			matchall=(use=="all"), excludeall=useforce, opconvert=True, token_class=Atom)
 	except InvalidDependString as e:
 		return [0, str(e)]
-
-	# Do the || conversions
-	mysplit = dep_opconvert(mysplit)
 
 	if mysplit == []:
 		#dependencies were reduced to nothing
@@ -592,15 +581,8 @@ def dep_check(depstring, mydbapi, mysettings, use="yes", mode=None, myuse=None,
 	writemsg("mysplit:  %s\n" % (mysplit), 1)
 	writemsg("mysplit2: %s\n" % (mysplit2), 1)
 
-	try:
-		selected_atoms = dep_zapdeps(mysplit, mysplit2, myroot,
-			use_binaries=use_binaries, trees=trees)
-	except InvalidAtom as e:
-		if portage.dep._dep_check_strict:
-			raise # This shouldn't happen.
-		# dbapi.match() failed due to an invalid atom in
-		# the dependencies of an installed package.
-		return [0, _("Invalid atom: '%s'") % (e,)]
+	selected_atoms = dep_zapdeps(mysplit, mysplit2, myroot,
+		use_binaries=use_binaries, trees=trees)
 
 	return [1, selected_atoms]
 

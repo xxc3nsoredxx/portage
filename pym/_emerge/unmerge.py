@@ -40,9 +40,9 @@ def unmerge(root_config, myopts, unmerge_action,
 	def _pkg(cpv):
 		pkg = pkg_cache.get(cpv)
 		if pkg is None:
-			pkg = Package(cpv=cpv, installed=True,
+			pkg = Package(built=True, cpv=cpv, installed=True,
 				metadata=zip(db_keys, vartree.dbapi.aux_get(cpv, db_keys)),
-				root_config=root_config,
+				operation="uninstall", root_config=root_config,
 				type_name="installed")
 			pkg_cache[cpv] = pkg
 		return pkg
@@ -464,6 +464,8 @@ def unmerge(root_config, myopts, unmerge_action,
 				writemsg_level("\n", noiselevel=-1)
 		if quiet:
 			writemsg_level("\n", noiselevel=-1)
+
+	writemsg_level("\nAll selected packages: %s\n" % " ".join(all_selected), noiselevel=-1)
 
 	writemsg_level("\n>>> " + colorize("UNMERGE_WARN", "'Selected'") + \
 		" packages are slated for removal.\n")

@@ -108,11 +108,19 @@ def help(myopts, havecolor=1):
 		print("       " + green("--deselect") + "[=%s]" % turquoise("n"))
 
 		paragraph = \
-			"Remove atoms from the world file. This action is implied " + \
+			"Remove atoms and/or sets from the world file. This action is implied " + \
 			"by uninstall actions, including --depclean, " + \
 			"--prune and --unmerge. Use --deselect=n " + \
 			"in order to prevent uninstall actions from removing " + \
 			"atoms from the world file."
+
+		for line in wrap(paragraph, desc_width):
+			print(desc_indent + line)
+		print()
+		print("       " + green("--ignore-default-opts"))
+
+		paragraph = \
+			"Causes EMERGE_DEFAULT_OPTS (see make.conf(5)) to be ignored."
 
 		for line in wrap(paragraph, desc_width):
 			print(desc_indent + line)
@@ -283,6 +291,17 @@ def help(myopts, havecolor=1):
 			"EMERGE_DEFAULT_OPTS variable."
 		for line in wrap(desc, desc_width):
 			print(desc_indent + line)
+		print() 
+		print("       " + green("--autounmask") + "[=%s]" % turquoise("n"))
+		desc = "Automatically unmask packages. If any configuration " + \
+			"changes are required, then they will be displayed " + \
+			"after the merge list and emerge will immediately " + \
+			"abort. If the displayed configuration changes are " + \
+			"satisfactory, you should copy and paste them into " + \
+			"the specified configuration file(s). Currently, " + \
+			"this only works for unstable KEYWORDS masks."
+		for line in wrap(desc, desc_width):
+			print(desc_indent + line)
 		print()
 		print("       " + green("--backtrack") + " " + turquoise("COUNT"))
 		desc = "Specifies an integer number of times to backtrack if " + \
@@ -370,6 +389,14 @@ def help(myopts, havecolor=1):
 		print("              Also see --with-bdeps for behavior with respect to build time")
 		print("              dependencies that are not strictly required.")
 		print() 
+		print("       " + green("--depclean-lib-check") + "[=%s]" % turquoise("n"))
+		desc = "Account for library link-level dependencies during " + \
+			"--depclean and --prune actions. This " + \
+			"option is enabled by default. In some cases this can " + \
+			"be somewhat time-consuming."
+		for line in wrap(desc, desc_width):
+			print(desc_indent + line)
+		print()
 		print("       "+green("--emptytree")+" ("+green("-e")+" short option)")
 		desc = "Reinstalls target atoms and their entire deep " + \
 			"dependency tree, as though no packages are currently " + \
@@ -379,7 +406,7 @@ def help(myopts, havecolor=1):
 			print(desc_indent + line)
 		print()
 		print("       " + green("--exclude") + " " + turquoise("ATOMS"))
-		desc = "A comma separated list of package names or slot atoms. " + \
+		desc = "A space separated list of package names or slot atoms. " + \
 			"Emerge won't  install any ebuild or binary package that " + \
 			"matches any of the given package atoms."
 		for line in wrap(desc, desc_width):
@@ -499,6 +526,15 @@ def help(myopts, havecolor=1):
 		print("              Only merge (or pretend to merge) the dependencies of the")
 		print("              specified packages, not the packages themselves.")
 		print()
+		print("       " + green("--package-moves") + "[=%s]" % turquoise("n"))
+		desc = "Perform package moves when necessary. This option " + \
+			"is enabled by default. WARNING: This option " + \
+			"should remain enabled under normal circumstances. " + \
+			"Do not disable it unless you know what you are " + \
+			"doing."
+		for line in wrap(desc, desc_width):
+			print(desc_indent + line)
+		print()
 		print("       "+green("--pretend")+" ("+green("-p")+" short option)")
 		print("              Instead of actually performing the merge, simply display what")
 		print("              ebuilds and tbz2s *would* have been installed if --pretend")
@@ -535,6 +571,15 @@ def help(myopts, havecolor=1):
 			"automatically when using binary packages " + \
 			"(--usepkgonly or --getbinpkgonly) together with " + \
 			"--update and --deep."
+		for line in wrap(desc, desc_width):
+			print(desc_indent + line)
+		print()
+		print("       "+green("--rebuilt-binaries-timestamp") + "=%s" % turquoise("TIMESTAMP"))
+		desc = "This option modifies emerge's behaviour only if " + \
+			"--rebuilt-binaries is given. Only binaries that " + \
+			"have a BUILD_TIME that is larger than the given TIMESTAMP " + \
+			"and that is larger than that of the installed package will " + \
+			"be considered by the rebuilt-binaries logic."
 		for line in wrap(desc, desc_width):
 			print(desc_indent + line)
 		print()
