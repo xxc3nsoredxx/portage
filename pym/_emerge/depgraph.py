@@ -737,9 +737,8 @@ class depgraph(object):
 				arg_atoms = list(self._iter_atoms_for_pkg(pkg))
 			except portage.exception.InvalidDependString as e:
 				if not pkg.installed:
-					show_invalid_depstring_notice(
-						pkg, pkg.metadata["PROVIDE"], str(e))
-					return 0
+					# should have been masked before it was selected
+					raise
 				del e
 
 		if not pkg.onlydeps:
@@ -880,10 +879,9 @@ class depgraph(object):
 					settings.setinst(pkg.cpv, pkg.metadata)
 					settings.lock()
 				except portage.exception.InvalidDependString as e:
-					show_invalid_depstring_notice(
-						pkg, pkg.metadata["PROVIDE"], str(e))
-					del e
-					return 0
+					if not pkg.installed:
+						# should have been masked before it was selected
+						raise
 
 		if arg_atoms:
 			self._dynamic_config._set_nodes.add(pkg)
@@ -1032,19 +1030,36 @@ class depgraph(object):
 						noiselevel=-1, level=logging.DEBUG)
 
 				try:
-
 					dep_string = portage.dep.use_reduce(dep_string,
 						uselist=self._pkg_use_enabled(pkg), is_valid_flag=pkg.iuse.is_valid_flag)
-
-					dep_string = list(self._queue_disjunctive_deps(
-						pkg, dep_root, dep_priority, dep_string))
-
 				except portage.exception.InvalidDependString as e:
-					if pkg.installed:
+					if not pkg.installed:
+						# should have been masked before it was selected
+						raise
+					del e
+
+					# Try again, but omit the is_valid_flag argument, since
+					# invalid USE conditionals are a common problem and it's
+					# practical to ignore this issue for installed packages.
+					try:
+						dep_string = portage.dep.use_reduce(dep_string,
+							uselist=self._pkg_use_enabled(pkg))
+					except portage.exception.InvalidDependString as e:
+						self._dynamic_config._masked_installed.add(pkg)
 						del e
 						continue
-					show_invalid_depstring_notice(pkg, dep_string, str(e))
-					return 0
+
+				try:
+					dep_string = list(self._queue_disjunctive_deps(
+						pkg, dep_root, dep_priority, dep_string))
+				except portage.exception.InvalidDependString as e:
+					if pkg.installed:
+						self._dynamic_config._masked_installed.add(pkg)
+						del e
+						continue
+
+					# should have been masked before it was selected
+					raise
 
 				if not dep_string:
 					continue
@@ -1097,11 +1112,12 @@ class depgraph(object):
 				dep_string, myuse=self._pkg_use_enabled(pkg), parent=pkg,
 				strict=strict, priority=dep_priority)
 		except portage.exception.InvalidDependString as e:
-			show_invalid_depstring_notice(pkg, dep_string, str(e))
-			del e
 			if pkg.installed:
+				self._dynamic_config._masked_installed.add(pkg)
 				return 1
-			return 0
+
+			# should have been masked before it was selected
+			raise
 
 		if debug:
 			writemsg_level("Candidates: %s\n" % \
@@ -2600,10 +2616,13 @@ class depgraph(object):
 					# Make --noreplace take precedence over --newuse.
 					if not pkg.installed and noreplace and \
 						cpv in vardb.match(atom):
-						# If the installed version is masked, it may
-						# be necessary to look at lower versions,
-						# in case there is a visible downgrade.
-						continue
+						inst_pkg = self._pkg(pkg.cpv, "installed",
+							root_config, installed=True)
+						if inst_pkg.visible:
+							# If the installed version is masked, it may
+							# be necessary to look at lower versions,
+							# in case there is a visible downgrade.
+							continue
 					reinstall_for_flags = None
 
 					if not pkg.installed or \
@@ -2865,6 +2884,11 @@ class depgraph(object):
 						if built_timestamp and \
 							built_timestamp != installed_timestamp:
 							return built_pkg, existing_node
+
+			for pkg in matched_packages:
+				if pkg.installed and pkg.invalid:
+					matched_packages = [x for x in \
+						matched_packages if x is not pkg]
 
 			if avoid_update:
 				for pkg in matched_packages:
@@ -3165,9 +3189,9 @@ class depgraph(object):
 							success, atoms = portage.dep_check(depstr,
 								final_db, pkgsettings, myuse=self._pkg_use_enabled(pkg),
 								trees=self._dynamic_config._graph_trees, myroot=myroot)
+						except SystemExit:
+							raise
 						except Exception as e:
-							if isinstance(e, SystemExit):
-								raise
 							# This is helpful, for example, if a ValueError
 							# is thrown from cpv_expand due to multiple
 							# matches (this can happen if an atom lacks a
@@ -4664,10 +4688,8 @@ class depgraph(object):
 							myfilesdict = portdb.getfetchsizes(pkg_key,
 								useflags=pkg_use, debug=self._frozen_config.edebug)
 						except portage.exception.InvalidDependString as e:
-							src_uri = portdb.aux_get(pkg_key, ["SRC_URI"])[0]
-							show_invalid_depstring_notice(x, src_uri, str(e))
-							del e
-							return 1
+							# should have been masked before it was selected
+							raise
 						if myfilesdict is None:
 							myfilesdict="[empty/missing/bad digest]"
 						else:
@@ -6099,11 +6121,6 @@ def _get_masking_status(pkg, pkgsettings, root_config, use=None):
 		if not pkgsettings._accept_chost(pkg.cpv, pkg.metadata):
 			mreasons.append(_MaskReason("CHOST", "CHOST: %s" % \
 				pkg.metadata["CHOST"]))
-		if pkg.invalid:
-			for msg_type, msgs in pkg.invalid.items():
-				for msg in msgs:
-					mreasons.append(
-						_MaskReason("invalid", "invalid: %s" % (msg,)))
 
 		if pkg.metadata["REQUIRED_USE"] and \
 			eapi_has_required_use(pkg.metadata["EAPI"]):
@@ -6119,6 +6136,12 @@ def _get_masking_status(pkg, pkgsettings, root_config, use=None):
 				if not required_use_is_sat:
 					msg = "violated use flag constraints: '%s'" % required_use
 					mreasons.append(_MaskReason("REQUIRED_USE", "REQUIRED_USE violated"))
+
+	if pkg.invalid:
+		for msg_type, msgs in pkg.invalid.items():
+			for msg in msgs:
+				mreasons.append(
+					_MaskReason("invalid", "invalid: %s" % (msg,)))
 
 	if not pkg.metadata["SLOT"]:
 		mreasons.append(

@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 from _emerge.AtomArg import AtomArg
+from _emerge.Package import Package
 from _emerge.PackageArg import PackageArg
 from portage.dep import check_required_use
 from portage.output import colorize
@@ -161,8 +162,6 @@ class slot_conflict_handler(object):
 		_pkg_use_enabled = self.depgraph._pkg_use_enabled
 		msg = self.conflict_msg
 		indent = "  "
-		# Max number of parents shown, to avoid flooding the display.
-		max_parents = 3
 		msg.append("\n!!! Multiple package instances within a single " + \
 			"package slot have been pulled\n")
 		msg.append("!!! into the dependency graph, resulting" + \
@@ -217,7 +216,7 @@ class slot_conflict_handler(object):
 								modified_use=_pkg_use_enabled(other_pkg)):
 								#Use conditionals not met.
 								violated_atom = atom.violated_conditionals(_pkg_use_enabled(other_pkg), \
-									other_pkg.iuse.is_valid_flag, _pkg_use_enabled(ppkg))
+									other_pkg.iuse.is_valid_flag)
 								for flag in violated_atom.use.enabled.union(violated_atom.use.disabled):
 									atoms = collision_reasons.get(("use", flag), set())
 									atoms.add((ppkg, atom, other_pkg))
@@ -256,9 +255,12 @@ class slot_conflict_handler(object):
 							hard_matches = set()
 							conditional_matches = set()
 							for ppkg, atom, other_pkg in parents:
+								parent_use = None
+								if isinstance(ppkg, Package):
+									parent_use = _pkg_use_enabled(ppkg)
 								violated_atom = atom.unevaluated_atom.violated_conditionals( \
-									_pkg_use_enabled(other_pkg), other_pkg.iuse.is_valid_flag, \
-									_pkg_use_enabled(ppkg))
+									_pkg_use_enabled(other_pkg), other_pkg.iuse.is_valid_flag,
+									parent_use=parent_use)
 								if use in violated_atom.use.enabled.union(violated_atom.use.disabled):
 									hard_matches.add((ppkg, atom))
 								else:
@@ -456,19 +458,20 @@ class slot_conflict_handler(object):
 
 				if not pkg.iuse.is_valid_flag(atom.unevaluated_atom.use.required):
 					#Missing IUSE.
+					#FIXME: This needs to support use dep defaults.
 					if self.debug:
-						writemsg(str(pkg) + " misses need flags from IUSE." + \
+						writemsg(str(pkg) + " misses needed flags from IUSE." + \
 							" Rejecting configuration.\n", noiselevel=-1)
 					return False
 
-				if ppkg.installed:
+				if not isinstance(ppkg, Package) or ppkg.installed:
 					#We cannot assume that it's possible to reinstall the package. Do not
 					#check if some of its atom has use.conditional
 					violated_atom = atom.violated_conditionals(_pkg_use_enabled(pkg), \
-						pkg.iuse.is_valid_flag, _pkg_use_enabled(ppkg))
+						pkg.iuse.is_valid_flag)
 				else:
 					violated_atom = atom.unevaluated_atom.violated_conditionals(_pkg_use_enabled(pkg), \
-						pkg.iuse.is_valid_flag, _pkg_use_enabled(ppkg))
+						pkg.iuse.is_valid_flag, parent_use=_pkg_use_enabled(ppkg))
 
 				if pkg.installed and (violated_atom.use.enabled or violated_atom.use.disabled):
 					#We can't change USE of an installed package (only of an ebuild, but that is already

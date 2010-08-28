@@ -34,7 +34,7 @@ assert_sigpipe_ok() {
 	local x pipestatus=${PIPESTATUS[*]}
 	for x in $pipestatus ; do
 		# Allow SIGPIPE through (128 + 13)
-		[[ $x -ne 0 && $x -ne 141 ]] && die "$@"
+		[[ $x -ne 0 && $x -ne ${PORTAGE_SIGPIPE_STATUS:-141} ]] && die "$@"
 	done
 
 	# Require normal success for the last process (tar).
@@ -561,7 +561,7 @@ save_ebuild_env() {
 		done
 		unset x
 
-		unset -f assert dump_trace die diefunc \
+		unset -f assert assert_sigpipe_ok dump_trace die diefunc \
 			quiet_mode vecho elog_base eqawarn elog \
 			esyslog einfo einfon ewarn eerror ebegin _eend eend KV_major \
 			KV_minor KV_micro KV_to_int get_KV unset_colors set_colors has \
@@ -602,7 +602,8 @@ save_ebuild_env() {
 			PORTAGE_INST_UID PORTAGE_IPC_DAEMON \
 			PORTAGE_LOG_FILE PORTAGE_MASTER_PID \
 			PORTAGE_NONFATAL PORTAGE_QUIET PORTAGE_PYTHON \
-			PORTAGE_REPO_NAME PORTAGE_RESTRICT PORTAGE_UPDATE_ENV \
+			PORTAGE_REPO_NAME PORTAGE_RESTRICT PORTAGE_SIGPIPE_STATUS \
+			PORTAGE_UPDATE_ENV \
 			PORTAGE_USERNAME PORTAGE_VERBOSE PORTAGE_WORKDIR_MODE PORTDIR \
 			PORTDIR_OVERLAY ${!PORTAGE_SANDBOX_*} PREROOTPATH \
 			PROFILE_PATHS PWORKDIR QA_INTERCEPTORS \

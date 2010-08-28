@@ -1,4 +1,4 @@
-.TH "MAKE.CONF" "5" "Aug 2008" "Portage 2.2" "Portage"
+.TH "MAKE.CONF" "5" "Aug 2010" "Portage 2.2" "Portage"
 .SH "NAME"
 make.conf \- custom settings for Portage
 .SH "SYNOPSIS"
@@ -7,12 +7,15 @@ make.conf \- custom settings for Portage
 This file contains various variables that are used by Portage.
 Portage will check the currently\-defined environment variables
 first for any settings.  If no environment settings are found,
-Portage then checks /etc/make.conf.  If no setting is found
-in make.conf, Portage checks make.globals. If no
+Portage then checks the make.conf files. Both /etc/make.conf and
+/etc/portage/make.conf are checked (if present), and settings from
+/etc/portage/make.conf will override settings from /etc/make.conf.
+If no setting is found in the make.conf files, Portage checks
+make.globals. If no
 setting is found there, the profile's default setting is grabbed
 from /etc/make.profile/make.defaults. Please note that all user
-settings should be made in the environment or in /etc/make.conf,
-which is intended to be customized by the user.
+settings should be made in the environment or in the make.conf
+files, which are intended to be customized by the user.
 .br
 Exceptions are incremental variables such as USE, CONFIG_PROTECT*,
 and ACCEPT_KEYWORDS.  Incremental variables are propagated down from
@@ -238,7 +241,8 @@ type. Currently, only \fBgzip\fR(1) compression is supported, so build
 logs will have a '.gz' extension when this feature is enabled.
 .TP
 .B digest
-Autogenerate digests for packages when running the \fBemerge\fR(1) command.  If
+Autogenerate digests for packages when running the
+\fBemerge\fR(1), \fBebuild\fR(1), or \fBrepoman\fR(1) commands. If
 the \fIassume\-digests\fR feature is also enabled then existing SRC_URI digests
 will be reused whenever they are available.
 .TP
