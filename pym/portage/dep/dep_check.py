@@ -74,6 +74,7 @@ def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 						x = str(x) + '[multilib_abi_' + multilib_abis + '?]'
 					try:
 						x = portage.dep.Atom(x)
+						x = x.evaluate_conditionals(myuse)
 					except portage.exception.InvalidAtom:
 						if portage.dep._dep_check_strict:
 							raise portage.exception.ParseError(
