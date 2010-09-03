@@ -44,10 +44,10 @@ install_symlink_html_docs() {
 # replacement for "readlink -f" or "realpath"
 canonicalize() {
 	local f=$1 b n=10 wd=$(pwd)
-	while [[ ${f: -1} = / && ${#f} -gt 1 ]]; do
-		f=${f%/}
-	done
 	while (( n-- > 0 )); do
+		while [[ ${f: -1} = / && ${#f} -gt 1 ]]; do
+			f=${f%/}
+		done
 		b=${f##*/}
 		cd "${f%"${b}"}" 2>/dev/null || break
 		if [[ ! -L ${b} ]]; then
@@ -856,7 +856,7 @@ dyn_package() {
 		PORTAGE_BINPKG_TMPFILE="${PKGDIR}/${CATEGORY}/${PF}.tbz2"
 	mkdir -p "${PORTAGE_BINPKG_TMPFILE%/*}" || die "mkdir failed"
 	tar $tar_options -cf - $PORTAGE_BINPKG_TAR_OPTS -C "${D}" . | \
-		bzip2 -cf > "$PORTAGE_BINPKG_TMPFILE"
+		$PORTAGE_BZIP2_COMMAND -c > "$PORTAGE_BINPKG_TMPFILE"
 	assert "failed to pack binary package: '$PORTAGE_BINPKG_TMPFILE'"
 	PYTHONPATH=${PORTAGE_PYM_PATH}${PYTHONPATH:+:}${PYTHONPATH} \
 		"${PORTAGE_PYTHON:-/usr/bin/python}" "$PORTAGE_BIN_PATH"/xpak-helper.py recompose \
@@ -953,7 +953,10 @@ if [ -n "${MISC_FUNCTIONS_ARGS}" ]; then
 	done
 	unset x
 	[[ -n $PORTAGE_EBUILD_EXIT_FILE ]] && > "$PORTAGE_EBUILD_EXIT_FILE"
-	[[ -n $PORTAGE_IPC_DAEMON ]] && "$PORTAGE_BIN_PATH"/ebuild-ipc exit 0
+	if [[ -n $PORTAGE_IPC_DAEMON ]] ; then
+		[[ ! -s $SANDBOX_LOG ]]
+		"$PORTAGE_BIN_PATH"/ebuild-ipc exit $?
+	fi
 fi
 
 :

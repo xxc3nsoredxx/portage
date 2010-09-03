@@ -5,6 +5,15 @@
 PORTAGE_BIN_PATH="${PORTAGE_BIN_PATH:-/usr/lib/portage/bin}"
 PORTAGE_PYM_PATH="${PORTAGE_PYM_PATH:-/usr/lib/portage/pym}"
 
+if [[ $PORTAGE_SANDBOX_COMPAT_LEVEL -lt 22 ]] ; then
+	# Ensure that /dev/std* streams have appropriate sandbox permission for
+	# bug #288863. This can be removed after sandbox is fixed and portage
+	# depends on the fixed version (sandbox-2.2 has the fix but it is
+	# currently unstable).
+	export SANDBOX_WRITE="${SANDBOX_WRITE:+${SANDBOX_WRITE}:}/dev/stdout:/dev/stderr"
+	export SANDBOX_READ="${SANDBOX_READ:+${SANDBOX_READ}:}/dev/stdin"
+fi
+
 # Don't use sandbox's BASH_ENV for new shells because it does
 # 'source /etc/profile' which can interfere with the build
 # environment by modifying our PATH.
@@ -22,6 +31,12 @@ PREROOTPATH=${PREROOTPATH##:}
 PREROOTPATH=${PREROOTPATH%%:}
 PATH=$PORTAGE_BIN_PATH/ebuild-helpers:$PREROOTPATH${PREROOTPATH:+:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${ROOTPATH:+:}$ROOTPATH
 export PATH
+
+# This is just a temporary workaround for portage-9999 users since
+# earlier portage versions do not detect a version change in this case
+# (9999 to 9999) and therefore they try execute an incompatible version of
+# ebuild.sh during the upgrade.
+export PORTAGE_BZIP2_COMMAND=${PORTAGE_BZIP2_COMMAND:-bzip2} 
 
 # These two functions wrap sourcing and calling respectively.  At present they
 # perform a qa check to make sure eclasses and ebuilds and profiles don't mess
@@ -163,7 +178,7 @@ has_version() {
 	fi
 
 	if [[ -n $PORTAGE_IPC_DAEMON ]] ; then
-		"$PORTAGE_BIN_PATH"/ebuild-ipc has_version "$ROOT" "$1" "$USE"
+		"$PORTAGE_BIN_PATH"/ebuild-ipc has_version "$ROOT" "$1"
 		return $?
 	fi
 
@@ -206,7 +221,7 @@ best_version() {
 	fi
 
 	if [[ -n $PORTAGE_IPC_DAEMON ]] ; then
-		"$PORTAGE_BIN_PATH"/ebuild-ipc best_version "$ROOT" "$1" "$USE"
+		"$PORTAGE_BIN_PATH"/ebuild-ipc best_version "$ROOT" "$1"
 		return $?
 	fi
 
@@ -352,10 +367,10 @@ unpack() {
 
 		_unpack_tar() {
 			if [ "${y}" == "tar" ]; then
-				$1 -dc "$srcdir$x" | tar xof -
+				$1 -c -- "$srcdir$x" | tar xof -
 				assert_sigpipe_ok "$myfail"
 			else
-				$1 -dc "${srcdir}${x}" > ${x%.*} || die "$myfail"
+				$1 -c -- "${srcdir}${x}" > ${x%.*} || die "$myfail"
 			fi
 		}
 
@@ -368,17 +383,17 @@ unpack() {
 				tar xozf "$srcdir$x" || die "$myfail"
 				;;
 			tbz|tbz2)
-				bzip2 -dc "$srcdir$x" | tar xof -
+				${PORTAGE_BUNZIP2_COMMAND:-${PORTAGE_BZIP2_COMMAND} -d} -c -- "$srcdir$x" | tar xof -
 				assert_sigpipe_ok "$myfail"
 				;;
 			ZIP|zip|jar)
 				unzip -qo "${srcdir}${x}" || die "$myfail"
 				;;
 			gz|Z|z)
-				_unpack_tar gzip
+				_unpack_tar "gzip -d"
 				;;
 			bz2|bz)
-				_unpack_tar bzip2
+				_unpack_tar "${PORTAGE_BUNZIP2_COMMAND:-${PORTAGE_BZIP2_COMMAND} -d}"
 				;;
 			7Z|7z)
 				local my_output
@@ -425,13 +440,13 @@ unpack() {
 				fi
 				;;
 			lzma)
-				_unpack_tar lzma
+				_unpack_tar "lzma -d"
 				;;
 			xz)
 				if hasq $eapi 0 1 2 ; then
 					vecho "unpack ${x}: file format not recognized. Ignoring."
 				else
-					_unpack_tar xz
+					_unpack_tar "xz -d"
 				fi
 				;;
 			*)
@@ -1285,7 +1300,7 @@ dyn_install() {
 		--filter-path --filter-sandbox --allow-extra-vars > environment
 	assert "save_ebuild_env failed"
 
-	bzip2 -f9 environment*
+	${PORTAGE_BZIP2_COMMAND} -f9 environment*
 
 	cp "${EBUILD}" "${PF}.ebuild"
 	[ -n "${PORTAGE_REPO_NAME}" ]  && echo "${PORTAGE_REPO_NAME}" > repository
@@ -1871,8 +1886,9 @@ filter_readonly_variables() {
 	local filtered_sandbox_vars="SANDBOX_ACTIVE SANDBOX_BASHRC
 		SANDBOX_DEBUG_LOG SANDBOX_DISABLED SANDBOX_LIB
 		SANDBOX_LOG SANDBOX_ON"
+	local misc_garbage_vars="_portage_filter_opts"
 	filtered_vars="$readonly_bash_vars $bash_misc_vars
-		$READONLY_PORTAGE_VARS"
+		$READONLY_PORTAGE_VARS $misc_garbage_vars"
 
 	# Don't filter/interfere with prefix variables unless they are
 	# supported by the current EAPI.
@@ -1922,17 +1938,17 @@ filter_readonly_variables() {
 # interfering with the current environment. This is useful when an existing
 # environment needs to be loaded from a binary or installed package.
 preprocess_ebuild_env() {
-	local filter_opts=""
+	local _portage_filter_opts=""
 	if [ -f "${T}/environment.raw" ] ; then
 		# This is a signal from the python side, indicating that the
 		# environment may contain stale SANDBOX_{DENY,PREDICT,READ,WRITE}
 		# and FEATURES variables that should be filtered out. Between
 		# phases, these variables are normally preserved.
-		filter_opts+=" --filter-features --filter-locale --filter-path --filter-sandbox"
+		_portage_filter_opts+=" --filter-features --filter-locale --filter-path --filter-sandbox"
 	fi
-	filter_readonly_variables $1 ${filter_opts} < "${T}"/environment \
+	filter_readonly_variables $1 $_portage_filter_opts < "${T}"/environment \
 		> "${T}"/environment.filtered || return $?
-	unset filter_opts
+	unset _portage_filter_opts
 	mv "${T}"/environment.filtered "${T}"/environment || return $?
 	rm -f "${T}/environment.success" || return $?
 	# WARNING: Code inside this subshell should avoid making assumptions
@@ -2149,11 +2165,11 @@ if ! hasq "$EBUILD_PHASE" clean cleanrm ; then
 		if [[ $EBUILD_PHASE != depend ]] ; then
 
 			case "$EAPI" in
-				4|4_pre1)
-					_ebuild_helpers_path="$PORTAGE_BIN_PATH/ebuild-helpers/4:$PORTAGE_BIN_PATH/ebuild-helpers"
+				0|1|2|3)
+					_ebuild_helpers_path="$PORTAGE_BIN_PATH/ebuild-helpers"
 					;;
 				*)
-					_ebuild_helpers_path="$PORTAGE_BIN_PATH/ebuild-helpers"
+					_ebuild_helpers_path="$PORTAGE_BIN_PATH/ebuild-helpers/4:$PORTAGE_BIN_PATH/ebuild-helpers"
 					;;
 			esac
 
@@ -2242,8 +2258,6 @@ ebuild_main() {
 	export EBUILD_MASTER_PID=$BASHPID
 	trap 'exit 1' SIGTERM
 
-	local f x
-
 	if [[ $EBUILD_PHASE != depend ]] ; then
 		# Force configure scripts that automatically detect ccache to
 		# respect FEATURES="-ccache".
@@ -2307,7 +2321,7 @@ ebuild_main() {
 				save_ebuild_env --exclude-init-phases | \
 					filter_readonly_variables --filter-path \
 					--filter-sandbox --allow-extra-vars \
-					| bzip2 -c -f9 > "$PORTAGE_UPDATE_ENV"
+					| ${PORTAGE_BZIP2_COMMAND} -c -f9 > "$PORTAGE_UPDATE_ENV"
 				assert "save_ebuild_env failed"
 			fi
 			if is_auto-multilib ; then
@@ -2339,10 +2353,12 @@ ebuild_main() {
 		case "$EBUILD_SH_ARGS" in
 		configure|compile)
 
+			local x
 			for x in ASFLAGS CCACHE_DIR CCACHE_SIZE \
 				CFLAGS CXXFLAGS LDFLAGS LIBCFLAGS LIBCXXFLAGS ; do
 				[[ ${!x+set} = set ]] && export $x
 			done
+			unset x
 
 			hasq distcc $FEATURES && [[ -n $DISTCC_DIR ]] && \
 				[[ ${SANDBOX_WRITE/$DISTCC_DIR} = $SANDBOX_WRITE ]] && \
@@ -2460,6 +2476,25 @@ ebuild_main() {
 	esac
 }
 
+if [[ -s $SANDBOX_LOG ]] ; then
+	# We use SANDBOX_LOG to check for sandbox violations,
+	# so we ensure that there can't be a stale log to
+	# interfere with our logic.
+	x=
+	if [[ -n SANDBOX_ON ]] ; then
+		x=$SANDBOX_ON
+		export SANDBOX_ON=0
+	fi
+
+	rm -f "$SANDBOX_LOG" || \
+		die "failed to remove stale sandbox log: '$SANDBOX_LOG'"
+
+	if [[ -n $x ]] ; then
+		export SANDBOX_ON=$x
+	fi
+	unset x
+fi
+
 if [[ $EBUILD_PHASE = depend ]] ; then
 	ebuild_main
 elif [[ -n $EBUILD_SH_ARGS ]] ; then
@@ -2479,7 +2514,10 @@ elif [[ -n $EBUILD_SH_ARGS ]] ; then
 			chmod g+w "$T/environment" &>/dev/null
 		fi
 		[[ -n $PORTAGE_EBUILD_EXIT_FILE ]] && > "$PORTAGE_EBUILD_EXIT_FILE"
-		[[ -n $PORTAGE_IPC_DAEMON ]] && "$PORTAGE_BIN_PATH"/ebuild-ipc exit 0
+		if [[ -n $PORTAGE_IPC_DAEMON ]] ; then
+			[[ ! -s $SANDBOX_LOG ]]
+			"$PORTAGE_BIN_PATH"/ebuild-ipc exit $?
+		fi
 		exit 0
 	)
 	exit $?

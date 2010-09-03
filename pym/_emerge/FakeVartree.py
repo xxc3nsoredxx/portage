@@ -15,6 +15,10 @@ if sys.hexversion >= 0x3000000:
 	long = int
 
 class FakeVardbapi(PackageVirtualDbapi):
+	"""
+	Implements the vardbapi.getpath() method which is used in error handling
+	code for the Package class and vartree.get_provide().
+	"""
 	def getpath(self, cpv, filename=None):
 		path = os.path.join(self.settings['EROOT'], VDB_PATH, cpv)
 		if filename is not None:
@@ -47,7 +51,7 @@ class FakeVartree(vartree):
 		self._pkg_cache = pkg_cache
 		self.dbapi = FakeVardbapi(real_vartree.settings)
 
-		# Intialize variables needed for lazy cache pulls of the live ebuild
+		# Initialize variables needed for lazy cache pulls of the live ebuild
 		# metadata.  This ensures that the vardb lock is released ASAP, without
 		# being delayed in case cache generation is triggered.
 		self._aux_get = self.dbapi.aux_get

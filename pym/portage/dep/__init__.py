@@ -1232,6 +1232,12 @@ class ExtendedAtomDict(portage.cache.mappings.MutableMapping):
 		self._normal = {}
 		self._value_class = value_class
 
+	def copy(self):
+		result = self.__class__(self._value_class)
+		result._extended.update(self._extended)
+		result._normal.update(self._normal)
+		return result
+
 	def __iter__(self):
 		for k in self._normal:
 			yield k
@@ -1646,7 +1652,10 @@ def match_from_list(mydep, candidate_list):
 
 	from portage.util import writemsg
 	if "!" == mydep[:1]:
-		mydep = mydep[1:]
+		if "!" == mydep[1:2]:
+			mydep = mydep[2:]
+		else:
+			mydep = mydep[1:]
 	if not isinstance(mydep, Atom):
 		mydep = Atom(mydep, allow_wildcard=True)
 

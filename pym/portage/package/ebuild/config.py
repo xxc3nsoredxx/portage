@@ -27,8 +27,9 @@ from portage import bsd_chflags, \
 from portage.const import CACHE_PATH, \
 	DEPCACHE_PATH, INCREMENTALS, MAKE_CONF_FILE, \
 	MODULES_FILE_PATH, PORTAGE_BIN_PATH, PORTAGE_PYM_PATH, \
-	PRIVATE_PATH, PROFILE_PATH, SUPPORTED_FEATURES, USER_CONFIG_PATH, \
+	PRIVATE_PATH, PROFILE_PATH, USER_CONFIG_PATH, \
 	USER_VIRTUALS_FILE
+from portage.const import _SANDBOX_COMPAT_LEVEL
 from portage.dbapi import dbapi
 from portage.dbapi.porttree import portdbapi
 from portage.dbapi.vartree import vartree
@@ -46,6 +47,7 @@ from portage.util import ensure_dirs, getconfig, grabdict, \
 from portage.versions import catpkgsplit, catsplit, cpv_getkey
 
 from portage.package.ebuild._config import special_env_vars
+from portage.package.ebuild._config.env_var_validation import validate_cmd_var
 from portage.package.ebuild._config.features_set import features_set
 from portage.package.ebuild._config.LicenseManager import LicenseManager
 from portage.package.ebuild._config.UseManager import UseManager
@@ -202,6 +204,11 @@ class config(object):
 		self._accept_properties = None
 		self._features_overrides = []
 
+		# _unknown_features records unknown features that
+		# have triggered warning messages, and ensures that
+		# the same warning isn't shown twice.
+		self._unknown_features = set()
+
 		self.local_config = local_config
 
 		self._local_repo_configs = None
@@ -233,6 +240,9 @@ class config(object):
 			self._p_accept_keywords = clone._p_accept_keywords
 			self._use_manager = clone._use_manager
 			self._mask_manager = clone._mask_manager
+
+			# shared mutable attributes
+			self._unknown_features = clone._unknown_features
 
 			self.modules         = copy.deepcopy(clone.modules)
 			self._penv = copy.deepcopy(clone._penv)
@@ -284,7 +294,7 @@ class config(object):
 			self.profile_path = locations_manager.profile_path
 			self.user_profile_dir = locations_manager.user_profile_dir
 			abs_user_config = locations_manager.abs_user_config
-			
+
 			make_conf = getconfig(
 				os.path.join(config_root, MAKE_CONF_FILE),
 				tolerant=tolerant, allow_sourcing=True) or {}
@@ -436,7 +446,7 @@ class config(object):
 			if self.mygcfg is None:
 				self.mygcfg = {}
 
-			for k, v in self._default_globals:
+			for k, v in self._default_globals.items():
 				self.mygcfg.setdefault(k, v)
 
 			self.configlist.append(self.mygcfg)
@@ -521,6 +531,9 @@ class config(object):
 			self["EROOT"] = eroot
 			self.backup_changes("EROOT")
 
+			self["PORTAGE_SANDBOX_COMPAT_LEVEL"] = _SANDBOX_COMPAT_LEVEL
+			self.backup_changes("PORTAGE_SANDBOX_COMPAT_LEVEL")
+
 			self.pkeywordsdict = portage.dep.ExtendedAtomDict(dict)
 			self._ppropertiesdict = portage.dep.ExtendedAtomDict(dict)
 			self._penvdict = portage.dep.ExtendedAtomDict(dict)
@@ -565,11 +578,7 @@ class config(object):
 
 			self._virtuals_manager = VirtualsManager(self.profiles)
 
-			locations = list(locations_manager.profile_locations)
-
 			if local_config:
-				locations.append(abs_user_config)
-
 				# package.accept_keywords and package.keywords
 				pkgdict = grabdict_package(
 					os.path.join(abs_user_config, "package.keywords"),
@@ -661,13 +670,15 @@ class config(object):
 							_local_repo_config(repo_name, repo_opts)
 
 			#getting categories from an external file now
-			self.categories = [grabfile(os.path.join(x, "categories")) for x in locations]
+			self.categories = [grabfile(os.path.join(x, "categories")) \
+				for x in locations_manager.profile_and_user_locations]
 			category_re = dbapi._category_re
 			self.categories = tuple(sorted(
 				x for x in stack_lists(self.categories, incremental=1)
 				if category_re.match(x) is not None))
 
-			archlist = [grabfile(os.path.join(x, "arch.list")) for x in locations]
+			archlist = [grabfile(os.path.join(x, "arch.list")) \
+				for x in locations_manager.profile_and_user_locations]
 			archlist = stack_lists(archlist, incremental=1)
 			self.configdict["conf"]["PORTAGE_ARCHLIST"] = " ".join(archlist)
 
@@ -769,6 +780,8 @@ class config(object):
 
 			self._iuse_implicit_match = _iuse_implicit_match_cache(self)
 
+			self._validate_commands()
+
 		for k in self._case_insensitive_vars:
 			if k in self:
 				self[k] = self[k].lower()
@@ -776,6 +789,40 @@ class config(object):
 
 		if mycpv:
 			self.setcpv(mycpv)
+
+	def _validate_commands(self):
+		for k in special_env_vars.validate_commands:
+			v = self.get(k)
+			if v is not None:
+				valid, v_split = validate_cmd_var(v)
+
+				if not valid:
+					if v_split:
+						writemsg_level(_("%s setting is invalid: '%s'\n") % \
+							(k, v), level=logging.ERROR, noiselevel=-1)
+
+					# before deleting the invalid setting, backup
+					# the default value if available
+					v = self.configdict['globals'].get(k)
+					if v is not None:
+						default_valid, v_split = validate_cmd_var(v)
+						if not default_valid:
+							if v_split:
+								writemsg_level(
+									_("%s setting from make.globals" + \
+									" is invalid: '%s'\n") % \
+									(k, v), level=logging.ERROR, noiselevel=-1)
+							# make.globals seems corrupt, so try for
+							# a hardcoded default instead
+							v = self._default_globals.get(k)
+
+					# delete all settings for this key,
+					# including the invalid one
+					del self[k]
+					self.backupenv.pop(k, None)
+					if v:
+						# restore validated default
+						self.configdict['globals'][k] = v
 
 	def _init_dirs(self):
 		"""
@@ -807,6 +854,14 @@ class config(object):
 					noiselevel=-1)
 				writemsg("!!! %s\n" % str(e),
 					noiselevel=-1)
+
+	@property
+	def pmaskdict(self):
+		return self._mask_manager._pmaskdict.copy()
+
+	@property
+	def punmaskdict(self):
+		return self._mask_manager._punmaskdict.copy()
 
 	def expandLicenseTokens(self, tokens):
 		""" Take a token from ACCEPT_LICENSE or package.license and expand it
@@ -864,18 +919,6 @@ class config(object):
 			not fakeroot_capable:
 			writemsg(_("!!! FEATURES=fakeroot is enabled, but the "
 				"fakeroot binary is not installed.\n"), noiselevel=-1)
-
-		if 'unknown-features-warn' in self.features:
-			unknown_features = []
-			for x in self.features:
-				if x not in SUPPORTED_FEATURES:
-					unknown_features.append(x)
-
-			if unknown_features:
-				writemsg(colorize("BAD",
-					_("FEATURES variable contains unknown value(s): %s") % \
-					", ".join(unknown_features)) \
-					+ "\n", noiselevel=-1)
 
 	def load_best_module(self,property_string):
 		best_mod = best_from_dict(property_string,self.modules,self.module_priority)
@@ -1118,8 +1161,20 @@ class config(object):
 						pkg_configdict.addLazySingleton(k,
 							mydb.__getitem__, k)
 			else:
+				# When calling dbapi.aux_get(), grab USE for built/installed
+				# packages since we want to save it PORTAGE_BUILT_USE for
+				# evaluating conditional USE deps in atoms passed via IPC to
+				# helpers like has_version and best_version.
+				aux_keys = list(aux_keys)
+				aux_keys.append('USE')
 				for k, v in zip(aux_keys, mydb.aux_get(self.mycpv, aux_keys)):
 					pkg_configdict[k] = v
+				built_use = frozenset(pkg_configdict.pop('USE').split())
+				if not built_use:
+					# Empty USE means this dbapi instance does not contain
+					# built packages.
+					built_use = None
+
 			repository = pkg_configdict.pop("repository", None)
 			if repository is not None:
 				pkg_configdict["PORTAGE_REPO_NAME"] = repository
@@ -1230,6 +1285,9 @@ class config(object):
 			lazy_vars.__getitem__, 'ACCEPT_LICENSE')
 		env_configdict.addLazySingleton('PORTAGE_RESTRICT',
 			lazy_vars.__getitem__, 'PORTAGE_RESTRICT')
+
+		if built_use is not None:
+			pkg_configdict['PORTAGE_BUILT_USE'] = ' '.join(built_use)
 
 		# If reset() has not been called, it's safe to return
 		# early if IUSE has not changed.
@@ -1926,6 +1984,7 @@ class config(object):
 			self.features = features_set(self)
 		self.features._features.update(self.get('FEATURES', '').split())
 		self.features._sync_env_var()
+		self.features._validate()
 
 		myflags.update(self.useforce)
 		arch = self.configdict["defaults"].get("ARCH")
@@ -1934,6 +1993,20 @@ class config(object):
 
 		myflags.difference_update(self.usemask)
 		self.configlist[-1]["USE"]= " ".join(sorted(myflags))
+
+	@property
+	def virts_p(self):
+		warnings.warn("portage config.virts_p attribute " + \
+			"is deprecated, use config.get_virts_p()",
+			DeprecationWarning, stacklevel=2)
+		return self.get_virts_p()
+
+	@property
+	def virtuals(self):
+		warnings.warn("portage config.virtuals attribute " + \
+			"is deprecated, use config.getvirtuals()",
+			DeprecationWarning, stacklevel=2)
+		return self.getvirtuals()
 
 	def get_virts_p(self):
 		return self._virtuals_manager.get_virts_p()
@@ -1944,8 +2017,7 @@ class config(object):
 			#and vartree needs a config instance.
 			#This code should be part of VirtualsManager.getvirtuals().
 			if self.local_config:
-				temp_vartree = vartree(self["ROOT"], None,
-					categories=self.categories, settings=self)
+				temp_vartree = vartree(settings=self)
 				self._virtuals_manager._populate_treeVirtuals(temp_vartree)
 			else:
 				self._virtuals_manager._treeVirtuals = {}

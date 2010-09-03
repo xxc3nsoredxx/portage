@@ -3,7 +3,6 @@
 
 from __future__ import print_function
 
-import codecs
 import gzip
 import logging
 import shutil
@@ -18,7 +17,6 @@ import portage
 from portage import StringIO
 from portage import os
 from portage import _encodings
-from portage import _unicode_decode
 from portage import _unicode_encode
 from portage.cache.mappings import slot_dict_class
 from portage.const import LIBC_PACKAGE_ATOM
@@ -26,8 +24,8 @@ from portage.elog.messages import eerror
 from portage.localization import _
 from portage.output import colorize, create_color_func, red
 bad = create_color_func("BAD")
-from portage.sets import SETPREFIX
-from portage.sets.base import InternalPackageSet
+from portage._sets import SETPREFIX
+from portage._sets.base import InternalPackageSet
 from portage.util import writemsg, writemsg_level
 from portage.package.ebuild.digestcheck import digestcheck
 from portage.package.ebuild.digestgen import digestgen
@@ -200,6 +198,11 @@ class Scheduler(PollScheduler):
 			self.edebug = 1
 		self.pkgsettings = {}
 		self._config_pool = {}
+
+		# TODO: Replace the BlockerDB with a depgraph of installed packages
+		# that's updated incrementally with each upgrade/uninstall operation
+		# This will be useful for making quick and safe decisions with respect
+		# to aggressive parallelization discussed in bug #279623.
 		self._blocker_db = {}
 		for root in trees:
 			self._config_pool[root] = []
@@ -825,9 +828,12 @@ class Scheduler(PollScheduler):
 		if pkg.root == self._running_root.root and \
 			portage.match_from_list(
 			portage.const.PORTAGE_PACKAGE_ATOM, [pkg]):
-			if self._running_portage:
-				return pkg.cpv != self._running_portage.cpv
-			return True
+			if self._running_portage is None:
+				return True
+			elif pkg.cpv != self._running_portage.cpv or \
+				'9999' in pkg.cpv or \
+				'git' in pkg.inherited:
+				return True
 		return False
 
 	def _restart_if_necessary(self, pkg):

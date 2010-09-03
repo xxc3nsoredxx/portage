@@ -12,7 +12,7 @@ from portage.dbapi.porttree import portagetree
 from portage.dbapi.bintree import binarytree
 from portage.dep import Atom
 from portage.package.ebuild.config import config
-from portage.sets import load_default_config
+from portage._sets import load_default_config
 from portage.versions import catsplit
 
 from _emerge.Blocker import Blocker
@@ -333,6 +333,9 @@ class ResolverPlayground(object):
 				return
 
 	def cleanup(self):
+		portdb = self.trees[self.root]["porttree"].dbapi
+		portdb.close_caches()
+		portage.dbapi.porttree.portdbapi.portdbapi_instances.remove(portdb)
 		if self.debug:
 			print("\nEROOT=%s" % self.eroot)
 		else:
