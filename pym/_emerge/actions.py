@@ -410,11 +410,10 @@ def action_build(settings, trees, mtimedb,
 
 		if ("--resume" in myopts):
 			favorites=mtimedb["resume"]["favorites"]
-			mymergelist = mydepgraph.altlist()
-			mydepgraph.break_refs(mymergelist)
 			mergetask = Scheduler(settings, trees, mtimedb, myopts,
-				spinner, mymergelist, favorites, mydepgraph.schedulerGraph())
-			del mydepgraph, mymergelist
+				spinner, favorites=favorites,
+				graph_config=mydepgraph.schedulerGraph())
+			del mydepgraph
 			clear_caches(trees)
 
 			retval = mergetask.merge()
@@ -427,12 +426,11 @@ def action_build(settings, trees, mtimedb,
 				del mtimedb["resume"]
 				mtimedb.commit()
 
-			pkglist = mydepgraph.altlist()
 			mydepgraph.saveNomergeFavorites()
-			mydepgraph.break_refs(pkglist)
 			mergetask = Scheduler(settings, trees, mtimedb, myopts,
-				spinner, pkglist, favorites, mydepgraph.schedulerGraph())
-			del mydepgraph, pkglist
+				spinner, favorites=favorites,
+				graph_config=mydepgraph.schedulerGraph())
+			del mydepgraph
 			clear_caches(trees)
 
 			retval = mergetask.merge()
@@ -1098,21 +1096,20 @@ def calc_depclean(settings, trees, ldpath_mtimes,
 		for node in clean_set:
 			graph.add(node, None)
 			mydeps = []
-			node_use = node.metadata["USE"].split()
 			for dep_type in dep_keys:
 				depstr = node.metadata[dep_type]
 				if not depstr:
 					continue
-				success, atoms = portage.dep_check(depstr, None, settings,
-					myuse=node_use,
-					trees=resolver._dynamic_config._graph_trees,
-					myroot=myroot)
-				if not success:
+				priority = priority_map[dep_type]
+				try:
+					atoms = resolver._select_atoms(myroot, depstr,
+						myuse=node.use.enabled, parent=node,
+						priority=priority)[node]
+				except portage.exception.InvalidDependString:
 					# Ignore invalid deps of packages that will
 					# be uninstalled anyway.
 					continue
 
-				priority = priority_map[dep_type]
 				for atom in atoms:
 					if not isinstance(atom, portage.dep.Atom):
 						# Ignore invalid atoms returned from dep_check().
@@ -1838,9 +1835,13 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 	portdb = trees[settings["ROOT"]]["porttree"].dbapi
 	myportdir = portdb.porttree_root
 	out = portage.output.EOutput()
+	global_config_path = GLOBAL_CONFIG_PATH
+	if settings['EPREFIX']:
+		global_config_path = os.path.join(settings['EPREFIX'],
+				GLOBAL_CONFIG_PATH.lstrip(os.sep))
 	if not myportdir:
 		sys.stderr.write("!!! PORTDIR is undefined.  " + \
-			"Is %s/make.globals missing?\n" % GLOBAL_CONFIG_PATH)
+			"Is %s/make.globals missing?\n" % global_config_path)
 		sys.exit(1)
 	if myportdir[-1]=="/":
 		myportdir=myportdir[:-1]
@@ -1880,7 +1881,7 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 	syncuri = settings.get("SYNC", "").strip()
 	if not syncuri:
 		writemsg_level("!!! SYNC is undefined. " + \
-			"Is %s/make.globals missing?\n" % GLOBAL_CONFIG_PATH,
+			"Is %s/make.globals missing?\n" % global_config_path,
 			noiselevel=-1, level=logging.ERROR)
 		return 1
 
@@ -2457,7 +2458,7 @@ def action_uninstall(settings, trees, ldpath_mtimes,
 	# redirection of ebuild phase output to logs as required for
 	# options such as --quiet.
 	sched = Scheduler(settings, trees, None, opts,
-		spinner, [], [], None)
+		spinner)
 	sched._background = sched._background_mode()
 	sched._status_display.quiet = True
 
@@ -2791,7 +2792,7 @@ def load_emerge_config(trees=None):
 			settings = trees[myroot]["vartree"].settings
 			break
 
-	mtimedbfile = os.path.join(os.path.sep, settings['ROOT'], portage.CACHE_PATH, "mtimedb")
+	mtimedbfile = os.path.join(settings['EROOT'], portage.CACHE_PATH, "mtimedb")
 	mtimedb = portage.MtimeDB(mtimedbfile)
 	portage.output._init(config_root=settings['PORTAGE_CONFIGROOT'])
 	QueryCommand._db = trees
@@ -2814,7 +2815,7 @@ def chk_updated_cfg_files(target_root, config_protect):
 		print(" "+yellow("*")+" man page to learn how to update config files.")
 
 def display_news_notification(root_config, myopts):
-	target_root = root_config.root
+	target_root = root_config.settings['EROOT']
 	trees = root_config.trees
 	settings = trees["vartree"].settings
 	portdb = trees["porttree"].dbapi

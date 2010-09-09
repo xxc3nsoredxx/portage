@@ -891,7 +891,7 @@ class config(object):
 		if not self.profile_path or (not os.path.islink(abs_profile_path) and \
 			not os.path.exists(os.path.join(abs_profile_path, "parent")) and \
 			os.path.exists(os.path.join(self["PORTDIR"], "profiles"))):
-			writemsg(_("\a\n\n!!! %s is not a symlink and will probably prevent most merges.\n") % abs_profile_path,
+			writemsg(_("\n\n!!! %s is not a symlink and will probably prevent most merges.\n") % abs_profile_path,
 				noiselevel=-1)
 			writemsg(_("!!! It should point into a profile within %s/profiles/\n") % self["PORTDIR"])
 			writemsg(_("!!! (You can safely ignore this message when syncing. It's harmless.)\n\n\n"))
@@ -1323,8 +1323,9 @@ class config(object):
 				use.discard("test")
 			else:
 				use.add("test")
-				if ebuild_force_test:
-					self.usemask.discard("test")
+				if ebuild_force_test and "test" in self.usemask:
+					self.usemask = \
+						frozenset(x for x in self.usemask if x != "test")
 
 		# Allow _* flags from USE_EXPAND wildcards to pass through here.
 		use.difference_update([x for x in use \
