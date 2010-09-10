@@ -131,7 +131,7 @@ class EbuildBuild(CompositeTask):
 		self._start_task(pre_clean_phase, self._pre_clean_exit)
 
 	def _pre_clean_exit(self, pre_clean_phase):
-		if self._final_exit(pre_clean_phase) != os.EX_OK:
+		if self._default_exit(pre_clean_phase) != os.EX_OK:
 			self._unlock_builddir()
 			self.wait()
 			return
@@ -150,13 +150,11 @@ class EbuildBuild(CompositeTask):
 
 	def _fetch_exit(self, fetcher):
 
-		portage.elog.elog_process(self.pkg.cpv, self.settings)
-
 		if self._default_exit(fetcher) != os.EX_OK:
-			self._unlock_builddir()
-			self.wait()
+			self._fetch_failed()
 			return
 
+		portage.elog.elog_process(self.pkg.cpv, self.settings)
 		# discard successful fetch log
 		self._build_dir.clean_log()
 		pkg = self.pkg
@@ -194,6 +192,31 @@ class EbuildBuild(CompositeTask):
 		build = EbuildExecuter(background=self.background, pkg=pkg,
 			scheduler=scheduler, settings=settings)
 		self._start_task(build, self._build_exit)
+
+	def _fetch_failed(self):
+		# If RESTRICT=fetch is set, then the nofetch phase
+		# should have been executed already, so don't do
+		# it again.
+		if 'fetch' in self.pkg.metadata.restrict or \
+		'nofetch' not in self.pkg.metadata.defined_phases:
+			self._unlock_builddir()
+			self.wait()
+			return
+
+		# The package has defined a pkg_nofetch phase, even
+		# though RESTRICT=fetch is not set, so go ahead and
+		# run it. This allows specialized messages to be
+		# displayed for problematic packages (bug #336499).
+		self.returncode = None
+		nofetch_phase = EbuildPhase(background=self.background,
+			phase='nofetch', scheduler=self.scheduler, settings=self.settings)
+		self._start_task(nofetch_phase, self._nofetch_exit)
+
+	def _nofetch_exit(self, nofetch_phase):
+		self._final_exit(nofetch_phase)
+		self._unlock_builddir()
+		self.returncode = 1
+		self.wait()
 
 	def _unlock_builddir(self):
 		portage.elog.elog_process(self.pkg.cpv, self.settings)

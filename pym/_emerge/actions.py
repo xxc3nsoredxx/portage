@@ -35,6 +35,7 @@ from portage.output import blue, bold, colorize, create_color_func, darkgreen, \
 good = create_color_func("GOOD")
 bad = create_color_func("BAD")
 from portage.package.ebuild._ipc.QueryCommand import QueryCommand
+from portage.package.ebuild.doebuild import _check_temp_dir
 from portage._sets import load_default_config, SETPREFIX
 from portage._sets.base import InternalPackageSet
 from portage.util import cmp_sort_key, writemsg, \
@@ -71,6 +72,10 @@ def action_build(settings, trees, mtimedb,
 
 	if '--usepkgonly' not in myopts:
 		old_tree_timestamp_warn(settings['PORTDIR'], settings)
+
+	# It's best for config updates in /etc/portage to be processed
+	# before we get here, so warn if they're not (bug #267103).
+	chk_updated_cfg_files(settings['EROOT'], ['/etc/portage'])
 
 	# validate the state of the resume data
 	# so that we can make assumptions later.
@@ -1854,6 +1859,12 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 		os.makedirs(myportdir,0o755)
 		st = os.stat(myportdir)
 
+	# PORTAGE_TMPDIR is used below, so validate it and
+	# bail out if necessary.
+	rval = _check_temp_dir(settings)
+	if rval != os.EX_OK:
+		return rval
+
 	usersync_uid = None
 	spawn_kwargs = {}
 	spawn_kwargs["env"] = settings.environ()
@@ -2116,8 +2127,13 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 			# --timeout option does not prevent.
 			if True:
 				# Temporary file for remote server timestamp comparison.
-				from tempfile import mkstemp
-				fd, tmpservertimestampfile = mkstemp()
+				# NOTE: If FEATURES=usersync is enabled then the tempfile
+				# needs to be in a directory that's readable by the usersync
+				# user. We assume that PORTAGE_TMPDIR will satisfy this
+				# requirement, since that's not necessarily true for the
+				# default directory used by the tempfile module.
+				fd, tmpservertimestampfile = \
+					tempfile.mkstemp(dir=settings['PORTAGE_TMPDIR'])
 				os.close(fd)
 				if usersync_uid is not None:
 					portage.util.apply_permissions(tmpservertimestampfile,
@@ -2314,7 +2330,7 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 		action_metadata(settings, portdb, myopts, porttrees=[myportdir])
 
 	if myopts.get('--package-moves') != 'n' and \
-		_global_updates(trees, mtimedb["updates"]):
+		_global_updates(trees, mtimedb["updates"], quiet=("--quiet" in myopts)):
 		mtimedb.commit()
 		# Reload the whole config from scratch.
 		settings, trees, mtimedb = load_emerge_config(trees=trees)
@@ -2328,7 +2344,7 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 		trees[settings["ROOT"]]["vartree"].dbapi.match(
 		portage.const.PORTAGE_PACKAGE_ATOM))
 
-	chk_updated_cfg_files("/",
+	chk_updated_cfg_files(settings["EROOT"],
 		portage.util.shlex_split(settings.get("CONFIG_PROTECT", "")))
 
 	if myaction != "metadata":
@@ -2798,7 +2814,8 @@ def load_emerge_config(trees=None):
 	QueryCommand._db = trees
 	return settings, trees, mtimedb
 
-def chk_updated_cfg_files(target_root, config_protect):
+def chk_updated_cfg_files(eroot, config_protect):
+	target_root = eroot
 	result = list(
 		portage.util.find_updated_config_files(target_root, config_protect))
 
