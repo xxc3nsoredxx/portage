@@ -25,6 +25,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.package.ebuild.digestcheck:digestcheck',
 	'portage.package.ebuild.digestgen:digestgen',
 	'portage.package.ebuild.fetch:fetch',
+	'portage.package.ebuild._spawn_nofetch:spawn_nofetch',
 	'portage.util.ExtractKernelVersion:ExtractKernelVersion'
 )
 
@@ -614,8 +615,7 @@ def doebuild(myebuild, mydo, myroot, mysettings, debug=0, listonly=0,
 		# when pkg_nofetch is spawned.
 		have_build_dirs = False
 		if not parallel_fetchonly and \
-			mydo not in ('digest', 'help', 'manifest') and \
-			not (mydo == 'fetch' and 'fetch' not in restrict):
+			mydo not in ('digest', 'fetch', 'help', 'manifest'):
 			mystatus = prepare_build_dirs(myroot, mysettings, cleanup)
 			if mystatus:
 				return mystatus
@@ -696,6 +696,7 @@ def doebuild(myebuild, mydo, myroot, mysettings, debug=0, listonly=0,
 					fetchme = alist
 				if not fetch(fetchme, mysettings, listonly=listonly,
 					fetchonly=fetchonly):
+					spawn_nofetch(mydbapi, myebuild, settings=mysettings)
 					return 1
 
 		else:
