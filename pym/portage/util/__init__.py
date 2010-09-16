@@ -231,14 +231,18 @@ def stack_dicts(dicts, incremental=0, incrementals=[], ignore_none=0):
 				final_dict[k]  = v
 	return final_dict
 
-def stack_lists(lists, incremental=1, remember_source_file=False, warn_for_unmatched_removal=False):
+def stack_lists(lists, incremental=1, remember_source_file=False,
+	warn_for_unmatched_removal=False, strict_warn_for_unmatched_removal=False):
 	"""Stacks an array of list-types into one array. Optionally removing
 	distinct values using '-value' notation. Higher index is preferenced.
 
 	all elements must be hashable."""
+	matched_removals = set()
+	unmatched_removals = {}
 	new_list = {}
 	for sub_list in lists:
 		for token in sub_list:
+			token_key = token
 			if remember_source_file:
 				token, source_file = token
 			else:
@@ -254,13 +258,26 @@ def stack_lists(lists, incremental=1, remember_source_file=False, warn_for_unmat
 					try:
 						new_list.pop(token[1:])
 					except KeyError:
-						if warn_for_unmatched_removal:
-							writemsg(_("--- Unmatch removal atom in %s: %s\n") % (source_file, token),
-								noiselevel=-1)
+						if source_file and \
+							(strict_warn_for_unmatched_removal or \
+							token_key not in matched_removals):
+							unmatched_removals.setdefault(source_file, set()).add(token)
+					else:
+						matched_removals.add(token_key)
 				else:
 					new_list[token] = source_file
 			else:
 				new_list[token] = source_file
+
+	if warn_for_unmatched_removal:
+		for source_file, tokens in unmatched_removals.items():
+			if len(tokens) > 3:
+				selected = [tokens.pop(), tokens.pop(), tokens.pop()]
+				writemsg(_("--- Unmatch removal atoms in %s: %s and %s more\n") % (source_file, ", ".join(selected), len(tokens)-3),
+					noiselevel=-1)
+			else:
+				writemsg(_("--- Unmatch removal atom(s) in %s: %s\n") % (source_file, ", ".join(tokens)),
+					noiselevel=-1)
 
 	if remember_source_file:
 		return list(new_list.items())
@@ -331,7 +348,7 @@ def read_corresponding_eapi_file(filename):
 
 	return eapi
 
-def grabdict_package(myfilename, juststrings=0, recursive=0, allow_wildcard=False, verify_eapi=False):
+def grabdict_package(myfilename, juststrings=0, recursive=0, allow_wildcard=False, allow_repo=False, verify_eapi=False):
 	""" Does the same thing as grabdict except it validates keys
 	    with isvalidatom()"""
 	pkgs=grabdict(myfilename, juststrings, empty=1, recursive=recursive)
@@ -345,7 +362,7 @@ def grabdict_package(myfilename, juststrings=0, recursive=0, allow_wildcard=Fals
 	atoms = {}
 	for k, v in pkgs.items():
 		try:
-			k = Atom(k, allow_wildcard=allow_wildcard, eapi=eapi)
+			k = Atom(k, allow_wildcard=allow_wildcard, allow_repo=allow_repo, eapi=eapi)
 		except InvalidAtom as e:
 			writemsg(_("--- Invalid atom in %s: %s\n") % (myfilename, e),
 				noiselevel=-1)
@@ -353,7 +370,7 @@ def grabdict_package(myfilename, juststrings=0, recursive=0, allow_wildcard=Fals
 			atoms[k] = v
 	return atoms
 
-def grabfile_package(myfilename, compatlevel=0, recursive=0, allow_wildcard=False, \
+def grabfile_package(myfilename, compatlevel=0, recursive=0, allow_wildcard=False, allow_repo=False, \
 	remember_source_file=False, verify_eapi=False):
 
 	pkgs=grabfile(myfilename, compatlevel, recursive=recursive, remember_source_file=True)
@@ -370,7 +387,7 @@ def grabfile_package(myfilename, compatlevel=0, recursive=0, allow_wildcard=Fals
 		if pkg[:1] == '*' and mybasename == 'packages':
 			pkg = pkg[1:]
 		try:
-			pkg = Atom(pkg, allow_wildcard=allow_wildcard, eapi=eapi)
+			pkg = Atom(pkg, allow_wildcard=allow_wildcard, allow_repo=allow_repo, eapi=eapi)
 		except InvalidAtom as e:
 			writemsg(_("--- Invalid atom in %s: %s\n") % (myfilename, e),
 				noiselevel=-1)
