@@ -12,6 +12,7 @@ from portage.dbapi.porttree import portagetree
 from portage.dbapi.bintree import binarytree
 from portage.dep import Atom, _repo_separator
 from portage.package.ebuild.config import config
+from portage.package.ebuild.digestgen import digestgen
 from portage._sets import load_default_config
 from portage.versions import catsplit
 
@@ -53,7 +54,7 @@ class ResolverPlayground(object):
 			portage.util.noiselimit = -2
 
 		self.repo_dirs = {}
-		#Make sure the main repo is alaways created
+		#Make sure the main repo is always created
 		self._get_repo_dir("test_repo")
 
 		self._create_ebuilds(ebuilds)
@@ -139,6 +140,8 @@ class ResolverPlayground(object):
 			f.close()
 
 	def _create_ebuild_manifests(self, ebuilds):
+		tmpsettings = config(clone=self.settings)
+		tmpsettings['PORTAGE_QUIET'] = '1'
 		for cpv in ebuilds:
 			a = Atom("=" + cpv, allow_repo=True)
 			repo = a.repo
@@ -149,12 +152,10 @@ class ResolverPlayground(object):
 			ebuild_dir = os.path.join(repo_dir, a.cp)
 			ebuild_path = os.path.join(ebuild_dir, a.cpv.split("/")[1] + ".ebuild")
 
-			portage.util.noiselimit = -1
-			tmpsettings = config(clone=self.settings)
 			portdb = self.trees[self.root]["porttree"].dbapi
-			portage.doebuild(ebuild_path, "digest", self.root, tmpsettings,
-				tree="porttree", mydbapi=portdb)
-			portage.util.noiselimit = 0
+			tmpsettings['O'] = ebuild_dir
+			if not digestgen(mysettings=tmpsettings, myportdb=portdb):
+				raise AssertionError('digest creation failed for %s' % ebuild_path)
 
 	def _create_installed(self, installed):
 		for cpv in installed:
@@ -522,7 +523,7 @@ class ResolverPlaygroundTestCase(object):
 class ResolverPlaygroundResult(object):
 
 	checks = (
-		"success", "mergelist", "use_changes", "unstable_keywords", "slot_collision_solutions",
+		"success", "mergelist", "use_changes", "license_changes", "unstable_keywords", "slot_collision_solutions",
 		"circular_dependency_solutions",
 		)
 	optional_checks = (
@@ -535,6 +536,7 @@ class ResolverPlaygroundResult(object):
 		self.favorites = favorites
 		self.mergelist = None
 		self.use_changes = None
+		self.license_changes = None
 		self.unstable_keywords = None
 		self.slot_collision_solutions = None
 		self.circular_dependency_solutions = None
@@ -561,6 +563,11 @@ class ResolverPlaygroundResult(object):
 			self.unstable_keywords = set()
 			for pkg in self.depgraph._dynamic_config._needed_unstable_keywords:
 				self.unstable_keywords.add(pkg.cpv)
+
+		if self.depgraph._dynamic_config._needed_license_changes:
+			self.license_changes = {}
+			for pkg, missing_licenses in self.depgraph._dynamic_config._needed_license_changes.items():
+				self.license_changes[pkg.cpv] = missing_licenses
 
 		if self.depgraph._dynamic_config._slot_conflict_handler is not None:
 			self.slot_collision_solutions  = []

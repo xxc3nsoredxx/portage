@@ -1374,7 +1374,8 @@ class dblink(object):
 		obj_index = contents_re.groupindex['obj']
 		dir_index = contents_re.groupindex['dir']
 		sym_index = contents_re.groupindex['sym']
-		myroot = self._eroot
+		# CONTENTS files already contain EPREFIX
+		myroot = self.settings['ROOT']
 		if myroot == os.path.sep:
 			myroot = None
 		pos = 0
@@ -1812,6 +1813,9 @@ class dblink(object):
 			unmerge_desc["!obj"] = _("!obj")
 			unmerge_desc["!sym"] = _("!sym")
 
+			real_root = self.settings['ROOT']
+			real_root_len = len(real_root) - 1
+
 			for i, objkey in enumerate(mykeys):
 
 				if scheduler is not None and \
@@ -1852,8 +1856,9 @@ class dblink(object):
 				if lstatobj is None:
 						show_unmerge("---", unmerge_desc["!found"], file_type, obj)
 						continue
-				if obj.startswith(dest_root):
-					relative_path = obj[dest_root_len:]
+				# don't use EROOT, CONTENTS entries already contain EPREFIX
+				if obj.startswith(real_root):
+					relative_path = obj[real_root_len:]
 					is_owned = False
 					for dblnk in others_in_slot:
 						if dblnk.isowner(relative_path):
@@ -2043,7 +2048,8 @@ class dblink(object):
 				"self.settings['EROOT'] will be used.",
 				DeprecationWarning, stacklevel=2)
 
-		destroot = self._eroot
+		# don't use EROOT here, image already contains EPREFIX
+		destroot = self.settings['ROOT']
 
 		# The given filename argument might have a different encoding than the
 		# the filenames contained in the contents, so use separate wrapped os
@@ -2539,7 +2545,7 @@ class dblink(object):
 			scheduler = self._scheduler
 			stopmerge = False
 			collisions = []
-			destroot = self._eroot
+			destroot = self.settings['ROOT']
 			showMessage(_(" %s checking %d files for package collisions\n") % \
 				(colorize("GOOD", "*"), len(mycontents)))
 			for i, f in enumerate(mycontents):
@@ -2787,7 +2793,7 @@ class dblink(object):
 
 		srcroot = _unicode_decode(srcroot,
 			encoding=_encodings['content'], errors='strict')
-		destroot = self._eroot
+		destroot = self.settings['ROOT']
 		inforoot = _unicode_decode(inforoot,
 			encoding=_encodings['content'], errors='strict')
 		myebuild = _unicode_decode(myebuild,

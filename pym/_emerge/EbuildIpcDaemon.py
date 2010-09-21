@@ -3,9 +3,7 @@
 
 import errno
 import pickle
-from portage import os
 from _emerge.FifoIpcDaemon import FifoIpcDaemon
-from _emerge.PollConstants import PollConstants
 
 class EbuildIpcDaemon(FifoIpcDaemon):
 	"""
@@ -36,8 +34,11 @@ class EbuildIpcDaemon(FifoIpcDaemon):
 
 			try:
 				obj = pickle.loads(buf.tostring())
-			except (EnvironmentError, EOFError, ValueError,
-				pickle.UnpicklingError):
+			except SystemExit:
+				raise
+			except Exception:
+				# The pickle module can raise practically
+				# any exception when given corrupt data.
 				pass
 			else:
 				cmd_key = obj[0]
@@ -64,15 +65,12 @@ class EbuildIpcDaemon(FifoIpcDaemon):
 					reply_hook()
 
 	def _send_reply(self, reply):
-		output_fd = os.open(self.output_fifo, os.O_WRONLY|os.O_NONBLOCK)
-
 		# File streams are in unbuffered mode since we do atomic
 		# read and write of whole pickles.
-		output_file = os.fdopen(output_fd, 'wb', 0)
+		output_file = open(self.output_fifo, 'wb', 0)
 
 		# Write the whole pickle in a single atomic write() call,
 		# since the reader is in non-blocking mode and we want
 		# it to get the whole pickle at once.
 		output_file.write(pickle.dumps(reply))
-		output_file.flush()
 		output_file.close()
