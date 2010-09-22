@@ -928,13 +928,7 @@ docompress() {
 	hasq "${EAPI}" 0 1 2 3 && die "'docompress' not supported in this EAPI"
 
 	local f g
-	if [[ $1 = "-s" ]]; then
-		if [[ $# -ne 1 ]]; then
-			helpers_die "${FUNCNAME[0]}: -s takes no additional arguments"
-			return 1
-		fi
-		ecompress --suffix
-	elif [[ $1 = "-x" ]]; then
+	if [[ $1 = "-x" ]]; then
 		shift
 		for f; do
 			f=$(strip_duplicate_slashes "${f}"); f=${f%/}
@@ -1755,6 +1749,16 @@ _ebuild_phase_funcs() {
 				done
 
 				eval "default() { _eapi2_$phase_func \"\$@\" ; }"
+
+				case $eapi in
+					2|3)
+						;;
+					*)
+						eval "default_src_install() { _eapi4_src_install \"\$@\" ; }"
+						[[ $phase_func = src_install ]] && \
+							eval "default() { _eapi4_$phase_func \"\$@\" ; }"
+						;;
+				esac
 
 			else
 
