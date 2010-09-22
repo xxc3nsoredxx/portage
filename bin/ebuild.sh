@@ -1949,7 +1949,7 @@ filter_readonly_variables() {
 		"
 	fi
 	if hasq --filter-metadata $* ; then
-		filtered_vars+=" ${READONLY_EBUILD_METADATA} filter_opts"
+		filtered_vars+=" ${PORTAGE_READONLY_METADATA} filter_opts"
 	fi
 
 	"${PORTAGE_PYTHON:-/usr/bin/python}" "${PORTAGE_BIN_PATH}"/filter-bash-environment.py "${filtered_vars}" || die "filter-bash-environment.py failed"
