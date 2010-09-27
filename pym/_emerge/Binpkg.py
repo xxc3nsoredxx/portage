@@ -40,7 +40,7 @@ class Binpkg(CompositeTask):
 		self._verify = not self.opts.pretend
 
 		# Use realpath like doebuild_environment() does, since we assert
-		# that this is path is literally identical to PORTAGE_BUILDDIR.
+		# that this path is literally identical to PORTAGE_BUILDDIR.
 		dir_path = os.path.join(os.path.realpath(settings["PORTAGE_TMPDIR"]),
 			"portage", pkg.category, pkg.pf)
 		self._image_dir = os.path.join(dir_path, "image")
@@ -318,5 +318,13 @@ class Binpkg(CompositeTask):
 		finally:
 			settings.pop("PORTAGE_BINPKG_FILE", None)
 			self._unlock_builddir()
+
+		if retval == os.EX_OK and \
+			'binpkg-logs' not in self.settings.features and \
+			self.settings.get("PORTAGE_LOG_FILE"):
+			try:
+				os.unlink(self.settings["PORTAGE_LOG_FILE"])
+			except OSError:
+				pass
 		return retval
 
