@@ -566,7 +566,7 @@ def action_depclean(settings, trees, ldpath_mtimes,
 	root_config = trees[settings['ROOT']]['root_config']
 	vardb = root_config.trees['vartree'].dbapi
 
-	args_set = InternalPackageSet()
+	args_set = InternalPackageSet(allow_repo=True)
 	if myfiles:
 		args_set.update(myfiles)
 		matched_packages = False
@@ -1228,7 +1228,8 @@ def action_deselect(settings, trees, opts, atoms):
 				else:
 					if not atom.startswith(SETPREFIX) and \
 						arg_atom.intersects(atom) and \
-						not (arg_atom.slot and not atom.slot):
+						not (arg_atom.slot and not atom.slot) and \
+						not (arg_atom.repo and not atom.repo):
 						discard_atoms.add(atom)
 						break
 		if discard_atoms:
@@ -1894,12 +1895,6 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 		os.makedirs(myportdir,0o755)
 		st = os.stat(myportdir)
 
-	# PORTAGE_TMPDIR is used below, so validate it and
-	# bail out if necessary.
-	rval = _check_temp_dir(settings)
-	if rval != os.EX_OK:
-		return rval
-
 	usersync_uid = None
 	spawn_kwargs = {}
 	spawn_kwargs["env"] = settings.environ()
@@ -1923,6 +1918,13 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 			if not st.st_mode & 0o020:
 				umask = umask | 0o020
 			spawn_kwargs["umask"] = umask
+
+	if usersync_uid is not None:
+		# PORTAGE_TMPDIR is used below, so validate it and
+		# bail out if necessary.
+		rval = _check_temp_dir(settings)
+		if rval != os.EX_OK:
+			return rval
 
 	syncuri = settings.get("SYNC", "").strip()
 	if not syncuri:
@@ -2126,6 +2128,10 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 		# reverse, for use with pop()
 		ips.reverse()
 
+		effective_maxretries = maxretries
+		if effective_maxretries < 0:
+			effective_maxretries = len(ips) - 1
+
 		SERVER_OUT_OF_DATE = -1
 		EXCEEDED_MAX_RETRIES = -2
 		while (1):
@@ -2153,8 +2159,10 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 			else:
 				emergelog(xterm_titles,
 					">>> Starting retry %d of %d with %s" % \
-						(retries,maxretries,dosyncuri))
-				print("\n\n>>> Starting retry %d of %d with %s" % (retries,maxretries,dosyncuri))
+						(retries, effective_maxretries, dosyncuri))
+				writemsg_stdout(
+					"\n\n>>> Starting retry %d of %d with %s\n" % \
+					(retries, effective_maxretries, dosyncuri), noiselevel=-1)
 
 			if mytimestamp != 0 and "--quiet" not in myopts:
 				print(">>> Checking server timestamp ...")
@@ -2178,8 +2186,13 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 				# user. We assume that PORTAGE_TMPDIR will satisfy this
 				# requirement, since that's not necessarily true for the
 				# default directory used by the tempfile module.
+				if usersync_uid is not None:
+					tmpdir = settings['PORTAGE_TMPDIR']
+				else:
+					# use default dir from tempfile module
+					tmpdir = None
 				fd, tmpservertimestampfile = \
-					tempfile.mkstemp(dir=settings['PORTAGE_TMPDIR'])
+					tempfile.mkstemp(dir=tmpdir)
 				os.close(fd)
 				if usersync_uid is not None:
 					portage.util.apply_permissions(tmpservertimestampfile,
@@ -2428,7 +2441,7 @@ def action_uninstall(settings, trees, ldpath_mtimes,
 	# Ensure atoms are valid before calling unmerge().
 	# For backward compat, leading '=' is not required.
 	for x in files:
-		if is_valid_package_atom(x) or \
+		if is_valid_package_atom(x, allow_repo=True) or \
 			(ignore_missing_eq and is_valid_package_atom('=' + x)):
 
 			try:

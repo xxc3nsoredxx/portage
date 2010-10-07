@@ -375,7 +375,7 @@ class RepoConfigLoader(object):
 
 			if repo.eclass_overrides:
 				for other_repo_name in repo.eclass_overrides:
-					if other_repo_name in self.prepos:
+					if other_repo_name in self.treemap:
 						eclass_locations.append(self.get_location_for_name(other_repo_name))
 					else:
 						writemsg_level(_("Unavailable repository '%s' " \
@@ -460,6 +460,7 @@ class RepoConfigLoader(object):
 def load_repository_config(settings):
 	#~ repoconfigpaths = [os.path.join(settings.global_config_path, "repos.conf")]
 	repoconfigpaths = []
-	repoconfigpaths.append(os.path.join(settings["PORTAGE_CONFIGROOT"],
-		USER_CONFIG_PATH, "repos.conf"))
+	if settings.local_config:
+		repoconfigpaths.append(os.path.join(settings["PORTAGE_CONFIGROOT"],
+			USER_CONFIG_PATH, "repos.conf"))
 	return RepoConfigLoader(repoconfigpaths, settings)
