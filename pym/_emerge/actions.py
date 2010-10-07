@@ -11,6 +11,7 @@ import errno
 import logging
 import platform
 import pwd
+import random
 import re
 import shutil
 import signal
@@ -675,7 +676,8 @@ def calc_depclean(settings, trees, ldpath_mtimes,
 			# by an argument atom since we don't want to clean any
 			# package if something depends on it.
 			for pkg in vardb:
-				spinner.update()
+				if spinner:
+					spinner.update()
 
 				try:
 					if args_set.findAtomForPackage(pkg) is None:
@@ -740,6 +742,23 @@ def calc_depclean(settings, trees, ldpath_mtimes,
 				del e
 				protected_set.add("=" + pkg.cpv)
 				continue
+
+	if resolver._frozen_config.excluded_pkgs:
+		excluded_set = resolver._frozen_config.excluded_pkgs
+		required_sets['__excluded__'] = InternalPackageSet()
+
+		for pkg in vardb:
+			if spinner:
+				spinner.update()
+
+			try:
+				if excluded_set.findAtomForPackage(pkg):
+					required_sets['__excluded__'].add("=" + pkg.cpv)
+			except portage.exception.InvalidDependString as e:
+				show_invalid_depstring_notice(pkg,
+					pkg.metadata["PROVIDE"], str(e))
+				del e
+				required_sets['__excluded__'].add("=" + pkg.cpv)
 
 	success = resolver._complete_graph(required_sets={myroot:required_sets})
 	writemsg_level("\b\b... done!\n")
@@ -1337,6 +1356,15 @@ def action_info(settings, trees, myopts, myfiles):
 
 	libtool_vers = ",".join(trees["/"]["vartree"].dbapi.match("sys-devel/libtool"))
 
+	repos = portdb.settings.repositories
+	if "--verbose" in myopts:
+		writemsg_stdout("Repositories:\n\n")
+		for repo in repos:
+			writemsg_stdout(repo.info_string())
+	else:
+		writemsg_stdout("Repositories: %s\n" % \
+			" ".join(repo.name for repo in repos))
+
 	if "--verbose" in myopts:
 		myvars = list(settings)
 	else:
@@ -1545,7 +1573,7 @@ def action_info(settings, trees, myopts, myfiles):
 			if pkg_type == "installed":
 				ebuildpath = vardb.findname(pkg.cpv)
 			elif pkg_type == "ebuild":
-				ebuildpath = portdb.findname(pkg.cpv)
+				ebuildpath = portdb.findname(pkg.cpv, myrepo=pkg.repo)
 			elif pkg_type == "binary":
 				tbz2_file = bindb.bintree.getname(pkg.cpv)
 				ebuild_file_name = pkg.cpv.split("/")[1] + ".ebuild"
@@ -1810,7 +1838,6 @@ def action_regen(settings, portdb, max_jobs, max_load):
 	xterm_titles = "notitles" not in settings.features
 	emergelog(xterm_titles, " === regen")
 	#regenerate cache entries
-	portage.writemsg_stdout("Regenerating cache entries...\n")
 	try:
 		os.close(sys.stdin.fileno())
 	except SystemExit as e:
@@ -2046,7 +2073,7 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 		except SystemExit as e:
 			raise # Needed else can't exit
 		except:
-			maxretries=3 #default number of retries
+			maxretries = -1 #default number of retries
 
 		retries=0
 		user_name, hostname, port = re.split(
@@ -2060,45 +2087,56 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 		extra_rsync_opts = portage.util.shlex_split(
 			settings.get("PORTAGE_RSYNC_EXTRA_OPTS",""))
 		all_rsync_opts.update(extra_rsync_opts)
-		family = socket.AF_INET
+
+		family = socket.AF_UNSPEC
 		if "-4" in all_rsync_opts or "--ipv4" in all_rsync_opts:
 			family = socket.AF_INET
 		elif socket.has_ipv6 and \
 			("-6" in all_rsync_opts or "--ipv6" in all_rsync_opts):
 			family = socket.AF_INET6
-		ips=[]
+
+		ips_v4 = []
+		ips_v6 = []
+
+		try:
+			addrinfos = socket.getaddrinfo(hostname, None,
+				family, socket.SOCK_STREAM)
+		except socket.error as e:
+			writemsg("!!! getaddrinfo failed: %s\n" % (e,), noiselevel=-1)
+			return 1
+
+		for addrinfo in addrinfos:
+			if socket.has_ipv6 and addrinfo[0] == socket.AF_INET6:
+				# IPv6 addresses need to be enclosed in square brackets
+				ips_v6.append("[%s]" % addrinfo[4][0])
+			else:
+				ips_v4.append(addrinfo[4][0])
+
+		random.shuffle(ips_v4)
+		random.shuffle(ips_v6)
+
+		# Give priority to the address family that
+		# getaddrinfo() returned first.
+		if socket.has_ipv6 and addrinfos and \
+			addrinfos[0][0] == socket.AF_INET6:
+			ips = ips_v6 + ips_v4
+		else:
+			ips = ips_v4 + ips_v6
+
+		# reverse, for use with pop()
+		ips.reverse()
+
 		SERVER_OUT_OF_DATE = -1
 		EXCEEDED_MAX_RETRIES = -2
 		while (1):
 			if ips:
-				del ips[0]
-			if ips==[]:
-				try:
-					for addrinfo in socket.getaddrinfo(
-						hostname, None, family, socket.SOCK_STREAM):
-						if socket.has_ipv6 and addrinfo[0] == socket.AF_INET6:
-							# IPv6 addresses need to be enclosed in square brackets
-							ips.append("[%s]" % addrinfo[4][0])
-						else:
-							ips.append(addrinfo[4][0])
-					from random import shuffle
-					shuffle(ips)
-				except SystemExit as e:
-					raise # Needed else can't exit
-				except Exception as e:
-					print("Notice:",str(e))
-					dosyncuri=syncuri
-
-			if ips:
-				try:
-					dosyncuri = syncuri.replace(
-						"//" + user_name + hostname + port + "/",
-						"//" + user_name + ips[0] + port + "/", 1)
-				except SystemExit as e:
-					raise # Needed else can't exit
-				except Exception as e:
-					print("Notice:",str(e))
-					dosyncuri=syncuri
+				dosyncuri = syncuri.replace(
+					"//" + user_name + hostname + port + "/",
+					"//" + user_name + ips.pop() + port + "/", 1)
+			else:
+				writemsg("!!! Exhausted addresses for %s\n" % \
+					hostname, noiselevel=-1)
+				return 1
 
 			if (retries==0):
 				if "--ask" in myopts:
@@ -2242,9 +2280,8 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 
 			retries=retries+1
 
-			if retries<=maxretries:
+			if maxretries < 0 or retries <= maxretries:
 				print(">>> Retrying...")
-				time.sleep(11)
 			else:
 				# over retries
 				# exit loop

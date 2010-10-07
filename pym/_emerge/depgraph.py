@@ -15,7 +15,7 @@ from portage import os
 from portage import _unicode_decode
 from portage.const import PORTAGE_PACKAGE_ATOM
 from portage.dbapi import dbapi
-from portage.dep import Atom, extract_affecting_use, check_required_use, human_readable_required_use
+from portage.dep import Atom, extract_affecting_use, check_required_use, human_readable_required_use, _repo_separator
 from portage.eapi import eapi_has_strong_blocks, eapi_has_required_use
 from portage.exception import InvalidAtom
 from portage.output import colorize, create_color_func, \
@@ -120,10 +120,10 @@ class _depgraph_sets(object):
 		# contains all sets added to the graph
 		self.sets = {}
 		# contains non-set atoms given as arguments
-		self.sets['__non_set_args__'] = InternalPackageSet()
+		self.sets['__non_set_args__'] = InternalPackageSet(allow_repo=True)
 		# contains all atoms from all sets added to the graph, including
 		# atoms given as arguments
-		self.atoms = InternalPackageSet()
+		self.atoms = InternalPackageSet(allow_repo=True)
 		self.atom_arg_map = {}
 
 class _dynamic_depgraph_config(object):
@@ -308,8 +308,7 @@ class depgraph(object):
 		for myroot in self._frozen_config.trees:
 
 			preload_installed_pkgs = \
-				"--nodeps" not in self._frozen_config.myopts and \
-				"--buildpkgonly" not in self._frozen_config.myopts
+				"--nodeps" not in self._frozen_config.myopts
 
 			fake_vartree = self._frozen_config.trees[myroot]["vartree"]
 			if not fake_vartree.dbapi:
@@ -875,18 +874,70 @@ class depgraph(object):
 						self._process_slot_conflicts()
 
 						backtrack_data = []
+						fallback_data = []
 						all_parents = set()
-						for node, other_node in (existing_node, pkg), (pkg, existing_node):
+						# The ordering of backtrack_data can make
+						# a difference here, because both mask actions may lead
+						# to valid, but different, solutions and the one with
+						# 'existing_node' masked is usually the better one. Because
+						# of that, we choose an order such that
+						# the backtracker will first explore the choice with
+						# existing_node masked. The backtracker reverses the
+						# order, so the order it uses is the reverse of the
+						# order shown here. See bug #339606.
+						for to_be_selected, to_be_masked in (existing_node, pkg), (pkg, existing_node):
+							# For missed update messages, find out which
+							# atoms matched to_be_selected that did not
+							# match to_be_masked.
 							parent_atoms = \
-								self._dynamic_config._parent_atoms.get(node, set())
+								self._dynamic_config._parent_atoms.get(to_be_selected, set())
 							if parent_atoms:
 								conflict_atoms = self._dynamic_config._slot_conflict_parent_atoms.intersection(parent_atoms)
 								if conflict_atoms:
 									parent_atoms = conflict_atoms
+
 							all_parents.update(parent_atoms)
-							if node < other_node:
+
+							all_match = True
+							for ppkg, atom in parent_atoms:
+								i = InternalPackageSet(initial_atoms=(atom,))
+								if not i.findAtomForPackage(to_be_masked):
+									all_match = False
+									break
+
+							if to_be_selected >= to_be_masked:
+								# We only care about the parent atoms
+								# when they trigger a downgrade.
 								parent_atoms = set()
-							backtrack_data.append((node, parent_atoms))
+
+							fallback_data.append((to_be_masked, parent_atoms))
+
+							if all_match:
+								# 'to_be_masked' does not violate any parent atom, which means
+								# there is no point in masking it.
+								pass
+							else:
+								backtrack_data.append((to_be_masked, parent_atoms))
+
+						if not backtrack_data:
+							# This shouldn't happen, but fall back to the old
+							# behavior if this gets triggered somehow.
+							backtrack_data = fallback_data
+
+						if len(backtrack_data) > 1:
+							# NOTE: Generally, we prefer to mask the higher
+							# version since this solves common cases in which a
+							# lower version is needed so that all dependencies
+							# will be satisfied (bug #337178). However, if
+							# existing_node happens to be installed then we
+							# mask that since this is a common case that is
+							# triggered when --update is not enabled.
+							if existing_node.installed:
+								pass
+							elif pkg > existing_node:
+								backtrack_data.reverse()
+
+						to_be_masked = backtrack_data[-1][0]
 
 						self._dynamic_config._backtrack_infos["slot conflict"] = backtrack_data
 						self._dynamic_config._need_restart = True
@@ -895,12 +946,14 @@ class depgraph(object):
 							msg.append("")
 							msg.append("")
 							msg.append("backtracking due to slot conflict:")
+							if backtrack_data is fallback_data:
+								msg.append("!!! backtrack_data fallback")
 							msg.append("   first package:  %s" % existing_node)
 							msg.append("   second package: %s" % pkg)
+							msg.append("  package to mask: %s" % to_be_masked)
 							msg.append("      slot: %s" % pkg.slot_atom)
-							msg.append("   parents: %s" % \
-								[(str(parent), atom) \
-								for parent, atom in all_parents])
+							msg.append("   parents: %s" % ", ".join( \
+								"(%s, '%s')" % (ppkg, atom) for ppkg, atom in all_parents))
 							msg.append("")
 							writemsg_level("".join("%s\n" % l for l in msg),
 								noiselevel=-1, level=logging.DEBUG)
@@ -1148,7 +1201,7 @@ class depgraph(object):
 					mykey, noiselevel=-1)
 			elif mytype == "ebuild":
 				portdb = self._frozen_config.roots[myroot].trees["porttree"].dbapi
-				myebuild, mylocation = portdb.findname2(mykey)
+				myebuild, mylocation = portdb.findname2(mykey, myrepo = pkg.repo)
 				portage.writemsg("!!! This ebuild cannot be installed: " + \
 					"'%s'\n" % myebuild, noiselevel=-1)
 			portage.writemsg("!!! Please notify the package maintainer " + \
@@ -1430,7 +1483,7 @@ class depgraph(object):
 		deps = []
 		for cat in categories:
 			deps.append(Atom(insert_category_into_atom(
-				atom_without_category, cat)))
+				atom_without_category, cat), allow_repo=True))
 		return deps
 
 	def _have_new_virt(self, root, atom_cp):
@@ -1548,7 +1601,8 @@ class depgraph(object):
 					raise portage.exception.PackageNotFound(
 						"%s is not in a valid portage tree hierarchy or does not exist" % x)
 				pkg = self._pkg(mykey, "ebuild", root_config,
-					onlydeps=onlydeps)
+					onlydeps=onlydeps, myrepo=portdb.getRepositoryName(
+					os.path.dirname(os.path.dirname(os.path.dirname(ebuild_path)))))
 				args.append(PackageArg(arg=x, package=pkg,
 					root_config=root_config))
 			elif x.startswith(os.path.sep):
@@ -1573,7 +1627,7 @@ class depgraph(object):
 					args.append(SetArg(arg=x, pset=pset,
 						root_config=root_config))
 					continue
-				if not is_valid_package_atom(x):
+				if not is_valid_package_atom(x, allow_repo=True):
 					portage.writemsg("\n\n!!! '%s' is not a valid package atom.\n" % x,
 						noiselevel=-1)
 					portage.writemsg("!!! Please check ebuild(5) for full details.\n")
@@ -1587,7 +1641,7 @@ class depgraph(object):
 				#   2) It takes away freedom from the resolver to choose other
 				#      possible expansions when necessary.
 				if "/" in x:
-					args.append(AtomArg(arg=x, atom=Atom(x),
+					args.append(AtomArg(arg=x, atom=Atom(x, allow_repo=True),
 						root_config=root_config))
 					continue
 				expanded_atoms = self._dep_expand(root_config, x)
@@ -1915,7 +1969,7 @@ class depgraph(object):
 		for root in self._dynamic_config.sets:
 			depgraph_sets = self._dynamic_config.sets[root]
 			depgraph_sets.sets.setdefault('__non_set_args__',
-				InternalPackageSet()).clear()
+				InternalPackageSet(allow_repo=True)).clear()
 			depgraph_sets.atoms.clear()
 			depgraph_sets.atom_arg_map.clear()
 			set_atoms[root] = []
@@ -2118,10 +2172,13 @@ class depgraph(object):
 		a matching package has been masked by backtracking.
 		"""
 		backtrack_mask = False
-		atom_set = InternalPackageSet(initial_atoms=(atom,))
+		atom_set = InternalPackageSet(initial_atoms=(atom.without_use,),
+			allow_repo=True)
 		xinfo = '"%s"' % atom.unevaluated_atom
 		if arg:
 			xinfo='"%s"' % arg
+		if isinstance(myparent, AtomArg):
+			xinfo = _unicode_decode('"%s"') % (myparent,)
 		# Discard null/ from failed cpv_expand category expansion.
 		xinfo = xinfo.replace("null/", "")
 		masked_packages = []
@@ -2138,55 +2195,63 @@ class depgraph(object):
 				continue
 			match = db.match
 			if hasattr(db, "xmatch"):
-				cpv_list = db.xmatch("match-all", atom.without_use)
+				cpv_list = db.xmatch("match-all-cpv-only", atom.without_use)
 			else:
 				cpv_list = db.match(atom.without_use)
+
+			if atom.repo is None and hasattr(db, "getRepositories"):
+				repo_list = db.getRepositories()
+			else:
+				repo_list = [atom.repo]
+
 			# descending order
 			cpv_list.reverse()
 			for cpv in cpv_list:
-				metadata, mreasons  = get_mask_info(root_config, cpv, pkgsettings, db, \
-					pkg_type, built, installed, db_keys, _pkg_use_enabled=self._pkg_use_enabled)
+				for repo in repo_list:
+					if not db.cpv_exists(cpv, myrepo=repo):
+						continue
 
-				if metadata is not None:
-					pkg = self._pkg(cpv, pkg_type, root_config,
-						installed=installed)
-					# pkg.metadata contains calculated USE for ebuilds,
-					# required later for getMissingLicenses.
-					metadata = pkg.metadata
-					if pkg.cp != atom.cp:
-						# A cpv can be returned from dbapi.match() as an
-						# old-style virtual match even in cases when the
-						# package does not actually PROVIDE the virtual.
-						# Filter out any such false matches here.
-						if not atom_set.findAtomForPackage(pkg, modified_use=self._pkg_use_enabled(pkg)):
+					metadata, mreasons  = get_mask_info(root_config, cpv, pkgsettings, db, pkg_type, \
+						built, installed, db_keys, myrepo=repo, _pkg_use_enabled=self._pkg_use_enabled)
+
+					if metadata is not None:
+						if not repo:
+							repo = metadata.get('repository')
+						pkg = self._pkg(cpv, pkg_type, root_config,
+							installed=installed, myrepo=repo)
+						if not atom_set.findAtomForPackage(pkg,
+							modified_use=self._pkg_use_enabled(pkg)):
 							continue
-					if pkg in self._dynamic_config._runtime_pkg_mask:
-						backtrack_reasons = \
-							self._dynamic_config._runtime_pkg_mask[pkg]
-						mreasons.append('backtracking: %s' % \
-							', '.join(sorted(backtrack_reasons)))
-						backtrack_mask = True
-					if not mreasons and self._frozen_config.excluded_pkgs.findAtomForPackage(pkg, \
-						modified_use=self._pkg_use_enabled(pkg)):
-						mreasons = ["exclude option"]
-					if mreasons:
-						masked_pkg_instances.add(pkg)
-					if atom.unevaluated_atom.use:
-						try:
-							if not pkg.iuse.is_valid_flag(atom.unevaluated_atom.use.required) \
-								or atom.violated_conditionals(self._pkg_use_enabled(pkg), pkg.iuse.is_valid_flag).use:
-								missing_use.append(pkg)
-								if not mreasons:
-									continue
-						except InvalidAtom:
-							writemsg("violated_conditionals raised " + \
-								"InvalidAtom: '%s' parent: %s" % \
-								(atom, myparent), noiselevel=-1)
-							raise
-					if pkg.built and not mreasons:
-						mreasons = ["use flag configuration mismatch"]
-				masked_packages.append(
-					(root_config, pkgsettings, cpv, metadata, mreasons))
+						# pkg.metadata contains calculated USE for ebuilds,
+						# required later for getMissingLicenses.
+						metadata = pkg.metadata
+						if pkg in self._dynamic_config._runtime_pkg_mask:
+							backtrack_reasons = \
+								self._dynamic_config._runtime_pkg_mask[pkg]
+							mreasons.append('backtracking: %s' % \
+								', '.join(sorted(backtrack_reasons)))
+							backtrack_mask = True
+						if not mreasons and self._frozen_config.excluded_pkgs.findAtomForPackage(pkg, \
+							modified_use=self._pkg_use_enabled(pkg)):
+							mreasons = ["exclude option"]
+						if mreasons:
+							masked_pkg_instances.add(pkg)
+						if atom.unevaluated_atom.use:
+							try:
+								if not pkg.iuse.is_valid_flag(atom.unevaluated_atom.use.required) \
+									or atom.violated_conditionals(self._pkg_use_enabled(pkg), pkg.iuse.is_valid_flag).use:
+									missing_use.append(pkg)
+									if not mreasons:
+										continue
+							except InvalidAtom:
+								writemsg("violated_conditionals raised " + \
+									"InvalidAtom: '%s' parent: %s" % \
+									(atom, myparent), noiselevel=-1)
+								raise
+						if pkg.built and not mreasons:
+							mreasons = ["use flag configuration mismatch"]
+					masked_packages.append(
+						(root_config, pkgsettings, cpv, repo, metadata, mreasons))
 
 		if check_backtrack:
 			if backtrack_mask:
@@ -2365,6 +2430,12 @@ class depgraph(object):
 		# Show parent nodes and the argument that pulled them in.
 		traversed_nodes = set()
 		node = myparent
+		if isinstance(myparent, AtomArg):
+			# It's redundant to show parent for AtomArg since
+			# it's the same as 'xinfo' displayed above.
+			node = None
+		else:
+			node = myparent
 		msg = []
 		while node is not None:
 			traversed_nodes.add(node)
@@ -2398,8 +2469,9 @@ class depgraph(object):
 				else:
 					selected_parent = parent
 			node = selected_parent
-		writemsg_stdout("\n".join(msg), noiselevel=-1)
-		writemsg_stdout("\n", noiselevel=-1)
+		if msg:
+			writemsg_stdout("\n".join(msg), noiselevel=-1)
+			writemsg_stdout("\n", noiselevel=-1)
 
 		if mask_docs:
 			show_mask_docs()
@@ -2423,7 +2495,14 @@ class depgraph(object):
 		db = root_config.trees[self.pkg_tree_map[pkg_type]].dbapi
 
 		if hasattr(db, "xmatch"):
-			cpv_list = db.xmatch("match-all", atom)
+			# For portdbapi we match only against the cpv, in order
+			# to bypass unecessary cache access for things like IUSE
+			# and SLOT. Later, we cache the metadata in a Package
+			# instance, and use that for further matching. This
+			# optimization is especially relevant since
+			# pordbapi.aux_get() does not cache calls that have
+			# myrepo or mytree arguments.
+			cpv_list = db.xmatch("match-all-cpv-only", atom)
 		else:
 			cpv_list = db.match(atom)
 
@@ -2450,38 +2529,48 @@ class depgraph(object):
 				if not slot_available:
 					continue
 				inst_pkg = self._pkg(cpv, "installed",
-					root_config, installed=installed)
+					root_config, installed=installed, myrepo = atom.repo)
 				# Remove the slot from the atom and verify that
 				# the package matches the resulting atom.
-				atom_without_slot = portage.dep.remove_slot(atom)
-				if atom.use:
-					atom_without_slot += str(atom.use)
-				atom_without_slot = portage.dep.Atom(atom_without_slot)
 				if portage.match_from_list(
-					atom_without_slot, [inst_pkg]):
-					cpv_list = [inst_pkg.cpv]
-				break
+					atom.without_slot, [inst_pkg]):
+					yield inst_pkg
+					return
 
 		if cpv_list:
+			atom_set = InternalPackageSet(initial_atoms=(atom,),
+				allow_repo=True)
+			if atom.repo is None and hasattr(db, "getRepositories"):
+				repo_list = db.getRepositories()
+			else:
+				repo_list = [atom.repo]
 
 			# descending order
 			cpv_list.reverse()
 			for cpv in cpv_list:
-				try:
-					pkg = self._pkg(cpv, pkg_type, root_config,
-						installed=installed, onlydeps=onlydeps)
-				except portage.exception.PackageNotFound:
-					pass
-				else:
-					if pkg.cp != atom.cp:
+				for repo in repo_list:
+
+					try:
+						pkg = self._pkg(cpv, pkg_type, root_config,
+							installed=installed, onlydeps=onlydeps, myrepo=repo)
+					except portage.exception.PackageNotFound:
+						pass
+					else:
 						# A cpv can be returned from dbapi.match() as an
 						# old-style virtual match even in cases when the
 						# package does not actually PROVIDE the virtual.
 						# Filter out any such false matches here.
-						if not InternalPackageSet(initial_atoms=(atom,)
-							).findAtomForPackage(pkg, modified_use=self._pkg_use_enabled(pkg)):
+
+						# Make sure that cpv from the current repo satisfies the atom.
+						# This might not be the case if there are several repos with
+						# the same cpv, but different metadata keys, like SLOT.
+						# Also, for portdbapi, parts of the match that require
+						# metadata access are deferred until we have cached the
+						# metadata in a Package instance.
+						if not atom_set.findAtomForPackage(pkg,
+							modified_use=self._pkg_use_enabled(pkg)):
 							continue
-					yield pkg
+						yield pkg
 
 	def _select_pkg_highest_available(self, root, atom, onlydeps=False):
 		cache_key = (root, atom, onlydeps)
@@ -2722,7 +2811,7 @@ class depgraph(object):
 		if not isinstance(atom, portage.dep.Atom):
 			atom = portage.dep.Atom(atom)
 		atom_cp = atom.cp
-		atom_set = InternalPackageSet(initial_atoms=(atom,))
+		atom_set = InternalPackageSet(initial_atoms=(atom,), allow_repo=True)
 		existing_node = None
 		myeb = None
 		rebuilt_binaries = 'rebuilt_binaries' in self._dynamic_config.myparams
@@ -2843,7 +2932,7 @@ class depgraph(object):
 								else:
 									try:
 										pkg_eb = self._pkg(
-											pkg.cpv, "ebuild", root_config)
+											pkg.cpv, "ebuild", root_config, myrepo=pkg.repo)
 									except portage.exception.PackageNotFound:
 										continue
 									else:
@@ -3235,13 +3324,25 @@ class depgraph(object):
 		return 1
 
 	def _pkg(self, cpv, type_name, root_config, installed=False, 
-		onlydeps=False):
+		onlydeps=False, myrepo = None):
 		"""
 		Get a package instance from the cache, or create a new
 		one if necessary. Raises PackageNotFound from aux_get if it
 		failures for some reason (package does not exist or is
 		corrupt).
 		"""
+		if type_name != "ebuild":
+			# For installed (and binary) packages we don't care for the repo
+			# when it comes to hashing, because there can only be one cpv.
+			# So overwrite the repo_key with type_name.
+			repo_key = type_name
+			myrepo = None
+		elif myrepo is None:
+			raise AssertionError(
+				"depgraph._pkg() called without 'myrepo' argument")
+		else:
+			repo_key = myrepo
+
 		operation = "merge"
 		if installed or onlydeps:
 			operation = "nomerge"
@@ -3249,24 +3350,27 @@ class depgraph(object):
 		# that refers to FakeVartree instead of the real vartree.
 		root_config = self._frozen_config.roots[root_config.root]
 		pkg = self._frozen_config._pkg_cache.get(
-			(type_name, root_config.root, cpv, operation))
+			(type_name, root_config.root, cpv, operation, repo_key))
 		if pkg is None and onlydeps and not installed:
 			# Maybe it already got pulled in as a "merge" node.
 			pkg = self._dynamic_config.mydbapi[root_config.root].get(
-				(type_name, root_config.root, cpv, 'merge'))
+				(type_name, root_config.root, cpv, 'merge', repo_key))
 
 		if pkg is None:
 			tree_type = self.pkg_tree_map[type_name]
 			db = root_config.trees[tree_type].dbapi
 			db_keys = list(self._frozen_config._trees_orig[root_config.root][
 				tree_type].dbapi._aux_cache_keys)
+
 			try:
-				metadata = zip(db_keys, db.aux_get(cpv, db_keys))
+				metadata = zip(db_keys, db.aux_get(cpv, db_keys, myrepo=myrepo))
 			except KeyError:
 				raise portage.exception.PackageNotFound(cpv)
+
 			pkg = Package(built=(type_name != "ebuild"), cpv=cpv,
 				installed=installed, metadata=metadata, onlydeps=onlydeps,
 				root_config=root_config, type_name=type_name)
+
 			self._frozen_config._pkg_cache[pkg] = pkg
 
 			if not self._pkg_visibility_check(pkg) and \
@@ -3680,16 +3784,16 @@ class depgraph(object):
 		graph = self._dynamic_config._scheduler_graph
 		trees = self._frozen_config.trees
 		pruned_pkg_cache = {}
-		for pkg in pkg_cache:
+		for key, pkg in pkg_cache.items():
 			if pkg in graph or \
 				(pkg.installed and pkg in trees[pkg.root]['vartree'].dbapi):
-				pruned_pkg_cache[pkg] = pkg
+				pruned_pkg_cache[key] = pkg
 
 		for root in trees:
 			trees[root]['vartree']._pkg_cache = pruned_pkg_cache
 			self.break_refs(trees[root]['vartree'].dbapi)
 
-		self.break_refs(pruned_pkg_cache)
+		self.break_refs(pruned_pkg_cache.values())
 		sched_config = \
 			_scheduler_graph_config(trees, pruned_pkg_cache, graph, mergelist)
 
@@ -3739,11 +3843,26 @@ class depgraph(object):
 				and node.operation == 'merge'], scheduler_graph)
 
 		mygraph=self._dynamic_config.digraph.copy()
+
+		removed_nodes = set()
+
+		# Prune off all DependencyArg instances since they aren't
+		# needed, and because of nested sets this is faster than doing
+		# it with multiple digraph.root_nodes() calls below. This also
+		# takes care of nested sets that have circular references,
+		# which wouldn't be matched by digraph.root_nodes().
+		for node in mygraph:
+			if isinstance(node, DependencyArg):
+				removed_nodes.add(node)
+		if removed_nodes:
+			mygraph.difference_update(removed_nodes)
+			removed_nodes.clear()
+
 		# Prune "nomerge" root nodes if nothing depends on them, since
 		# otherwise they slow down merge order calculation. Don't remove
 		# non-root nodes since they help optimize merge order in some cases
 		# such as revdep-rebuild.
-		removed_nodes = set()
+
 		while True:
 			for node in mygraph.root_nodes():
 				if not isinstance(node, Package) or \
@@ -4297,13 +4416,17 @@ class depgraph(object):
 					uninst_task = node
 				else:
 					vardb = self._frozen_config.trees[node.root]["vartree"].dbapi
-					previous_cpv = vardb.match(node.slot_atom)
-					if previous_cpv:
+					inst_pkg = vardb.match_pkgs(node.slot_atom)
+					if inst_pkg:
 						# The package will be replaced by this one, so remove
 						# the corresponding Uninstall task if necessary.
-						previous_cpv = previous_cpv[0]
-						uninst_task = \
-							("installed", node.root, previous_cpv, "uninstall")
+						inst_pkg = inst_pkg[0]
+						uninst_task = Package(built=inst_pkg.built,
+							cpv=inst_pkg.cpv, installed=inst_pkg.installed,
+							metadata=inst_pkg.metadata,
+							operation="uninstall",
+							root_config=inst_pkg.root_config,
+							type_name=inst_pkg.type_name)
 						try:
 							mygraph.remove(uninst_task)
 						except KeyError:
@@ -4811,7 +4934,7 @@ class depgraph(object):
 			pkgsettings = self._frozen_config.pkgsettings[pkg.root]
 			mreasons = get_masking_status(pkg, pkgsettings, root_config, use=self._pkg_use_enabled(pkg))
 			masked_packages.append((root_config, pkgsettings,
-				pkg.cpv, pkg.metadata, mreasons))
+				pkg.cpv, pkg.repo, pkg.metadata, mreasons))
 		if masked_packages:
 			writemsg("\n" + colorize("BAD", "!!!") + \
 				" The following updates are masked by LICENSE changes:\n",
@@ -4826,7 +4949,7 @@ class depgraph(object):
 			pkgsettings = self._frozen_config.pkgsettings[pkg.root]
 			mreasons = get_masking_status(pkg, pkgsettings, root_config, use=self._pkg_use_enabled)
 			masked_packages.append((root_config, pkgsettings,
-				pkg.cpv, pkg.metadata, mreasons))
+				pkg.cpv, "installed", pkg.metadata, mreasons))
 		if masked_packages:
 			writemsg("\n" + colorize("BAD", "!!!") + \
 				" The following installed packages are masked:\n",
@@ -4858,7 +4981,11 @@ class depgraph(object):
 		portdb = self._frozen_config.trees[self._frozen_config.target_root]["porttree"].dbapi
 		added_favorites = set()
 		for x in self._dynamic_config._set_nodes:
-			pkg_type, root, pkg_key, pkg_status = x
+			pkg_type = x.type_name
+			root = x.root
+			pkg_key = x.cpv
+			pkg_status = x.operation
+			pkg_repo = x.repo
 			if pkg_status != "nomerge":
 				continue
 
@@ -4913,6 +5040,14 @@ class depgraph(object):
 		if not isinstance(mergelist, list):
 			mergelist = []
 
+		favorites = resume_data.get("favorites")
+		args_set = self._dynamic_config.sets[
+			self._frozen_config.target_root].sets['__non_set_args__']
+		if isinstance(favorites, list):
+			args = self._load_favorites(favorites)
+		else:
+			args = []
+
 		fakedb = self._dynamic_config.mydbapi
 		trees = self._frozen_config.trees
 		serialized_tasks = []
@@ -4926,14 +5061,38 @@ class depgraph(object):
 			if action != "merge":
 				continue
 			root_config = self._frozen_config.roots[myroot]
+
+			# Use the resume "favorites" list to see if a repo was specified
+			# for this package.
+			depgraph_sets = self._dynamic_config.sets[root_config.root]
+			repo = None
+			for atom in depgraph_sets.atoms.getAtoms():
+				if atom.repo and portage.dep.match_from_list(atom, [pkg_key]):
+					repo = atom.repo
+					break
+
+			atom = "=" + pkg_key
+			if repo:
+				atom = atom + _repo_separator + repo
+
 			try:
-				pkg = self._pkg(pkg_key, pkg_type, root_config)
-			except portage.exception.PackageNotFound:
+				atom = Atom(atom, allow_repo=True)
+			except InvalidAtom:
+				continue
+
+			pkg = None
+			for pkg in self._iter_match_pkgs(root_config, pkg_type, atom):
+				if not self._pkg_visibility_check(pkg) or \
+					self._frozen_config.excluded_pkgs.findAtomForPackage(pkg,
+						modified_use=self._pkg_use_enabled(pkg)):
+					continue
+
+			if pkg is None:
 				# It does no exist or it is corrupt.
 				if skip_missing:
 					# TODO: log these somewhere
 					continue
-				raise
+				raise portage.exception.PackageNotFound(pkg_key)
 
 			if "merge" == pkg.operation and \
 				self._frozen_config.excluded_pkgs.findAtomForPackage(pkg, \
@@ -4973,14 +5132,6 @@ class depgraph(object):
 			# be cancelled. In order for this type of situation to be
 			# recognized, deep traversal of dependencies is required.
 			self._dynamic_config.myparams["deep"] = True
-
-			favorites = resume_data.get("favorites")
-			args_set = self._dynamic_config.sets[
-				self._frozen_config.target_root].sets['__non_set_args__']
-			if isinstance(favorites, list):
-				args = self._load_favorites(favorites)
-			else:
-				args = []
 
 			for task in serialized_tasks:
 				if isinstance(task, Package) and \
@@ -5081,7 +5232,7 @@ class depgraph(object):
 					root_config=root_config))
 			else:
 				try:
-					x = Atom(x)
+					x = Atom(x, allow_repo=True)
 				except portage.exception.InvalidAtom:
 					continue
 				args.append(AtomArg(arg=x, atom=x,
@@ -5487,11 +5638,11 @@ def _resume_depgraph(settings, trees, mtimedb, myopts, myparams, spinner):
 	return (success, mydepgraph, dropped_tasks)
 
 def get_mask_info(root_config, cpv, pkgsettings,
-	db, pkg_type, built, installed, db_keys, _pkg_use_enabled=None):
+	db, pkg_type, built, installed, db_keys, myrepo = None, _pkg_use_enabled=None):
 	eapi_masked = False
 	try:
 		metadata = dict(zip(db_keys,
-			db.aux_get(cpv, db_keys)))
+			db.aux_get(cpv, db_keys, myrepo=myrepo)))
 	except KeyError:
 		metadata = None
 
@@ -5511,7 +5662,8 @@ def get_mask_info(root_config, cpv, pkgsettings,
 			if _pkg_use_enabled is not None:
 				modified_use = _pkg_use_enabled(pkg)
 
-			mreasons = get_masking_status(pkg, pkgsettings, root_config, use=modified_use)
+			mreasons = get_masking_status(pkg, pkgsettings, root_config, myrepo=myrepo, use=modified_use)
+
 	return metadata, mreasons
 
 def show_masked_packages(masked_packages):
@@ -5521,11 +5673,14 @@ def show_masked_packages(masked_packages):
 	# show one of them to avoid redundant appearance.
 	shown_cpvs = set()
 	have_eapi_mask = False
-	for (root_config, pkgsettings, cpv,
+	for (root_config, pkgsettings, cpv, repo,
 		metadata, mreasons) in masked_packages:
-		if cpv in shown_cpvs:
+		output_cpv = cpv
+		if repo:
+			output_cpv += _repo_separator + repo
+		if output_cpv in shown_cpvs:
 			continue
-		shown_cpvs.add(cpv)
+		shown_cpvs.add(output_cpv)
 		comment, filename = None, None
 		if "package.mask" in mreasons:
 			comment, filename = \
@@ -5547,7 +5702,7 @@ def show_masked_packages(masked_packages):
 				# above via mreasons.
 				pass
 
-		writemsg_stdout("- "+cpv+" (masked by: "+", ".join(mreasons)+")\n", noiselevel=-1)
+		writemsg_stdout("- "+output_cpv+" (masked by: "+", ".join(mreasons)+")\n", noiselevel=-1)
 
 		if comment and comment not in shown_comments:
 			writemsg_stdout(filename + ":\n" + comment + "\n",
@@ -5573,15 +5728,14 @@ def show_blocker_docs_link():
 	writemsg("section of the Gentoo Linux x86 Handbook (architecture is irrelevant):\n\n", noiselevel=-1)
 	writemsg("http://www.gentoo.org/doc/en/handbook/handbook-x86.xml?full=1#blocked\n\n", noiselevel=-1)
 
-def get_masking_status(pkg, pkgsettings, root_config, use=None):
+def get_masking_status(pkg, pkgsettings, root_config, myrepo=None, use=None):
 	return [mreason.message for \
-		mreason in _get_masking_status(pkg, pkgsettings, root_config, use=use)]
+		mreason in _get_masking_status(pkg, pkgsettings, root_config, myrepo=myrepo, use=use)]
 
-def _get_masking_status(pkg, pkgsettings, root_config, use=None):
-
+def _get_masking_status(pkg, pkgsettings, root_config, myrepo=None, use=None):
 	mreasons = _getmaskingstatus(
 		pkg, settings=pkgsettings,
-		portdb=root_config.trees["porttree"].dbapi)
+		portdb=root_config.trees["porttree"].dbapi, myrepo=myrepo)
 
 	if not pkg.installed:
 		if not pkgsettings._accept_chost(pkg.cpv, pkg.metadata):

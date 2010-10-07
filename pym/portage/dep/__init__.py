@@ -1112,6 +1112,20 @@ class Atom(_atom_base):
 					_("Strong blocks are not allowed in EAPI %s: '%s'") \
 						% (eapi, self), category='EAPI.incompatible')
 
+	@property
+	def without_repo(self):
+		if self.repo is None:
+			return self
+		return Atom(self.replace(_repo_separator + self.repo, '', 1),
+			allow_wildcard=True)
+
+	@property
+	def without_slot(self):
+		if self.slot is None:
+			return self
+		return Atom(self.replace(_slot_separator + self.slot, '', 1),
+			allow_repo=True, allow_wildcard=True)
+
 	def __setattr__(self, name, value):
 		raise AttributeError("Atom instances are immutable",
 			self.__class__, name, value)
@@ -1503,7 +1517,7 @@ _slot_re = re.compile('^' + _slot + '$', re.VERBOSE)
 _use = r'\[.*\]'
 _op = r'([=~]|[><]=?)'
 _repo_separator = "::"
-_repo_name = r'[\w+][\w+.-]*'
+_repo_name = r'[\w][\w-]*'
 _repo = r'(?:' + _repo_separator + '(' + _repo_name + ')' + ')?'
 
 _atom_re = re.compile('^(?P<without_use>(?:' +

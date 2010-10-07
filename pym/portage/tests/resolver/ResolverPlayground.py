@@ -14,6 +14,7 @@ from portage.dep import Atom, _repo_separator
 from portage.package.ebuild.config import config
 from portage.package.ebuild.digestgen import digestgen
 from portage._sets import load_default_config
+from portage._sets.base import InternalPackageSet
 from portage.versions import catsplit
 
 import _emerge
@@ -296,7 +297,7 @@ class ResolverPlayground(object):
 
 		repos_conf_file = os.path.join(user_config_dir, "repos.conf")		
 		f = open(repos_conf_file, "w")
-		priority = 1
+		priority = 999
 		for repo in sorted(self.repo_dirs.keys()):
 			f.write("[%s]\n" % repo)
 			f.write("LOCATION=%s\n" % self.repo_dirs[repo])
@@ -304,7 +305,7 @@ class ResolverPlayground(object):
 				f.write("PRIORITY=%s\n" % 1000)
 			else:
 				f.write("PRIORITY=%s\n" % priority)
-				priority += 1
+				priority -= 1
 		f.close()
 
 		for config_file, lines in user_config.items():
@@ -373,9 +374,16 @@ class ResolverPlayground(object):
 		f.close()
 
 	def _load_config(self):
+		portdir_overlay = []
+		for repo_name in sorted(self.repo_dirs):
+			path = self.repo_dirs[repo_name]
+			if path != self.portdir:
+				portdir_overlay.append(path)
+
 		env = {
 			"ACCEPT_KEYWORDS": "x86",
 			"PORTDIR": self.portdir,
+			"PORTDIR_OVERLAY": " ".join(portdir_overlay),
 			'PORTAGE_TMPDIR'       : os.path.join(self.eroot, 'var/tmp'),
 		}
 
@@ -424,7 +432,7 @@ class ResolverPlayground(object):
 			if options.get("--depclean"):
 				rval, cleanlist, ordered, req_pkg_count = \
 					calc_depclean(self.settings, self.trees, None,
-					options, "depclean", atoms, None)
+					options, "depclean", InternalPackageSet(initial_atoms=atoms), None)
 				result = ResolverPlaygroundDepcleanResult( \
 					atoms, rval, cleanlist, ordered, req_pkg_count)
 			else:
