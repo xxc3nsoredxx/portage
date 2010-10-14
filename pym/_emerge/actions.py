@@ -59,6 +59,7 @@ from _emerge.Scheduler import Scheduler
 from _emerge.search import search
 from _emerge.SetArg import SetArg
 from _emerge.show_invalid_depstring_notice import show_invalid_depstring_notice
+from _emerge.sync.getaddrinfo_validate import getaddrinfo_validate
 from _emerge.sync.old_tree_timestamp import old_tree_timestamp_warn
 from _emerge.unmerge import unmerge
 from _emerge.UnmergeDepPriority import UnmergeDepPriority
@@ -2097,48 +2098,68 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 			("-6" in all_rsync_opts or "--ipv6" in all_rsync_opts):
 			family = socket.AF_INET6
 
-		ips_v4 = []
-		ips_v6 = []
+		addrinfos = None
+		uris = []
 
 		try:
-			addrinfos = socket.getaddrinfo(hostname, None,
-				family, socket.SOCK_STREAM)
+			addrinfos = getaddrinfo_validate(
+				socket.getaddrinfo(hostname, None,
+				family, socket.SOCK_STREAM))
 		except socket.error as e:
-			writemsg("!!! getaddrinfo failed: %s\n" % (e,), noiselevel=-1)
-			return 1
+			writemsg_level(
+				"!!! getaddrinfo failed for '%s': %s\n" % (hostname, e),
+				noiselevel=-1, level=logging.ERROR)
 
-		for addrinfo in addrinfos:
-			if socket.has_ipv6 and addrinfo[0] == socket.AF_INET6:
-				# IPv6 addresses need to be enclosed in square brackets
-				ips_v6.append("[%s]" % addrinfo[4][0])
+		if addrinfos:
+
+			AF_INET = socket.AF_INET
+			AF_INET6 = None
+			if socket.has_ipv6:
+				AF_INET6 = socket.AF_INET6
+
+			ips_v4 = []
+			ips_v6 = []
+
+			for addrinfo in addrinfos:
+				if addrinfo[0] == AF_INET:
+					ips_v4.append("%s" % addrinfo[4][0])
+				elif AF_INET6 is not None and addrinfo[0] == AF_INET6:
+					# IPv6 addresses need to be enclosed in square brackets
+					ips_v6.append("[%s]" % addrinfo[4][0])
+
+			random.shuffle(ips_v4)
+			random.shuffle(ips_v6)
+
+			# Give priority to the address family that
+			# getaddrinfo() returned first.
+			if AF_INET6 is not None and addrinfos and \
+				addrinfos[0][0] == AF_INET6:
+				ips = ips_v6 + ips_v4
 			else:
-				ips_v4.append(addrinfo[4][0])
+				ips = ips_v4 + ips_v6
 
-		random.shuffle(ips_v4)
-		random.shuffle(ips_v6)
+			for ip in ips:
+				uris.append(syncuri.replace(
+					"//" + user_name + hostname + port + "/",
+					"//" + user_name + ip + port + "/", 1))
 
-		# Give priority to the address family that
-		# getaddrinfo() returned first.
-		if socket.has_ipv6 and addrinfos and \
-			addrinfos[0][0] == socket.AF_INET6:
-			ips = ips_v6 + ips_v4
-		else:
-			ips = ips_v4 + ips_v6
+		if not uris:
+			# With some configurations we need to use the plain hostname
+			# rather than try to resolve the ip addresses (bug #340817).
+			uris.append(syncuri)
 
 		# reverse, for use with pop()
-		ips.reverse()
+		uris.reverse()
 
 		effective_maxretries = maxretries
 		if effective_maxretries < 0:
-			effective_maxretries = len(ips) - 1
+			effective_maxretries = len(uris) - 1
 
 		SERVER_OUT_OF_DATE = -1
 		EXCEEDED_MAX_RETRIES = -2
 		while (1):
-			if ips:
-				dosyncuri = syncuri.replace(
-					"//" + user_name + hostname + port + "/",
-					"//" + user_name + ips.pop() + port + "/", 1)
+			if uris:
+				dosyncuri = uris.pop()
 			else:
 				writemsg("!!! Exhausted addresses for %s\n" % \
 					hostname, noiselevel=-1)

@@ -682,7 +682,7 @@ class depgraph(object):
 
 		if not dep_pkg:
 			if dep.priority.optional:
-				# This could be an unecessary build-time dep
+				# This could be an unnecessary build-time dep
 				# pulled in by --with-bdeps=y.
 				return 1
 			if allow_unsatisfied:
@@ -1696,12 +1696,14 @@ class depgraph(object):
 				if expanded_atoms:
 					atom = expanded_atoms[0]
 				else:
-					null_atom = Atom(insert_category_into_atom(x, "null"))
+					null_atom = Atom(insert_category_into_atom(x, "null"),
+						allow_repo=True)
 					cat, atom_pn = portage.catsplit(null_atom.cp)
 					virts_p = root_config.settings.get_virts_p().get(atom_pn)
 					if virts_p:
 						# Allow the depgraph to choose which virtual.
-						atom = Atom(null_atom.replace('null/', 'virtual/', 1))
+						atom = Atom(null_atom.replace('null/', 'virtual/', 1),
+							allow_repo=True)
 					else:
 						atom = null_atom
 
@@ -1929,17 +1931,6 @@ class depgraph(object):
 		if not self._create_graph():
 			return 0, myfavorites
 
-		missing=0
-		if "--usepkgonly" in self._frozen_config.myopts:
-			for xs in self._dynamic_config.digraph.all_nodes():
-				if not isinstance(xs, Package):
-					continue
-				if len(xs) >= 4 and xs[0] != "binary" and xs[3] == "merge":
-					if missing == 0:
-						writemsg("\n", noiselevel=-1)
-					missing += 1
-					writemsg("Missing binary for: %s\n" % xs[2], noiselevel=-1)
-
 		try:
 			self.altlist()
 		except self._unknown_internal_error:
@@ -1952,12 +1943,11 @@ class depgraph(object):
 			set(self._dynamic_config.digraph).intersection( \
 			self._dynamic_config._needed_license_changes) :
 			#We failed if the user needs to change the configuration
-			if not missing:
-				self._dynamic_config._success_without_autounmask = True
+			self._dynamic_config._success_without_autounmask = True
 			return False, myfavorites
 
 		# We're true here unless we are missing binaries.
-		return (not missing,myfavorites)
+		return (True, myfavorites)
 
 	def _set_args(self, args):
 		"""
@@ -2499,7 +2489,7 @@ class depgraph(object):
 
 		if hasattr(db, "xmatch"):
 			# For portdbapi we match only against the cpv, in order
-			# to bypass unecessary cache access for things like IUSE
+			# to bypass unnecessary cache access for things like IUSE
 			# and SLOT. Later, we cache the metadata in a Package
 			# instance, and use that for further matching. This
 			# optimization is especially relevant since
@@ -4952,7 +4942,7 @@ class depgraph(object):
 			pkgsettings = self._frozen_config.pkgsettings[pkg.root]
 			mreasons = get_masking_status(pkg, pkgsettings, root_config, use=self._pkg_use_enabled)
 			masked_packages.append((root_config, pkgsettings,
-				pkg.cpv, "installed", pkg.metadata, mreasons))
+				pkg.cpv, pkg.repo, pkg.metadata, mreasons))
 		if masked_packages:
 			writemsg("\n" + colorize("BAD", "!!!") + \
 				" The following installed packages are masked:\n",
@@ -5415,12 +5405,14 @@ class _dep_check_composite_db(dbapi):
 		if expanded_atoms:
 			atom = expanded_atoms[0]
 		else:
-			null_atom = Atom(insert_category_into_atom(atom, "null"))
+			null_atom = Atom(insert_category_into_atom(atom, "null"),
+				allow_repo=True)
 			cat, atom_pn = portage.catsplit(null_atom.cp)
 			virts_p = root_config.settings.get_virts_p().get(atom_pn)
 			if virts_p:
 				# Allow the resolver to choose which virtual.
-				atom = Atom(null_atom.replace('null/', 'virtual/', 1))
+				atom = Atom(null_atom.replace('null/', 'virtual/', 1),
+					allow_repo=True)
 			else:
 				atom = null_atom
 		return atom
@@ -5519,9 +5511,11 @@ def backtrack_depgraph(settings, trees, myopts, myparams,
 
 def _backtrack_depgraph(settings, trees, myopts, myparams, myaction, myfiles, spinner):
 
+	max_retries = myopts.get('--backtrack', 5)
 	max_depth = myopts.get('--backtrack', 5)
-	allow_backtracking = max_depth > 0
+	allow_backtracking = max_retries > 0
 	backtracker = Backtracker(max_depth)
+	backtracked = 0
 
 	frozen_config = _frozen_depgraph_config(settings, trees,
 		myopts, spinner)
@@ -5537,16 +5531,26 @@ def _backtrack_depgraph(settings, trees, myopts, myparams, myaction, myfiles, sp
 
 		if success or mydepgraph.success_without_autounmask():
 			break
+		elif not allow_backtracking:
+			break
+		elif backtracked >= max_retries:
+			break
 		elif mydepgraph.need_restart():
+			backtracked += 1
 			backtracker.feedback(mydepgraph.get_backtrack_infos())
+		else:
+			break
 
-	if not (success or mydepgraph.success_without_autounmask()) and backtracker.backtracked(): 
-		backtrack_parameters = backtracker.get_best_run()
+	if not (success or mydepgraph.success_without_autounmask()) and backtracked:
+
+		if "--debug" in myopts:
+			writemsg_level(
+				"\n\nbacktracking aborted after %s tries\n\n" % \
+				backtracked, noiselevel=-1, level=logging.DEBUG)
 
 		mydepgraph = depgraph(settings, trees, myopts, myparams, spinner,
 			frozen_config=frozen_config,
-			allow_backtracking=False,
-			backtrack_parameters=backtrack_parameters)
+			allow_backtracking=False)
 		success, favorites = mydepgraph.select_files(myfiles)
 
 	return (success, mydepgraph, favorites)
