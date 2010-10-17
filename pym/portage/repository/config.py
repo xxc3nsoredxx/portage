@@ -116,6 +116,7 @@ class RepoConfig(object):
 			self.masters = new_repo.masters
 		if new_repo.name is not None:
 			self.name = new_repo.name
+			self.missing_repo_name = new_repo.missing_repo_name
 		if new_repo.user_location is not None:
 			self.user_location = new_repo.user_location
 		if new_repo.location is not None:
@@ -161,7 +162,8 @@ class RepoConfig(object):
 		if self.aliases:
 			repo_msg.append(indent + "aliases: " + self.aliases)
 		if self.eclass_overrides:
-			repo_msg.append(indent + "eclass_overrides: " + self.eclass_overrides)
+			repo_msg.append(indent + "eclass_overrides: " + \
+				" ".join(self.eclass_overrides))
 		repo_msg.append("")
 		return "\n".join(repo_msg) + "\n"
 
