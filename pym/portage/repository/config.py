@@ -160,7 +160,7 @@ class RepoConfig(object):
 		if self.priority:
 			repo_msg.append(indent + "priority: " + str(self.priority))
 		if self.aliases:
-			repo_msg.append(indent + "aliases: " + self.aliases)
+			repo_msg.append(indent + "aliases: " + " ".join(self.aliases))
 		if self.eclass_overrides:
 			repo_msg.append(indent + "eclass_overrides: " + \
 				" ".join(self.eclass_overrides))
@@ -299,6 +299,16 @@ class RepoConfigLoader(object):
 				masters = None
 			repo.masters = masters
 
+			aliases = layout_data.get('aliases')
+			if aliases and aliases.strip():
+				aliases = aliases.split()
+			else:
+				aliases = None
+			if aliases:
+				if repo.aliases:
+					aliases.extend(repo.aliases)
+				repo.aliases = tuple(sorted(set(aliases)))
+
 		#Take aliases into account.
 		new_prepos = {}
 		for repo_name, repo in prepos.items():
@@ -366,6 +376,8 @@ class RepoConfigLoader(object):
 				master_repos = []
 				for master_name in repo.masters:
 					if master_name not in prepos:
+						layout_filename = os.path.join(repo.user_location,
+							"metadata", "layout.conf")
 						writemsg_level(_("Unavailable repository '%s' " \
 							"referenced by masters entry in '%s'\n") % \
 							(master_name, layout_filename),
