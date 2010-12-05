@@ -349,7 +349,7 @@ _finalize_abi_install() {
 			fi
 		done
 		pushd "${base}" >/dev/null
-		find . | tar -c -T - -f - | tar -x --no-same-owner -f - -C ${D}
+		find . | tar -c -T - -f - | tar -x -f - -C ${D}
 		popd >/dev/null
 
 		# This 'set' stuff is required by mips profiles to properly pass
@@ -368,13 +368,13 @@ _finalize_abi_install() {
 	for my_abi in ${ALTERNATE_ABIS}; do
 		[[ -d "${D%/}.${my_abi}" ]] || continue
 		cd "${D%/}.${my_abi}"
-		find . | tar -c -T - -f - | tar -x --no-same-owner -f - -C "${D}"
+		find . | tar -c -T - -f - | tar -x -f - -C "${D}"
 		cd ..
 		rm -rf "${D%/}.${my_abi}"
 	done
 	if [[ -d "${D%/}.${DEFAULT_ABI}" ]]; then
 		cd "${D%/}.${DEFAULT_ABI}"
-		find . | tar -c -T - -f - | tar -x --no-same-owner -f - -C "${D}"
+		find . | tar -c -T - -f - | tar -x -f - -C "${D}"
 		cd ..
 		rm -rf "${D%/}.${DEFAULT_ABI}"
 	fi
