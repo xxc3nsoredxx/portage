@@ -782,7 +782,6 @@ dyn_unpack() {
 	ebuild_phase pre_src_unpack
 	vecho ">>> Unpacking source$(_get_abi_string)..."
 	ebuild_phase src_unpack
-<<<<<<< HEAD
 
 		if is_auto-multilib && is_ebuild; then
 			>> "$PORTAGE_BUILDDIR"/.unpacked."${LOOP_ABI}" || die "IO Failure -- Failed to 'touch .unpacked.${LOOP_ABI}'"
