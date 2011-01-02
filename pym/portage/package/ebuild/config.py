@@ -674,6 +674,10 @@ class config(object):
 					self[var] = "0"
 				self.backup_changes(var)
 
+			#add multilib_abi internally to list of USE_EXPANDed vars
+			self["USE_EXPAND"] = "multilib_abi" + " " + self.get("USE_EXPAND", "")
+			self.backup_changes("USE_EXPAND")
+
 			# initialize self.features
 			self.regenerate()
 

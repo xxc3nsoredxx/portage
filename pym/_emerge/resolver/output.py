@@ -151,7 +151,6 @@ class Display(object):
 		self.old_use = [flag for flag in self.old_use if flag in self.old_iuse]
 
 		self.use_expand = self.pkgsettings["USE_EXPAND"].lower().split()
-		self.use_expand.append("multilib_abi")
 		self.use_expand.sort()
 		self.use_expand.reverse()
 		self.use_expand_hidden = \
