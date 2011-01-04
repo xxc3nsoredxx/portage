@@ -817,7 +817,7 @@ dyn_clean() {
 	fi
 
 	if [[ $EMERGE_FROM = binary ]] || ! hasq keepwork $FEATURES; then
-		rm -f "$PORTAGE_BUILDDIR"/.{ebuild_changed,logid,setuped*,unpacked*,prepared*} \
+		rm -f "$PORTAGE_BUILDDIR"/.{ebuild_changed,logid,pretended*,setuped*,unpacked*,prepared*} \
 			"$PORTAGE_BUILDDIR"/.{configured*,compiled*,tested*,packaged*} \
 			"$PORTAGE_BUILDDIR"/.{die_hooks,abi} \
 			"$PORTAGE_BUILDDIR"/.ipc_{in,out,lock} \
