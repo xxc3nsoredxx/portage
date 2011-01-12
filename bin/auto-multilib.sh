@@ -231,8 +231,8 @@ _setup_abi_env() {
 	export CFLAGS="${CFLAGS} $(get_abi_var CFLAGS)"
 	export CPPFLAGS="${CPPFLAGS} $(get_abi_var CPPFLAGS)"
 	export CXXFLAGS="${CXXFLAGS} $(get_abi_var CFLAGS)"
-	export FCFLAGS="${FCFLAGS} $(get_abi_var FCFLAGS)"
-	export FFLAGS="${FFLAGS} $(get_abi_var FFLAGS)"
+	export FCFLAGS="${FCFLAGS} $(get_abi_var CFLAGS)"
+	export FFLAGS="${FFLAGS} $(get_abi_var CFLAGS)"
 	export ASFLAGS="${ASFLAGS} $(get_abi_var ASFLAGS)"
 	local LIBDIR=$(get_abi_var LIBDIR $1)
 	export PKG_CONFIG_PATH="/usr/${LIBDIR}/pkgconfig"
