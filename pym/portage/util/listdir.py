@@ -1,4 +1,4 @@
-# Copyright 2010 Gentoo Foundation
+# Copyright 2010-2011 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 __all__ = ['cacheddir', 'listdir']
@@ -125,8 +125,7 @@ def listdir(mypath, recursive=False, filesonly=False, ignorecvs=False, ignorelis
 	if recursive:
 		x=0
 		while x<len(ftype):
-			if ftype[x] == 1 and not \
-				(ignorecvs and os.path.basename(list[x]) in _ignorecvs_dirs):
+			if ftype[x] == 1:
 				l,f = cacheddir(mypath+"/"+list[x], ignorecvs, ignorelist, EmptyOnError,
 					followSymlinks)
 
