@@ -3,6 +3,7 @@
 
 from __future__ import print_function
 
+import difflib
 import gc
 import logging
 import re
@@ -202,6 +203,9 @@ class _dynamic_depgraph_config(object):
 		self._needed_use_config_changes = backtrack_parameters.needed_use_config_changes
 		self._runtime_pkg_mask = backtrack_parameters.runtime_pkg_mask
 		self._need_restart = False
+		# For conditions that always require user intervention, such as
+		# unsatisfied REQUIRED_USE (currently has no autounmask support).
+		self._skip_restart = False
 		self._backtrack_infos = {}
 
 		self._autounmask = depgraph._frozen_config.myopts.get('--autounmask', 'n') == True
@@ -349,10 +353,6 @@ class depgraph(object):
 
 	def _show_missed_update(self):
 
-		if '--quiet' in self._frozen_config.myopts and \
-			'--debug' not in self._frozen_config.myopts:
-			return
-
 		# In order to minimize noise, show only the highest
 		# missed update from each SLOT.
 		missed_updates = {}
@@ -380,6 +380,11 @@ class depgraph(object):
 		for pkg, mask_type, parent_atoms in missed_updates.values():
 			missed_update_types.setdefault(mask_type,
 				[]).append((pkg, parent_atoms))
+
+		if '--quiet' in self._frozen_config.myopts and \
+			'--debug' not in self._frozen_config.myopts:
+			missed_update_types.pop("slot conflict", None)
+			missed_update_types.pop("missing dependency", None)
 
 		self._show_missed_update_slot_conflicts(
 			missed_update_types.get("slot conflict"))
@@ -678,8 +683,6 @@ class depgraph(object):
 			dep_pkg = dep.child
 			existing_node = self._dynamic_config._slot_pkg_map[
 				dep.root].get(dep_pkg.slot_atom)
-			if existing_node is not dep_pkg:
-				existing_node = None 
 
 		if not dep_pkg:
 			if dep.priority.optional:
@@ -726,33 +729,6 @@ class depgraph(object):
 								noiselevel=-1, level=logging.DEBUG)
 
 			return 0
-		# In some cases, dep_check will return deps that shouldn't
-		# be proccessed any further, so they are identified and
-		# discarded here. Try to discard as few as possible since
-		# discarded dependencies reduce the amount of information
-		# available for optimization of merge order.
-		if dep.priority.satisfied and \
-			dep.priority.satisfied.visible and \
-			not dep_pkg.installed and \
-			not (existing_node or recurse):
-			myarg = None
-			if dep.root == self._frozen_config.target_root:
-				try:
-					myarg = next(self._iter_atoms_for_pkg(dep_pkg))
-				except StopIteration:
-					pass
-				except portage.exception.InvalidDependString:
-					if not dep_pkg.installed:
-						# This shouldn't happen since the package
-						# should have been masked.
-						raise
-			if not myarg:
-				# Existing child selection may not be valid unless
-				# it's added to the graph immediately, since "complete"
-				# mode may select a different child later.
-				dep.child = None
-				self._dynamic_config._ignored_deps.append(dep)
-				return 1
 
 		if not self._add_pkg(dep_pkg, dep):
 			return 0
@@ -813,6 +789,33 @@ class depgraph(object):
 					# should have been masked before it was selected
 					raise
 				del e
+
+		# NOTE: REQUIRED_USE checks are delayed until after
+		# package selection, since we want to prompt the user
+		# for USE adjustment rather than have REQUIRED_USE
+		# affect package selection and || dep choices.
+		if not pkg.built and pkg.metadata["REQUIRED_USE"] and \
+			eapi_has_required_use(pkg.metadata["EAPI"]):
+			required_use_is_sat = check_required_use(
+				pkg.metadata["REQUIRED_USE"],
+				self._pkg_use_enabled(pkg),
+				pkg.iuse.is_valid_flag)
+			if not required_use_is_sat:
+				if dep.atom is not None and dep.parent is not None:
+					self._add_parent_atom(pkg, (dep.parent, dep.atom))
+
+				if arg_atoms:
+					for parent_atom in arg_atoms:
+						parent, atom = parent_atom
+						self._add_parent_atom(pkg, parent_atom)
+
+				atom = dep.atom
+				if atom is None:
+					atom = Atom("=" + pkg.cpv)
+				self._dynamic_config._unsatisfied_deps_for_display.append(
+					((pkg.root, atom), {"myparent":dep.parent}))
+				self._dynamic_config._skip_restart = True
+				return 0
 
 		if not pkg.onlydeps:
 			if not pkg.installed and \
@@ -1142,8 +1145,8 @@ class depgraph(object):
 
 		debug = "--debug" in self._frozen_config.myopts
 		strict = mytype != "installed"
-		try:
-			for dep_root, dep_string, dep_priority, ignore_blockers in deps:
+
+		for dep_root, dep_string, dep_priority, ignore_blockers in deps:
 				if not dep_string:
 					continue
 				if debug:
@@ -1197,25 +1200,6 @@ class depgraph(object):
 					allow_unsatisfied, ignore_blockers=ignore_blockers):
 					return 0
 
-		except portage.exception.AmbiguousPackageName as e:
-			pkgs = e.args[0]
-			portage.writemsg("\n\n!!! An atom in the dependencies " + \
-				"is not fully-qualified. Multiple matches:\n\n", noiselevel=-1)
-			for cpv in pkgs:
-				portage.writemsg("    %s\n" % cpv, noiselevel=-1)
-			portage.writemsg("\n", noiselevel=-1)
-			if mytype == "binary":
-				portage.writemsg(
-					"!!! This binary package cannot be installed: '%s'\n" % \
-					mykey, noiselevel=-1)
-			elif mytype == "ebuild":
-				portdb = self._frozen_config.roots[myroot].trees["porttree"].dbapi
-				myebuild, mylocation = portdb.findname2(mykey, myrepo = pkg.repo)
-				portage.writemsg("!!! This ebuild cannot be installed: " + \
-					"'%s'\n" % myebuild, noiselevel=-1)
-			portage.writemsg("!!! Please notify the package maintainer " + \
-				"that atoms must be fully-qualified.\n", noiselevel=-1)
-			return 0
 		self._dynamic_config._traversed_pkg_deps.add(pkg)
 		return 1
 
@@ -1585,6 +1569,7 @@ class depgraph(object):
 				if os.path.realpath(x) != \
 					os.path.realpath(self._frozen_config.trees[myroot]["bintree"].getname(mykey)):
 					writemsg(colorize("BAD", "\n*** You need to adjust PKGDIR to emerge this package.\n\n"), noiselevel=-1)
+					self._dynamic_config._skip_restart = True
 					return 0, myfavorites
 
 				pkg = self._pkg(mykey, "binary", root_config,
@@ -1610,6 +1595,7 @@ class depgraph(object):
 					if ebuild_path != os.path.join(os.path.realpath(tree_root),
 						cp, os.path.basename(ebuild_path)):
 						writemsg(colorize("BAD", "\n*** You need to adjust PORTDIR or PORTDIR_OVERLAY to emerge this package.\n\n"), noiselevel=-1)
+						self._dynamic_config._skip_restart = True
 						return 0, myfavorites
 					if mykey not in portdb.xmatch(
 						"match-visible", portage.cpv_getkey(mykey)):
@@ -1630,10 +1616,19 @@ class depgraph(object):
 				if not x.startswith(myroot):
 					portage.writemsg(("\n\n!!! '%s' does not start with" + \
 						" $ROOT.\n") % x, noiselevel=-1)
+					self._dynamic_config._skip_restart = True
 					return 0, []
 				# Queue these up since it's most efficient to handle
 				# multiple files in a single iter_owners() call.
 				lookup_owners.append(x)
+			elif x.startswith("." + os.path.sep):
+				f = os.path.abspath(x)
+				if not f.startswith(myroot):
+					portage.writemsg(("\n\n!!! '%s' (resolved from '%s') does not start with" + \
+						" $ROOT.\n") % (f, x), noiselevel=-1)
+					self._dynamic_config._skip_restart = True
+					return 0, []
+				lookup_owners.append(f)
 			else:
 				if x in ("system", "world"):
 					x = SETPREFIX + x
@@ -1653,6 +1648,7 @@ class depgraph(object):
 						noiselevel=-1)
 					portage.writemsg("!!! Please check ebuild(5) for full details.\n")
 					portage.writemsg("!!! (Did you specify a version but forget to prefix with '='?)\n")
+					self._dynamic_config._skip_restart = True
 					return (0,[])
 				# Don't expand categories or old-style virtuals here unless
 				# necessary. Expansion of old-style virtuals here causes at
@@ -1710,6 +1706,7 @@ class depgraph(object):
 					writemsg("\n\n", noiselevel=-1)
 					ambiguous_package_name(x, expanded_atoms, root_config,
 						self._frozen_config.spinner, self._frozen_config.myopts)
+					self._dynamic_config._skip_restart = True
 					return False, myfavorites
 				if expanded_atoms:
 					atom = expanded_atoms[0]
@@ -1749,6 +1746,7 @@ class depgraph(object):
 			if not owners:
 				portage.writemsg(("\n\n!!! '%s' is not claimed " + \
 					"by any package.\n") % lookup_owners[0], noiselevel=-1)
+				self._dynamic_config._skip_restart = True
 				return 0, []
 
 			for cpv in owners:
@@ -1850,7 +1848,7 @@ class depgraph(object):
 					if isinstance(arg, PackageArg):
 						if not self._add_pkg(arg.package, dep) or \
 							not self._create_graph():
-							if not self._dynamic_config._need_restart:
+							if not self.need_restart():
 								sys.stderr.write(("\n\n!!! Problem " + \
 									"resolving dependencies for %s\n") % \
 									arg.arg)
@@ -1882,6 +1880,7 @@ class depgraph(object):
 							self._dynamic_config._unsatisfied_deps_for_display.append(
 								((myroot, atom), {"myparent" : arg}))
 							return 0, myfavorites
+
 						self._dynamic_config._missing_args.append((arg, atom))
 						continue
 					if atom.cp != pkg.cp:
@@ -1912,31 +1911,18 @@ class depgraph(object):
 					# so that later dep_check() calls can use it as feedback
 					# for making more consistent atom selections.
 					if not self._add_pkg(pkg, dep):
-						if self._dynamic_config._need_restart:
+						if self.need_restart():
 							pass
 						elif isinstance(arg, SetArg):
-							sys.stderr.write(("\n\n!!! Problem resolving " + \
+							writemsg(("\n\n!!! Problem resolving " + \
 								"dependencies for %s from %s\n") % \
-								(atom, arg.arg))
+								(atom, arg.arg), noiselevel=-1)
 						else:
-							sys.stderr.write(("\n\n!!! Problem resolving " + \
-								"dependencies for %s\n") % atom)
+							writemsg(("\n\n!!! Problem resolving " + \
+								"dependencies for %s\n") % \
+								(atom,), noiselevel=-1)
 						return 0, myfavorites
 
-				except portage.exception.MissingSignature as e:
-					portage.writemsg("\n\n!!! A missing gpg signature is preventing portage from calculating the\n")
-					portage.writemsg("!!! required dependencies. This is a security feature enabled by the admin\n")
-					portage.writemsg("!!! to aid in the detection of malicious intent.\n\n")
-					portage.writemsg("!!! THIS IS A POSSIBLE INDICATION OF TAMPERED FILES -- CHECK CAREFULLY.\n")
-					portage.writemsg("!!! Affected file: %s\n" % (e), noiselevel=-1)
-					return 0, myfavorites
-				except portage.exception.InvalidSignature as e:
-					portage.writemsg("\n\n!!! An invalid gpg signature is preventing portage from calculating the\n")
-					portage.writemsg("!!! required dependencies. This is a security feature enabled by the admin\n")
-					portage.writemsg("!!! to aid in the detection of malicious intent.\n\n")
-					portage.writemsg("!!! THIS IS A POSSIBLE INDICATION OF TAMPERED FILES -- CHECK CAREFULLY.\n")
-					portage.writemsg("!!! Affected file: %s\n" % (e), noiselevel=-1)
-					return 0, myfavorites
 				except SystemExit as e:
 					raise # Needed else can't exit
 				except Exception as e:
@@ -2175,6 +2161,136 @@ class depgraph(object):
 
 		return selected_atoms
 
+	def _get_dep_chain(self, start_node, target_atom=None,
+		unsatisfied_dependency=False):
+		"""
+		Returns a list of (atom, node_type) pairs that represent a dep chain.
+		If target_atom is None, the first package shown is pkg's parent.
+		If target_atom is not None the first package shown is pkg.
+		If unsatisfied_dependency is True, the first parent is select who's
+		dependency is not satisfied by 'pkg'. This is need for USE changes.
+		(Does not support target_atom.)
+		"""
+		traversed_nodes = set()
+		dep_chain = []
+		node = start_node
+		child = None
+		all_parents = self._dynamic_config._parent_atoms
+
+		if target_atom is not None and isinstance(node, Package):
+			affecting_use = set()
+			for dep_str in "DEPEND", "RDEPEND", "PDEPEND":
+				affecting_use.update(extract_affecting_use(
+					node.metadata[dep_str], target_atom))
+			affecting_use.difference_update(node.use.mask, node.use.force)
+			pkg_name = _unicode_decode("%s") % (node.cpv,)
+			if affecting_use:
+				usedep = []
+				for flag in affecting_use:
+					if flag in self._pkg_use_enabled(node):
+						usedep.append(flag)
+					else:
+						usedep.append("-"+flag)
+				pkg_name += "[%s]" % ",".join(usedep)
+
+			dep_chain.append((pkg_name, node.type_name))
+
+		while node is not None:
+			traversed_nodes.add(node)
+
+			if isinstance(node, DependencyArg):
+				if self._dynamic_config.digraph.parent_nodes(node):
+					node_type = "set"
+				else:
+					node_type = "argument"
+				dep_chain.append((_unicode_decode("%s") % (node,), node_type))
+
+			elif node is not start_node:
+				for ppkg, patom in all_parents[child]:
+					if ppkg == node:
+						atom = patom.unevaluated_atom
+						break
+
+				dep_strings = set()
+				for priority in self._dynamic_config.digraph.nodes[node][0][child]:
+					if priority.buildtime:
+						dep_strings.add(node.metadata["DEPEND"])
+					if priority.runtime:
+						dep_strings.add(node.metadata["RDEPEND"])
+					if priority.runtime_post:
+						dep_strings.add(node.metadata["PDEPEND"])
+
+				affecting_use = set()
+				for dep_str in dep_strings:
+					affecting_use.update(extract_affecting_use(dep_str, atom))
+
+				#Don't show flags as 'affecting' if the user can't change them,
+				affecting_use.difference_update(node.use.mask, \
+					node.use.force)
+
+				pkg_name = _unicode_decode("%s") % (node.cpv,)
+				if affecting_use:
+					usedep = []
+					for flag in affecting_use:
+						if flag in self._pkg_use_enabled(node):
+							usedep.append(flag)
+						else:
+							usedep.append("-"+flag)
+					pkg_name += "[%s]" % ",".join(usedep)
+
+				dep_chain.append((pkg_name, node.type_name))
+
+			if node not in self._dynamic_config.digraph:
+				# The parent is not in the graph due to backtracking.
+				break
+
+			# When traversing to parents, prefer arguments over packages
+			# since arguments are root nodes. Never traverse the same
+			# package twice, in order to prevent an infinite loop.
+			selected_parent = None
+			for parent in self._dynamic_config.digraph.parent_nodes(node):
+				if parent in traversed_nodes:
+					continue
+				if isinstance(parent, DependencyArg):
+					if self._dynamic_config.digraph.parent_nodes(parent):
+						selected_parent = parent
+						child = node
+					else:
+						dep_chain.append(
+							(_unicode_decode("%s") % (parent,), "argument"))
+						selected_parent = None
+					break
+				else:
+					if unsatisfied_dependency and node is start_node:
+						# Make sure that pkg doesn't satisfy parent's dependency.
+						# This ensures that we select the correct parent for use
+						# flag changes.
+						for ppkg, atom in all_parents[start_node]:
+							if parent is ppkg:
+								atom_set = InternalPackageSet(initial_atoms=(atom,))
+								if not atom_set.findAtomForPackage(start_node):
+									selected_parent = parent
+									child = node
+								break
+					else:
+						selected_parent = parent
+						child = node
+			node = selected_parent
+		return dep_chain
+
+	def _get_dep_chain_as_comment(self, pkg, unsatisfied_dependency=False):
+		dep_chain = self._get_dep_chain(pkg, unsatisfied_dependency=unsatisfied_dependency)
+		display_list = []
+		for node, node_type in dep_chain:
+			if node_type == "argument":
+				display_list.append("required by %s (argument)" % node)
+			else:
+				display_list.append("required by %s" % node)
+
+		msg = "#" + ", ".join(display_list) + "\n"
+		return msg
+
+
 	def _show_unsatisfied_dep(self, root, atom, myparent=None, arg=None,
 		check_backtrack=False):
 		"""
@@ -2204,6 +2320,8 @@ class depgraph(object):
 		pkgsettings = self._frozen_config.pkgsettings[root]
 		root_config = self._frozen_config.roots[root]
 		portdb = self._frozen_config.roots[root].trees["porttree"].dbapi
+		vardb = self._frozen_config.roots[root].trees["vartree"].dbapi
+		bindb = self._frozen_config.roots[root].trees["bintree"].dbapi
 		dbs = self._dynamic_config._filtered_trees[root]["dbs"]
 		for db, pkg_type, built, installed, db_keys in dbs:
 			if installed:
@@ -2450,9 +2568,23 @@ class depgraph(object):
 				noiselevel=-1)
 			writemsg_stdout("\n  The following REQUIRED_USE flag constraints " + \
 				"are unsatisfied:\n", noiselevel=-1)
+			reduced_noise = check_required_use(
+				pkg.metadata["REQUIRED_USE"],
+				self._pkg_use_enabled(pkg),
+				pkg.iuse.is_valid_flag).tounicode()
 			writemsg_stdout("    %s\n" % \
-				human_readable_required_use(pkg.metadata["REQUIRED_USE"]),
+				human_readable_required_use(reduced_noise),
 				noiselevel=-1)
+			normalized_required_use = \
+				" ".join(pkg.metadata["REQUIRED_USE"].split())
+			if reduced_noise != normalized_required_use:
+				writemsg_stdout("\n  The above constraints " + \
+					"are a subset of the following complete expression:\n",
+					noiselevel=-1)
+				writemsg_stdout("    %s\n" % \
+					human_readable_required_use(normalized_required_use),
+					noiselevel=-1)
+			writemsg_stdout("\n", noiselevel=-1)
 
 		elif show_missing_use:
 			writemsg_stdout("\nemerge: there are no ebuilds built with USE flags to satisfy "+green(xinfo)+".\n", noiselevel=-1)
@@ -2478,49 +2610,55 @@ class depgraph(object):
 			mask_docs = True
 		else:
 			writemsg_stdout("\nemerge: there are no ebuilds to satisfy "+green(xinfo)+".\n", noiselevel=-1)
+			if isinstance(myparent, AtomArg):
+				cp = myparent.atom.cp
+				cat, pkg = portage.catsplit(cp)
+				if cat == "null":
+					cat = None
 
-		# Show parent nodes and the argument that pulled them in.
-		traversed_nodes = set()
-		node = myparent
-		if isinstance(myparent, AtomArg):
+				writemsg_stdout("\nemerge: searching for similar names..."
+					, noiselevel=-1)
+
+				all_cp = set()
+				all_cp.update(vardb.cp_all())
+				all_cp.update(portdb.cp_all())
+				if "--usepkg" in self._frozen_config.myopts:
+					all_cp.update(bindb.cp_all())
+
+				if cat:
+					matches = difflib.get_close_matches(cp, all_cp)
+				else:
+					pkg_to_cp = {}
+					for other_cp in all_cp:
+						other_pkg = portage.catsplit(other_cp)[1]
+						pkg_to_cp.setdefault(other_pkg, set()).add(other_cp)
+					pkg_matches = difflib.get_close_matches(pkg, pkg_to_cp)
+					matches = []
+					for pkg_match in pkg_matches:
+						matches.extend(pkg_to_cp[pkg_match])
+
+				if len(matches) == 1:
+					writemsg_stdout("\nemerge: Maybe you meant " + matches[0] + "?\n"
+						, noiselevel=-1)
+				elif len(matches) > 1:
+					writemsg_stdout(
+						"\nemerge: Maybe you meant any of these: %s?\n" % \
+						(", ".join(matches),), noiselevel=-1)
+				else:
+					# Generally, this would only happen if
+					# all dbapis are empty.
+					writemsg_stdout(" nothing similar found.\n"
+						, noiselevel=-1)
+		msg = []
+		if not isinstance(myparent, AtomArg):
 			# It's redundant to show parent for AtomArg since
 			# it's the same as 'xinfo' displayed above.
-			node = None
-		else:
-			node = myparent
-		msg = []
-		while node is not None:
-			traversed_nodes.add(node)
-			if isinstance(node, DependencyArg):
-				msg.append('(dependency required by "%s")' % \
-					colorize('INFORM', _unicode_decode("%s") % (node,)))
-			else:
+			dep_chain = self._get_dep_chain(myparent, atom)
+			for node, node_type in dep_chain:
 				msg.append('(dependency required by "%s" [%s])' % \
-					(colorize('INFORM', _unicode_decode("%s") % \
-					(node.cpv,)), node.type_name))
+						(colorize('INFORM', _unicode_decode("%s") % \
+						(node)), node_type))
 
-			if node not in self._dynamic_config.digraph:
-				# The parent is not in the graph due to backtracking.
-				break
-
-			# When traversing to parents, prefer arguments over packages
-			# since arguments are root nodes. Never traverse the same
-			# package twice, in order to prevent an infinite loop.
-			selected_parent = None
-			for parent in self._dynamic_config.digraph.parent_nodes(node):
-				if parent in traversed_nodes:
-					continue
-				if isinstance(parent, DependencyArg):
-					if self._dynamic_config.digraph.parent_nodes(parent):
-						selected_parent = parent
-					else:
-						msg.append('(dependency required by "%s" [argument])' % \
-							colorize('INFORM', _unicode_decode("%s") % (parent,)))
-						selected_parent = None
-					break
-				else:
-					selected_parent = parent
-			node = selected_parent
 		if msg:
 			writemsg_stdout("\n".join(msg), noiselevel=-1)
 			writemsg_stdout("\n", noiselevel=-1)
@@ -3089,23 +3227,6 @@ class depgraph(object):
 								packages_with_invalid_use_config.append(pkg)
 							continue
 
-					#check REQUIRED_USE constraints
-					if not pkg.built and pkg.metadata["REQUIRED_USE"] and \
-						eapi_has_required_use(pkg.metadata["EAPI"]):
-						required_use = pkg.metadata["REQUIRED_USE"]
-						use = self._pkg_use_enabled(pkg)
-						try:
-							required_use_is_sat = check_required_use(
-								pkg.metadata["REQUIRED_USE"], use, pkg.iuse.is_valid_flag)
-						except portage.exception.InvalidDependString as e:
-							portage.writemsg("!!! Invalid REQUIRED_USE specified by " + \
-								"'%s': %s\n" % (pkg.cpv, str(e)), noiselevel=-1)
-							del e
-							continue
-						if not required_use_is_sat:
-							packages_with_invalid_use_config.append(pkg)
-							continue
-
 					if pkg.cp == atom_cp:
 						if highest_version is None:
 							highest_version = pkg
@@ -3338,8 +3459,27 @@ class depgraph(object):
 			return 1
 
 		if "complete" not in self._dynamic_config.myparams:
-			# Skip this to avoid consuming enough time to disturb users.
-			return 1
+			# Automatically enable complete mode if there are any
+			# downgrades, since they often break dependencies
+			# (like in bug #353613).
+			have_downgrade = False
+			for node in self._dynamic_config.digraph:
+				if not isinstance(node, Package) or \
+					node.operation != "merge":
+					continue
+				vardb = self._frozen_config.roots[
+					node.root].trees["vartree"].dbapi
+				inst_pkg = vardb.match_pkgs(node.slot_atom)
+				if inst_pkg and inst_pkg[0] > node:
+					have_downgrade = True
+					break
+
+			if have_downgrade:
+				self._dynamic_config.myparams["complete"] = True
+			else:
+				# Skip complete graph mode, in order to avoid consuming
+				# enough time to disturb users.
+				return 1
 
 		self._load_vdb()
 
@@ -3933,6 +4073,7 @@ class depgraph(object):
 			raise self._unknown_internal_error()
 
 		if not self._validate_blockers():
+			self._dynamic_config._skip_restart = True
 			raise self._unknown_internal_error()
 
 		if self._dynamic_config._slot_collision_info:
@@ -4515,6 +4656,7 @@ class depgraph(object):
 
 			if not selected_nodes:
 				self._dynamic_config._circular_deps_for_display = mygraph
+				self._dynamic_config._skip_restart = True
 				raise self._unknown_internal_error()
 
 			# At this point, we've succeeded in selecting one or more nodes, so
@@ -4623,6 +4765,7 @@ class depgraph(object):
 			self._dynamic_config._unsatisfied_blockers_for_display = unsolvable_blockers
 			self._dynamic_config._serialized_tasks_cache = retlist[:]
 			self._dynamic_config._scheduler_graph = scheduler_graph
+			self._dynamic_config._skip_restart = True
 			raise self._unknown_internal_error()
 
 		if self._dynamic_config._slot_collision_info and \
@@ -4845,91 +4988,6 @@ class depgraph(object):
 		else:
 			self._show_missed_update()
 
-		def get_dep_chain(pkg):
-			traversed_nodes = set()
-			msg = "#"
-			node = pkg
-			first = True
-			child = None
-			all_parents = self._dynamic_config._parent_atoms
-			while node is not None:
-				traversed_nodes.add(node)
-				if isinstance(node, DependencyArg):
-					if first:
-						first = False
-					else:
-						msg += ", "
-					msg += _unicode_decode('required by %s') % (node,)
-				elif node is not pkg:
-					for ppkg, patom in all_parents[child]:
-						if ppkg == node:
-							atom = patom.unevaluated_atom
-							break
-
-					dep_strings = set()
-					for priority in self._dynamic_config.digraph.nodes[node][0][child]:
-						if priority.buildtime:
-							dep_strings.add(node.metadata["DEPEND"])
-						if priority.runtime:
-							dep_strings.add(node.metadata["RDEPEND"])
-						if priority.runtime_post:
-							dep_strings.add(node.metadata["PDEPEND"])
-					
-					affecting_use = set()
-					for dep_str in dep_strings:
-						affecting_use.update(extract_affecting_use(dep_str, atom))
-					
-					#Don't show flags as 'affecting' if the user can't change them,
-					affecting_use.difference_update(node.use.mask, \
-						node.use.force)
-
-					pkg_name = node.cpv
-					if affecting_use:
-						usedep = []
-						for flag in affecting_use:
-							if flag in self._pkg_use_enabled(node):
-								usedep.append(flag)
-							else:
-								usedep.append("-"+flag)
-						pkg_name += "[%s]" % ",".join(usedep)
-
-					if first:
-						first = False
-					else:
-						msg += ", "
-					msg += 'required by =%s' % pkg_name
-	
-				if node not in self._dynamic_config.digraph:
-					# The parent is not in the graph due to backtracking.
-					break
-	
-				# When traversing to parents, prefer arguments over packages
-				# since arguments are root nodes. Never traverse the same
-				# package twice, in order to prevent an infinite loop.
-				selected_parent = None
-				for parent in self._dynamic_config.digraph.parent_nodes(node):
-					if parent in traversed_nodes:
-						continue
-					if isinstance(parent, DependencyArg):
-						if self._dynamic_config.digraph.parent_nodes(parent):
-							selected_parent = parent
-							child = node
-						else:
-							if first:
-								first = False
-							else:
-								msg += ", "
-							msg += _unicode_decode(
-								'required by %s (argument)') % (parent,)
-							selected_parent = None
-						break
-					else:
-						selected_parent = parent
-						child = node
-				node = selected_parent
-			msg += "\n"
-			return msg
-
 		unstable_keyword_msg = []
 		for pkg in self._dynamic_config._needed_unstable_keywords:
 			self._show_merge_list()
@@ -4942,7 +5000,7 @@ class depgraph(object):
 						reason.unmask_hint.key == 'unstable keyword':
 						keyword = reason.unmask_hint.value
 
-						unstable_keyword_msg.append(get_dep_chain(pkg))
+						unstable_keyword_msg.append(self._get_dep_chain_as_comment(pkg))
 						unstable_keyword_msg.append("=%s %s\n" % (pkg.cpv, keyword))
 
 		use_changes_msg = []
@@ -4956,14 +5014,14 @@ class depgraph(object):
 						adjustments.append(flag)
 					else:
 						adjustments.append("-" + flag)
-				use_changes_msg.append(get_dep_chain(pkg))
+				use_changes_msg.append(self._get_dep_chain_as_comment(pkg, unsatisfied_dependency=True))
 				use_changes_msg.append("=%s %s\n" % (pkg.cpv, " ".join(adjustments)))
 
 		license_msg = []
 		for pkg, missing_licenses in self._dynamic_config._needed_license_changes.items():
 			self._show_merge_list()
 			if pkg in self._dynamic_config.digraph:
-				license_msg.append(get_dep_chain(pkg))
+				license_msg.append(self._get_dep_chain_as_comment(pkg))
 				license_msg.append("=%s %s\n" % (pkg.cpv, " ".join(sorted(missing_licenses))))
 
 		if unstable_keyword_msg:
@@ -5402,8 +5460,9 @@ class depgraph(object):
 		"""
 
 	def need_restart(self):
-		return self._dynamic_config._need_restart
-	
+		return self._dynamic_config._need_restart and \
+			not self._dynamic_config._skip_restart
+
 	def success_without_autounmask(self):
 		return self._dynamic_config._success_without_autounmask
 
@@ -5712,7 +5771,8 @@ def _backtrack_depgraph(settings, trees, myopts, myparams, myaction, myfiles, sp
 
 		mydepgraph = depgraph(settings, trees, myopts, myparams, spinner,
 			frozen_config=frozen_config,
-			allow_backtracking=False)
+			allow_backtracking=False,
+			backtrack_parameters=backtracker.get_best_run())
 		success, favorites = mydepgraph.select_files(myfiles)
 
 	return (success, mydepgraph, favorites)
