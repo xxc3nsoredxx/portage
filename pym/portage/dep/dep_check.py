@@ -1,4 +1,4 @@
-# Copyright 2010 Gentoo Foundation
+# Copyright 2010-2011 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 __all__ = ['dep_check', 'dep_eval', 'dep_wordreduce', 'dep_zapdeps']
@@ -136,9 +136,20 @@ def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 		a = []
 		for pkg in pkgs:
 			virt_atom = '=' + pkg.cpv
-			if x.use:
-				virt_atom += str(x.use)
-			virt_atom = Atom(virt_atom)
+			if x.unevaluated_atom.use:
+				virt_atom += str(x.unevaluated_atom.use)
+				virt_atom = Atom(virt_atom)
+				if graph_parent is None:
+					if myuse is None:
+						virt_atom = virt_atom.evaluate_conditionals(
+							mysettings.get("PORTAGE_USE", "").split())
+					else:
+						virt_atom = virt_atom.evaluate_conditionals(myuse)
+				else:
+					virt_atom = virt_atom.evaluate_conditionals(
+						pkg_use_enabled(graph_parent))
+			else:
+				virt_atom = Atom(virt_atom)
 			# According to GLEP 37, RDEPEND is the only dependency
 			# type that is valid for new-style virtuals. Repoman
 			# should enforce this.
