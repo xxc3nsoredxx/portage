@@ -1,4 +1,4 @@
-# Copyright 1999-2009 Gentoo Foundation
+# Copyright 1999-2011 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import print_function
@@ -508,7 +508,10 @@ def help(myopts, havecolor=1):
 		print("       "+green("--newuse")+" ("+green("-N")+" short option)")
 		desc = "Tells emerge to include installed packages where USE " + \
 			"flags have changed since compilation. This option " + \
-			"also implies the --selective option."
+			"also implies the --selective option. If you would " + \
+			"like to skip rebuilds for which disabled flags have " + \
+			"been added to or removed from IUSE, see the related " + \
+			"--reinstall=changed-use option."
 		for line in wrap(desc, desc_width):
 			print(desc_indent + line)
 		print()
