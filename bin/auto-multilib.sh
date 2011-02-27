@@ -114,14 +114,13 @@ is_ebuild() {
 }
 
 get_abi_order() {
-	local order= dodefault=
+	local order=
+	use multilib_abi_"${DEFAULT_ABI}" && order=${DEFAULT_ABI}
 
 	if is_auto-multilib; then
-		for x in ${MULTILIB_ABIS} ; do
-			use multilib_abi_"${x}" && order="${order} ${x}"
+		for x in ${MULTILIB_ABIS/${DEFAULT_ABI}} ; do
+			use multilib_abi_"${x}" && order+=" ${x}"
 		done
-	else
-		order=${DEFAULT_ABI}
 	fi
 
 	if [ -z "${order}" ]; then
