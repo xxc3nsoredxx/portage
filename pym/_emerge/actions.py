@@ -1218,25 +1218,37 @@ def action_deselect(settings, trees, opts, atoms):
 			level=logging.ERROR, noiselevel=-1)
 		return 1
 
-	vardb = root_config.trees['vartree'].dbapi
-	expanded_atoms = set(atoms)
-	from portage.dep import Atom
-	for atom in atoms:
-		if not atom.startswith(SETPREFIX):
-			for cpv in vardb.match(atom):
-				slot, = vardb.aux_get(cpv, ['SLOT'])
-				if not slot:
-					slot = '0'
-				expanded_atoms.add(Atom('%s:%s' % (portage.cpv_getkey(cpv), slot)))
-
 	pretend = '--pretend' in opts
 	locked = False
 	if not pretend and hasattr(world_set, 'lock'):
 		world_set.lock()
 		locked = True
 	try:
-		discard_atoms = set()
 		world_set.load()
+		world_atoms = world_set.getAtoms()
+		vardb = root_config.trees["vartree"].dbapi
+		expanded_atoms = set(atoms)
+
+		for atom in atoms:
+			if not atom.startswith(SETPREFIX):
+				if atom.cp.startswith("null/"):
+					# try to expand category from world set
+					null_cat, pn = portage.catsplit(atom.cp)
+					for world_atom in world_atoms:
+						cat, world_pn = portage.catsplit(world_atom.cp)
+						if pn == world_pn:
+							expanded_atoms.add(
+								Atom(atom.replace("null", cat, 1),
+								allow_repo=True, allow_wildcard=True))
+
+				for cpv in vardb.match(atom):
+					slot, = vardb.aux_get(cpv, ["SLOT"])
+					if not slot:
+						slot = "0"
+					expanded_atoms.add(Atom("%s:%s" % \
+						(portage.cpv_getkey(cpv), slot)))
+
+		discard_atoms = set()
 		for atom in world_set:
 			for arg_atom in expanded_atoms:
 				if arg_atom.startswith(SETPREFIX):
@@ -2089,12 +2101,23 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 			maxretries = -1 #default number of retries
 
 		retries=0
-		proto, user_name, hostname, port = re.split(
-			"(rsync|ssh)://([^:/]+@)?([^:/]*)(:[0-9]+)?", syncuri, maxsplit=4)[1:5]
+		try:
+			proto, user_name, hostname, port = re.split(
+				r"(rsync|ssh)://([^:/]+@)?(\[[:\da-fA-F]*\]|[^:/]*)(:[0-9]+)?",
+				syncuri, maxsplit=4)[1:5]
+		except ValueError:
+			writemsg_level("!!! SYNC is invalid: %s\n" % syncuri,
+				noiselevel=-1, level=logging.ERROR)
+			return 1
 		if port is None:
 			port=""
 		if user_name is None:
 			user_name=""
+		if re.match(r"^\[[:\da-fA-F]*\]$", hostname) is None:
+			getaddrinfo_host = hostname
+		else:
+			# getaddrinfo needs the brackets stripped
+			getaddrinfo_host = hostname[1:-1]
 		updatecache_flg=True
 		all_rsync_opts = set(rsync_opts)
 		extra_rsync_opts = portage.util.shlex_split(
@@ -2113,7 +2136,7 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 
 		try:
 			addrinfos = getaddrinfo_validate(
-				socket.getaddrinfo(hostname, None,
+				socket.getaddrinfo(getaddrinfo_host, None,
 				family, socket.SOCK_STREAM))
 		except socket.error as e:
 			writemsg_level(
