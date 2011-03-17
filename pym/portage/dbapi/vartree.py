@@ -824,23 +824,8 @@ class vardbapi(dbapi):
 				# Empty path is a code used to represent empty contents.
 				self._add_path("", pkg_hash)
 
-			# When adding paths, implicitly add parent directories,
-			# since we can't necessarily assume that they are
-			# explicitly listed in CONTENTS.
-			added_paths = set()
 			for x in contents:
-				x = x[eroot_len:]
-				added_paths.add(x)
-				self._add_path(x, pkg_hash)
-				x_split = x.split(os.sep)
-				x_split.pop()
-				while x_split:
-					parent = os.sep.join(x_split)
-					if parent in added_paths:
-						break
-					added_paths.add(parent)
-					self._add_path(parent, pkg_hash)
-					x_split.pop()
+				self._add_path(x[eroot_len:], pkg_hash)
 
 			self._vardb._aux_cache["modified"].add(cpv)
 
@@ -1404,6 +1389,9 @@ class dblink(object):
 		myroot = self.settings['ROOT']
 		if myroot == os.path.sep:
 			myroot = None
+		# used to generate parent dir entries
+		dir_entry = (_unicode_decode("dir"),)
+		eroot_split_len = len(self.settings["EROOT"].split(os.sep)) - 1
 		pos = 0
 		errors = []
 		for pos, line in enumerate(mylines):
@@ -1447,6 +1435,19 @@ class dblink(object):
 
 			if myroot is not None:
 				path = os.path.join(myroot, path.lstrip(os.path.sep))
+
+			# Implicitly add parent directories, since we can't necessarily
+			# assume that they are explicitly listed in CONTENTS, and it's
+			# useful for callers if they can rely on parent directory entries
+			# being generated here (crucial for things like dblink.isowner()).
+			path_split = path.split(os.sep)
+			path_split.pop()
+			while len(path_split) > eroot_split_len:
+				parent = os.sep.join(path_split)
+				if parent in pkgfiles:
+					break
+				pkgfiles[parent] = dir_entry
+				path_split.pop()
 
 			pkgfiles[path] = data
 
@@ -1877,18 +1878,6 @@ class dblink(object):
 						else:
 							os = portage.os
 							perf_md5 = portage.checksum.perform_md5
-
-				# Try to unmerge parent directories of everything
-				# listed in CONTENTS, since we can't necessarily
-				# assume that directories are listed in CONTENTS.
-				obj_split = obj.split(os.sep)
-				obj_split.pop()
-				while len(obj_split) > eroot_split_len:
-					parent = os.sep.join(obj_split)
-					if parent in mydirs:
-						break
-					mydirs.add(parent)
-					obj_split.pop()
 
 				file_data = pkgfiles[objkey]
 				file_type = file_data[0]
@@ -3876,15 +3865,15 @@ class dblink(object):
 			# so imports won't fail during portage upgrade/downgrade.
 			portage.proxy.lazyimport._preload_portage_submodules()
 			settings = self.settings
-			base_path_orig = os.path.dirname(settings["PORTAGE_BIN_PATH"])
-			from tempfile import mkdtemp
 
-			# Make the temp directory inside PORTAGE_TMPDIR since, unlike
-			# /tmp, it can't be mounted with the "noexec" option.
-			base_path_tmp = mkdtemp("", "._portage_reinstall_.",
-				settings["PORTAGE_TMPDIR"])
-			from portage.process import atexit_register
-			atexit_register(shutil.rmtree, base_path_tmp)
+			# Make the temp directory inside $PORTAGE_TMPDIR/portage, since
+			# it's common for /tmp and /var/tmp to be mounted with the
+			# "noexec" option (see bug #346899).
+			build_prefix = os.path.join(settings["PORTAGE_TMPDIR"], "portage")
+			ensure_dirs(build_prefix)
+			base_path_tmp = tempfile.mkdtemp(
+				"", "._portage_reinstall_.", build_prefix)
+			portage.process.atexit_register(shutil.rmtree, base_path_tmp)
 			dir_perms = 0o755
 			for subdir in "bin", "pym":
 				var_name = "PORTAGE_%s_PATH" % subdir.upper()
