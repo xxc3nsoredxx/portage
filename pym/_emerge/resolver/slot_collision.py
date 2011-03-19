@@ -1,4 +1,4 @@
-# Copyright 2010 Gentoo Foundation
+# Copyright 2010-2011 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import print_function
@@ -457,7 +457,7 @@ class slot_conflict_handler(object):
 		if self.conflict_is_unspecific and \
 			not ("--newuse" in self.myopts and "--update" in self.myopts):
 			msg += "!!! Enabling --newuse and --update might solve this conflict.\n"
-			msg += "!!! If not, it might at least allow emerge to give a suggestions.\n\n"
+			msg += "!!! If not, it might help emerge to give a more specific suggestion.\n\n"
 			return msg
 
 		solutions = self.solutions
