@@ -2624,6 +2624,13 @@ def action_uninstall(settings, trees, ldpath_mtimes,
 	sched._background = sched._background_mode()
 	sched._status_display.quiet = True
 
+	if sched._background:
+		sched.settings.unlock()
+		sched.settings["PORTAGE_BACKGROUND"] = "1"
+		sched.settings.backup_changes("PORTAGE_BACKGROUND")
+		sched.settings.lock()
+		sched.pkgsettings[root] = portage.config(clone=sched.settings)
+
 	if action in ('clean', 'unmerge') or \
 		(action == 'prune' and "--nodeps" in opts):
 		# When given a list of atoms, unmerge them in the order given.
@@ -2966,7 +2973,8 @@ def chk_updated_cfg_files(eroot, config_protect):
 		portage.util.find_updated_config_files(target_root, config_protect))
 
 	for x in result:
-		print("\n"+colorize("WARN", " * IMPORTANT:"), end=' ')
+		writemsg_level("\n %s " % (colorize("WARN", "* IMPORTANT:"),),
+			level=logging.INFO, noiselevel=-1)
 		if not x[1]: # it's a protected file
 			writemsg_level("config file '%s' needs updating.\n" % x[0],
 				level=logging.INFO, noiselevel=-1)

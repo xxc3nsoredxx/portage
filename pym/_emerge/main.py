@@ -50,7 +50,7 @@ if sys.hexversion >= 0x3000000:
 	long = int
 
 options=[
-"--ask",          "--alphabetical",
+"--alphabetical",
 "--ask-enter-invalid",
 "--buildpkgonly",
 "--changed-use",
@@ -77,7 +77,6 @@ options=[
 
 shortmapping={
 "1":"--oneshot",
-"a":"--ask",
 "B":"--buildpkgonly",
 "c":"--depclean",
 "C":"--unmerge",
@@ -422,6 +421,7 @@ def insert_optional_args(args):
 	new_args = []
 
 	default_arg_opts = {
+		'--ask'                  : y_or_n,
 		'--autounmask'           : y_or_n,
 		'--buildpkg'             : y_or_n,
 		'--complete-graph'       : y_or_n,
@@ -456,6 +456,7 @@ def insert_optional_args(args):
 	# Don't make things like "-kn" expand to "-k n"
 	# since existence of -n makes it too ambiguous.
 	short_arg_opts_n = {
+		'a' : y_or_n,
 		'b' : y_or_n,
 		'g' : y_or_n,
 		'G' : y_or_n,
@@ -559,6 +560,13 @@ def parse_opts(tmpcmdline, silent=False):
 	true_y_or_n = ("True", "y", "n")
 	true_y = ("True", "y")
 	argument_options = {
+
+		"--ask": {
+			"shortopt" : "-a",
+			"help"    : "prompt before performing any actions",
+			"type"    : "choice",
+			"choices" : true_y_or_n
+		},
 
 		"--autounmask": {
 			"help"    : "automatically unmask packages",
@@ -806,6 +814,11 @@ def parse_opts(tmpcmdline, silent=False):
 	tmpcmdline = insert_optional_args(tmpcmdline)
 
 	myoptions, myargs = parser.parse_args(args=tmpcmdline)
+
+	if myoptions.ask in true_y:
+		myoptions.ask = True
+	else:
+		myoptions.ask = None
 
 	if myoptions.autounmask in true_y:
 		myoptions.autounmask = True
@@ -1340,8 +1353,14 @@ def check_procfs():
 		level=logging.ERROR, noiselevel=-1)
 	return 1
 
-def emerge_main():
-	global portage	# NFC why this is necessary now - genone
+def emerge_main(args=None):
+	"""
+	@param args: command arguments (default: sys.argv[1:])
+	@type args: list
+	"""
+	if args is None:
+		args = sys.argv[1:]
+
 	portage._disable_legacy_globals()
 	portage.dep._internal_warnings = True
 	# Disable color until we're sure that it should be enabled (after
@@ -1351,7 +1370,7 @@ def emerge_main():
 	# possible, such as --config-root.  They will be parsed again later,
 	# together with EMERGE_DEFAULT_OPTS (which may vary depending on the
 	# the value of --config-root).
-	myaction, myopts, myfiles = parse_opts(sys.argv[1:], silent=True)
+	myaction, myopts, myfiles = parse_opts(args, silent=True)
 	if "--debug" in myopts:
 		os.environ["PORTAGE_DEBUG"] = "1"
 	if "--config-root" in myopts:
@@ -1372,7 +1391,7 @@ def emerge_main():
 	tmpcmdline = []
 	if "--ignore-default-opts" not in myopts:
 		tmpcmdline.extend(settings["EMERGE_DEFAULT_OPTS"].split())
-	tmpcmdline.extend(sys.argv[1:])
+	tmpcmdline.extend(args)
 	myaction, myopts, myfiles = parse_opts(tmpcmdline)
 
 	if myaction not in ('help', 'info', 'version') and \
@@ -1541,11 +1560,10 @@ def emerge_main():
 
 	if settings.get("PORTAGE_DEBUG", "") == "1":
 		spinner.update = spinner.update_quiet
-		portage.debug=1
 		portage.util.noiselimit = 0
 		if "python-trace" in settings.features:
-			import portage.debug
-			portage.debug.set_trace(True)
+			import portage.debug as portage_debug
+			portage_debug.set_trace(True)
 
 	if not ("--quiet" in myopts):
 		if '--nospinner' in myopts or \
