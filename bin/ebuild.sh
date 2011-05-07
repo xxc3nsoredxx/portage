@@ -1512,7 +1512,7 @@ inherit() {
 			# This is disabled in the *rm phases because they frequently give
 			# false alarms due to INHERITED in /var/db/pkg being outdated
 			# in comparison the the eclasses from the portage tree.
-			if ! hasq $ECLASS $INHERITED; then
+			if ! hasq $ECLASS $INHERITED $__INHERITED_QA_CACHE ; then
 				eqawarn "QA Notice: ECLASS '$ECLASS' inherited illegally in $CATEGORY/$PF $EBUILD_PHASE"
 			fi
 		fi
@@ -1790,6 +1790,41 @@ _ebuild_phase_funcs() {
 
 			;;
 	esac
+}
+
+# Set given variables unless these variable have been already set (e.g. during emerge
+# invocation) to values different than values set in make.conf.
+set_unless_changed() {
+	if [[ $# -lt 1 ]]; then
+		die "${FUNCNAME}() requires at least 1 argument: VARIABLE=VALUE"
+	fi
+
+	local argument value variable
+	for argument in "$@"; do
+		if [[ ${argument} != *=* ]]; then
+			die "${FUNCNAME}(): Argument '${argument}' has incorrect syntax"
+		fi
+		variable="${argument%%=*}"
+		value="${argument#*=}"
+		if eval "[[ \${${variable}} == \$(env -u ${variable} portageq envvar ${variable}) ]]"; then
+			eval "${variable}=\"\${value}\""
+		fi
+	done
+}
+
+# Unset given variables unless these variable have been set (e.g. during emerge
+# invocation) to values different than values set in make.conf.
+unset_unless_changed() {
+	if [[ $# -lt 1 ]]; then
+		die "${FUNCNAME}() requires at least 1 argument: VARIABLE"
+	fi
+
+	local variable
+	for variable in "$@"; do
+		if eval "[[ \${${variable}} == \$(env -u ${variable} portageq envvar ${variable}) ]]"; then
+			unset ${variable}
+		fi
+	done
 }
 
 PORTAGE_BASHRCS_SOURCED=0
@@ -2144,11 +2179,18 @@ if ! hasq "$EBUILD_PHASE" clean cleanrm ; then
 		# during sourcing of ebuilds and eclasses.
 		source_all_bashrcs
 
+		# When EBUILD_PHASE != depend, INHERITED comes pre-initialized
+		# from cache. In order to make INHERITED content independent of
+		# EBUILD_PHASE during inherit() calls, we unset INHERITED after
+		# we make a backup copy for QA checks.
+		__INHERITED_QA_CACHE=$INHERITED
+
 		# *DEPEND and IUSE will be set during the sourcing of the ebuild.
 		# In order to ensure correct interaction between ebuilds and
 		# eclasses, they need to be unset before this process of
 		# interaction begins.
-		unset DEPEND RDEPEND PDEPEND IUSE REQUIRED_USE
+		unset DEPEND RDEPEND PDEPEND INHERITED IUSE REQUIRED_USE \
+			ECLASS E_IUSE E_REQUIRED_USE E_DEPEND E_RDEPEND E_PDEPEND
 
 		if [[ $PORTAGE_DEBUG != 1 || ${-/x/} != $- ]] ; then
 			source "$EBUILD" || die "error sourcing ebuild"
@@ -2178,7 +2220,8 @@ if ! hasq "$EBUILD_PHASE" clean cleanrm ; then
 		PDEPEND="${PDEPEND} ${E_PDEPEND}"
 		REQUIRED_USE="${REQUIRED_USE} ${E_REQUIRED_USE}"
 		
-		unset ECLASS E_IUSE E_REQUIRED_USE E_DEPEND E_RDEPEND E_PDEPEND 
+		unset ECLASS E_IUSE E_REQUIRED_USE E_DEPEND E_RDEPEND E_PDEPEND \
+			__INHERITED_QA_CACHE
 
 		# alphabetically ordered by $EBUILD_PHASE value
 		case "$EAPI" in

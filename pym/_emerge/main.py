@@ -217,7 +217,9 @@ def display_preserved_libs(vardbapi, myopts):
 		# preserve-libs is entirely disabled
 		return
 
-	# Ensure the registry is consistent with existing files.
+	# Explicitly load and prune the PreservedLibsRegistry in order
+	# to ensure that we do not display stale data.
+	vardbapi._plib_registry.load()
 	vardbapi._plib_registry.pruneNonExisting()
 
 	if vardbapi._plib_registry.hasEntries():
@@ -438,6 +440,9 @@ def insert_optional_args(args):
 		'--package-moves'        : y_or_n,
 		'--quiet'                : y_or_n,
 		'--quiet-build'          : y_or_n,
+		'--rebuild-if-new-rev'   : y_or_n,
+		'--rebuild-if-new-ver'   : y_or_n,
+		'--rebuild-if-unbuilt'   : y_or_n,
 		'--rebuilt-binaries'     : y_or_n,
 		'--root-deps'  : ('rdeps',),
 		'--select'               : y_or_n,
@@ -543,6 +548,23 @@ def insert_optional_args(args):
 			arg_stack.append("-" + saved_opts)
 
 	return new_args
+
+def _find_bad_atoms(atoms):
+	bad_atoms = []
+	for x in ' '.join(atoms).split():
+		bad_atom = False
+		try:
+			atom = portage.dep.Atom(x, allow_wildcard=True)
+		except portage.exception.InvalidAtom:
+			try:
+				atom = portage.dep.Atom("*/"+x, allow_wildcard=True)
+			except portage.exception.InvalidAtom:
+				bad_atom = True
+
+		if bad_atom or atom.operator or atom.blocker or atom.use:
+			bad_atoms.append(x)
+	return bad_atoms
+
 
 def parse_opts(tmpcmdline, silent=False):
 	myaction=None
@@ -669,6 +691,12 @@ def parse_opts(tmpcmdline, silent=False):
 			"action" : "store"
 		},
 
+		"--misspell-suggestions": {
+			"help"    : "enable package name misspell suggestions",
+			"type"    : "choice",
+			"choices" : ("y", "n")
+		},
+
 		"--with-bdeps": {
 			"help":"include unnecessary build time dependencies",
 			"type":"choice",
@@ -678,6 +706,14 @@ def parse_opts(tmpcmdline, silent=False):
 			"help":"specify conditions to trigger package reinstallation",
 			"type":"choice",
 			"choices":["changed-use"]
+		},
+
+		"--reinstall-atoms": {
+			"help"   :"A space separated list of package names or slot atoms. " + \
+				"Emerge will treat matching packages as if they are not " + \
+				"installed, and reinstall them if necessary. Implies --deep.",
+
+			"action" : "append",
 		},
 
 		"--binpkg-respect-use": {
@@ -701,6 +737,29 @@ def parse_opts(tmpcmdline, silent=False):
 			"choices"  : true_y_or_n
 		},
 
+		"--usepkg-exclude": {
+			"help"   :"A space separated list of package names or slot atoms. " + \
+				"Emerge will ignore matching binary packages. ",
+
+			"action" : "append",
+		},
+
+		"--rebuild-exclude": {
+			"help"   :"A space separated list of package names or slot atoms. " + \
+				"Emerge will not rebuild these packages due to the " + \
+				"--rebuild flag. ",
+
+			"action" : "append",
+		},
+
+		"--rebuild-ignore": {
+			"help"   :"A space separated list of package names or slot atoms. " + \
+				"Emerge will not rebuild packages that depend on matching " + \
+				"packages due to the --rebuild flag. ",
+
+			"action" : "append",
+		},
+
 		"--package-moves": {
 			"help"     : "perform package moves when necessary",
 			"type"     : "choice",
@@ -716,6 +775,31 @@ def parse_opts(tmpcmdline, silent=False):
 
 		"--quiet-build": {
 			"help"     : "redirect build output to logs",
+			"type"     : "choice",
+			"choices"  : true_y_or_n
+		},
+
+		"--rebuild-if-new-rev": {
+			"help"     : "Rebuild packages when dependencies that are " + \
+				"used at both build-time and run-time are built, " + \
+				"if the dependency is not already installed with the " + \
+				"same version and revision.",
+			"type"     : "choice",
+			"choices"  : true_y_or_n
+		},
+
+		"--rebuild-if-new-ver": {
+			"help"     : "Rebuild packages when dependencies that are " + \
+				"used at both build-time and run-time are built, " + \
+				"if the dependency is not already installed with the " + \
+				"same version. Revision numbers are ignored.",
+			"type"     : "choice",
+			"choices"  : true_y_or_n
+		},
+
+		"--rebuild-if-unbuilt": {
+			"help"     : "Rebuild packages when dependencies that are " + \
+				"used at both build-time and run-time are built.",
 			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
@@ -762,6 +846,13 @@ def parse_opts(tmpcmdline, silent=False):
 			"help"     : "use unbuilt ebuild metadata for visibility checks on built packages",
 			"type"     : "choice",
 			"choices"  : true_y_or_n
+		},
+
+		"--useoldpkg-atoms": {
+			"help"   :"A space separated list of package names or slot atoms. " + \
+				"Emerge will prefer matching binary packages over newer unbuilt packages. ",
+
+			"action" : "append",
 		},
 
 		"--usepkg": {
@@ -852,28 +943,39 @@ def parse_opts(tmpcmdline, silent=False):
 			myoptions.depclean_lib_check = True
 
 	if myoptions.exclude:
-		exclude = []
-		bad_atoms = []
-		for x in ' '.join(myoptions.exclude).split():
-			bad_atom = False
-			try:
-				atom = portage.dep.Atom(x, allow_wildcard=True)
-			except portage.exception.InvalidAtom:
-				try:
-					atom = portage.dep.Atom("*/"+x, allow_wildcard=True)
-				except portage.exception.InvalidAtom:
-					bad_atom = True
-			
-			if bad_atom:
-				bad_atoms.append(x)
-			else:
-				if atom.operator or atom.blocker or atom.use:
-					bad_atoms.append(x)
-				else:
-					exclude.append(atom)
-
+		bad_atoms = _find_bad_atoms(myoptions.exclude)
 		if bad_atoms and not silent:
 			parser.error("Invalid Atom(s) in --exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n" % \
+				(",".join(bad_atoms),))
+
+	if myoptions.reinstall_atoms:
+		bad_atoms = _find_bad_atoms(myoptions.reinstall_atoms)
+		if bad_atoms and not silent:
+			parser.error("Invalid Atom(s) in --reinstall-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n" % \
+				(",".join(bad_atoms),))
+
+	if myoptions.rebuild_exclude:
+		bad_atoms = _find_bad_atoms(myoptions.rebuild_exclude)
+		if bad_atoms and not silent:
+			parser.error("Invalid Atom(s) in --rebuild-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n" % \
+				(",".join(bad_atoms),))
+
+	if myoptions.rebuild_ignore:
+		bad_atoms = _find_bad_atoms(myoptions.rebuild_ignore)
+		if bad_atoms and not silent:
+			parser.error("Invalid Atom(s) in --rebuild-ignore parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n" % \
+				(",".join(bad_atoms),))
+
+	if myoptions.usepkg_exclude:
+		bad_atoms = _find_bad_atoms(myoptions.usepkg_exclude)
+		if bad_atoms and not silent:
+			parser.error("Invalid Atom(s) in --usepkg-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n" % \
+				(",".join(bad_atoms),))
+
+	if myoptions.useoldpkg_atoms:
+		bad_atoms = _find_bad_atoms(myoptions.useoldpkg_atoms)
+		if bad_atoms and not silent:
+			parser.error("Invalid Atom(s) in --useoldpkg-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n" % \
 				(",".join(bad_atoms),))
 
 	if myoptions.fail_clean in true_y:
@@ -906,6 +1008,24 @@ def parse_opts(tmpcmdline, silent=False):
 		myoptions.quiet_build = True
 	else:
 		myoptions.quiet_build = None
+
+	if myoptions.rebuild_if_new_ver in true_y:
+		myoptions.rebuild_if_new_ver = True
+	else:
+		myoptions.rebuild_if_new_ver = None
+
+	if myoptions.rebuild_if_new_rev in true_y:
+		myoptions.rebuild_if_new_rev = True
+		myoptions.rebuild_if_new_ver = None
+	else:
+		myoptions.rebuild_if_new_rev = None
+
+	if myoptions.rebuild_if_unbuilt in true_y:
+		myoptions.rebuild_if_unbuilt = True
+		myoptions.rebuild_if_new_rev = None
+		myoptions.rebuild_if_new_ver = None
+	else:
+		myoptions.rebuild_if_unbuilt = None
 
 	if myoptions.rebuilt_binaries in true_y:
 		myoptions.rebuilt_binaries = True
