@@ -551,14 +551,6 @@ class depgraph(object):
 					vardb.aux_get(pkg.cpv, [])
 					fakedb.cpv_inject(pkg)
 
-				# Now that the vardb state is cached in our FakeVartree,
-				# we won't be needing the real vartree cache for awhile.
-				# To make some room on the heap, clear the vardbapi
-				# caches.
-				self._frozen_config._trees_orig[myroot
-					]["vartree"].dbapi._clear_cache()
-				gc.collect()
-
 		self._dynamic_config._vdb_loaded = True
 
 	def _spinner_update(self):
@@ -1349,6 +1341,13 @@ class depgraph(object):
 					depend_root = myroot
 				elif root_deps == "rdeps":
 					ignore_build_time_deps = True
+
+		# If rebuild mode is not enabled, it's safe to discard ignored
+		# build-time dependencies. If you want these deps to be traversed
+		# in "complete" mode then you need to specify --with-bdeps=y.
+		if ignore_build_time_deps and \
+			not self._rebuild.rebuild:
+			edepend["DEPEND"] = ""
 
 		deps = (
 			(depend_root, edepend["DEPEND"],
@@ -4000,9 +3999,6 @@ class depgraph(object):
 			self._select_package = self._select_pkg_from_installed
 		else:
 			self._select_package = self._select_pkg_from_graph
-			# Make the graph as complete as possible by traversing build-time
-			# dependencies if they happen to be installed already.
-			self._dynamic_config.myparams["bdeps"] = "y"
 			self._dynamic_config._traverse_ignored_deps = True
 		already_deep = self._dynamic_config.myparams.get("deep") is True
 		if not already_deep:
@@ -4606,7 +4602,7 @@ class depgraph(object):
 		Break any references in Package instances that lead back to the depgraph.
 		This is useful if you want to hold references to packages without also
 		holding the depgraph on the heap. It should only be called after the
-		depgraph will not be used for any more calculations.
+		depgraph and _frozen_config will not be used for any more calculations.
 		"""
 		for root_config in self._frozen_config.roots.values():
 			root_config.update(self._frozen_config._trees_orig[
@@ -6048,13 +6044,30 @@ class _dep_check_composite_db(dbapi):
 		self._match_cache.clear()
 		self._cpv_pkg_map.clear()
 
+	def cp_list(self, cp):
+		"""
+		Emulate cp_list just so it can be used to check for existence
+		of new-style virtuals. Since it's a waste of time to return
+		more than one cpv for this use case, a maximum of one cpv will
+		be returned.
+		"""
+		if isinstance(cp, Atom):
+			atom = cp
+		else:
+			atom = Atom(cp)
+		ret = []
+		for pkg in self._depgraph._iter_match_pkgs_any(
+			self._depgraph._frozen_config.roots[self._root], atom):
+			if pkg.cp == cp:
+				ret.append(pkg.cpv)
+				break
+
+		return ret
+
 	def match(self, atom):
 		ret = self._match_cache.get(atom)
 		if ret is not None:
 			return ret[:]
-		orig_atom = atom
-		if "/" not in atom:
-			atom = self._dep_expand(atom)
 		pkg, existing = self._depgraph._select_package(self._root, atom)
 		if not pkg:
 			ret = []
@@ -6094,7 +6107,7 @@ class _dep_check_composite_db(dbapi):
 				ret.append(pkg.cpv)
 			if ret:
 				self._cpv_sort_ascending(ret)
-		self._match_cache[orig_atom] = ret
+		self._match_cache[atom] = ret
 		return ret[:]
 
 	def _visible(self, pkg):
@@ -6157,45 +6170,6 @@ class _dep_check_composite_db(dbapi):
 			# conflict with a previously selected package.
 			return False
 		return True
-
-	def _dep_expand(self, atom):
-		"""
-		This is only needed for old installed packages that may
-		contain atoms that are not fully qualified with a specific
-		category. Emulate the cpv_expand() function that's used by
-		dbapi.match() in cases like this. If there are multiple
-		matches, it's often due to a new-style virtual that has
-		been added, so try to filter those out to avoid raising
-		a ValueError.
-		"""
-		root_config = self._depgraph.roots[self._root]
-		orig_atom = atom
-		expanded_atoms = self._depgraph._dep_expand(root_config, atom)
-		if len(expanded_atoms) > 1:
-			non_virtual_atoms = []
-			for x in expanded_atoms:
-				if not x.cp.startswith("virtual/"):
-					non_virtual_atoms.append(x)
-			if len(non_virtual_atoms) == 1:
-				expanded_atoms = non_virtual_atoms
-		if len(expanded_atoms) > 1:
-			# compatible with portage.cpv_expand()
-			raise portage.exception.AmbiguousPackageName(
-				[x.cp for x in expanded_atoms])
-		if expanded_atoms:
-			atom = expanded_atoms[0]
-		else:
-			null_atom = Atom(insert_category_into_atom(atom, "null"),
-				allow_repo=True)
-			cat, atom_pn = portage.catsplit(null_atom.cp)
-			virts_p = root_config.settings.get_virts_p().get(atom_pn)
-			if virts_p:
-				# Allow the resolver to choose which virtual.
-				atom = Atom(null_atom.replace('null/', 'virtual/', 1),
-					allow_repo=True)
-			else:
-				atom = null_atom
-		return atom
 
 	def aux_get(self, cpv, wants):
 		metadata = self._cpv_pkg_map[cpv].metadata
@@ -6421,7 +6395,6 @@ def _resume_depgraph(settings, trees, mtimedb, myopts, myparams, spinner):
 			# package has already been installed.
 			dropped_tasks.update(pkg for pkg in \
 				unsatisfied_parents if pkg.operation != "nomerge")
-			mydepgraph.break_refs()
 
 			del e, graph, traversed_nodes, \
 				unsatisfied_parents, unsatisfied_stack
