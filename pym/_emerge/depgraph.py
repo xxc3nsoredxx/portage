@@ -3,10 +3,13 @@
 
 from __future__ import print_function
 
+import codecs
 import difflib
+import errno
 import gc
 import logging
 import re
+import stat
 import sys
 import textwrap
 from collections import deque
@@ -14,12 +17,12 @@ from itertools import chain
 
 import portage
 from portage import os, OrderedDict
-from portage import _unicode_decode
-from portage.const import PORTAGE_PACKAGE_ATOM
+from portage import _unicode_decode, _unicode_encode, _encodings
+from portage.const import PORTAGE_PACKAGE_ATOM, USER_CONFIG_PATH
 from portage.dbapi import dbapi
 from portage.dep import Atom, extract_affecting_use, check_required_use, human_readable_required_use, _repo_separator
 from portage.eapi import eapi_has_strong_blocks, eapi_has_required_use
-from portage.exception import InvalidAtom, InvalidDependString
+from portage.exception import InvalidAtom, InvalidDependString, PortageException
 from portage.output import colorize, create_color_func, \
 	darkgreen, green
 bad = create_color_func("BAD")
@@ -27,9 +30,11 @@ from portage.package.ebuild.getmaskingstatus import \
 	_getmaskingstatus, _MaskReason
 from portage._sets import SETPREFIX
 from portage._sets.base import InternalPackageSet
+from portage.util import ConfigProtect, shlex_split, new_protect_filename
 from portage.util import cmp_sort_key, writemsg, writemsg_stdout
-from portage.util import writemsg_level
+from portage.util import writemsg_level, write_atomic
 from portage.util.digraph import digraph
+from portage.util.listdir import _ignorecvs_dirs
 from portage.versions import catpkgsplit
 
 from _emerge.AtomArg import AtomArg
@@ -55,6 +60,7 @@ from _emerge.SetArg import SetArg
 from _emerge.show_invalid_depstring_notice import show_invalid_depstring_notice
 from _emerge.UnmergeDepPriority import UnmergeDepPriority
 from _emerge.UseFlagDisplay import pkg_use_display
+from _emerge.userquery import userquery
 
 from _emerge.resolver.backtracking import Backtracker, BacktrackParameter
 from _emerge.resolver.slot_collision import slot_conflict_handler
@@ -411,6 +417,7 @@ class _dynamic_depgraph_config(object):
 		self._highest_pkg_cache = {}
 
 		self._needed_unstable_keywords = backtrack_parameters.needed_unstable_keywords
+		self._needed_p_mask_changes = backtrack_parameters.needed_p_mask_changes
 		self._needed_license_changes = backtrack_parameters.needed_license_changes
 		self._needed_use_config_changes = backtrack_parameters.needed_use_config_changes
 		self._runtime_pkg_mask = backtrack_parameters.runtime_pkg_mask
@@ -420,7 +427,7 @@ class _dynamic_depgraph_config(object):
 		self._skip_restart = False
 		self._backtrack_infos = {}
 
-		self._autounmask = depgraph._frozen_config.myopts.get('--autounmask', 'n') == True
+		self._autounmask = depgraph._frozen_config.myopts.get('--autounmask') != 'n'
 		self._success_without_autounmask = False
 		self._traverse_ignored_deps = False
 
@@ -2284,15 +2291,21 @@ class depgraph(object):
 		except self._unknown_internal_error:
 			return False, myfavorites
 
-		if set(self._dynamic_config.digraph).intersection( \
+		digraph_set = frozenset(self._dynamic_config.digraph)
+
+		if digraph_set.intersection(
 			self._dynamic_config._needed_unstable_keywords) or \
-			set(self._dynamic_config.digraph).intersection( \
+			digraph_set.intersection(
+			self._dynamic_config._needed_p_mask_changes) or \
+			digraph_set.intersection(
 			self._dynamic_config._needed_use_config_changes) or \
-			set(self._dynamic_config.digraph).intersection( \
+			digraph_set.intersection(
 			self._dynamic_config._needed_license_changes) :
 			#We failed if the user needs to change the configuration
 			self._dynamic_config._success_without_autounmask = True
 			return False, myfavorites
+
+		digraph_set = None
 
 		if self._rebuild.trigger_rebuilds():
 			backtrack_infos = self._dynamic_config._backtrack_infos
@@ -3276,17 +3289,25 @@ class depgraph(object):
 				if pkg is not None:
 					break
 
-				pkg, existing = \
-					self._wrapped_select_pkg_highest_available_imp(
-						root, atom, onlydeps=onlydeps,
-						allow_use_changes=True,
-						allow_unstable_keywords=(not only_use_changes),
-						allow_license_changes=(not only_use_changes))
+				for allow_unmasks in (False, True):
+					if only_use_changes and allow_unmasks:
+						continue
 
-				if pkg is not None and \
-					pkg.installed and \
-					not self._want_installed_pkg(pkg):
-					pkg = None
+					if pkg is not None:
+						break
+
+					pkg, existing = \
+						self._wrapped_select_pkg_highest_available_imp(
+							root, atom, onlydeps=onlydeps,
+							allow_use_changes=True,
+							allow_unstable_keywords=(not only_use_changes),
+							allow_license_changes=(not only_use_changes),
+							allow_unmasks=allow_unmasks)
+
+					if pkg is not None and \
+						pkg.installed and \
+						not self._want_installed_pkg(pkg):
+						pkg = None
 			
 			if self._dynamic_config._need_restart:
 				return None, None
@@ -3298,12 +3319,21 @@ class depgraph(object):
 
 		return pkg, existing
 
-	def _pkg_visibility_check(self, pkg, allow_unstable_keywords=False, allow_license_changes=False):
+	def _pkg_visibility_check(self, pkg, allow_unstable_keywords=False, allow_license_changes=False, allow_unmasks=False):
 
 		if pkg.visible:
 			return True
 
-		if self._frozen_config.myopts.get('--autounmask', 'n') is not True:
+		if pkg in self._dynamic_config.digraph:
+			# Sometimes we need to temporarily disable
+			# dynamic_config._autounmask, but for overall
+			# consistency in dependency resolution, in any
+			# case we want to respect autounmask visibity
+			# for packages that have already been added to
+			# the dependency graph.
+			return True
+
+		if not self._dynamic_config._autounmask:
 			return False
 
 		pkgsettings = self._frozen_config.pkgsettings[pkg.root]
@@ -3311,8 +3341,10 @@ class depgraph(object):
 		mreasons = _get_masking_status(pkg, pkgsettings, root_config, use=self._pkg_use_enabled(pkg))
 
 		masked_by_unstable_keywords = False
+		masked_by_missing_keywords = False
 		missing_licenses = None
 		masked_by_something_else = False
+		masked_by_p_mask = False
 
 		for reason in mreasons:
 			hint = reason.unmask_hint
@@ -3321,6 +3353,10 @@ class depgraph(object):
 				masked_by_something_else = True
 			elif hint.key == "unstable keyword":
 				masked_by_unstable_keywords = True
+				if hint.value == "**":
+					masked_by_missing_keywords = True
+			elif hint.key == "p_mask":
+				masked_by_p_mask = True
 			elif hint.key == "license":
 				missing_licenses = hint.value
 			else:
@@ -3332,16 +3368,24 @@ class depgraph(object):
 		if pkg in self._dynamic_config._needed_unstable_keywords:
 			#If the package is already keyworded, remove the mask.
 			masked_by_unstable_keywords = False
+			masked_by_missing_keywords = False
+
+		if pkg in self._dynamic_config._needed_p_mask_changes:
+			#If the package is already keyworded, remove the mask.
+			masked_by_p_mask = False
 
 		if missing_licenses:
 			#If the needed licenses are already unmasked, remove the mask.
 			missing_licenses.difference_update(self._dynamic_config._needed_license_changes.get(pkg, set()))
 
-		if not (masked_by_unstable_keywords or missing_licenses):
+		if not (masked_by_unstable_keywords or masked_by_p_mask or missing_licenses):
 			#Package has already been unmasked.
 			return True
 
+		#We treat missing keywords in the same way as masks.
 		if (masked_by_unstable_keywords and not allow_unstable_keywords) or \
+			(masked_by_missing_keywords and not allow_unmasks) or \
+			(masked_by_p_mask and not allow_unmasks) or \
 			(missing_licenses and not allow_license_changes):
 			#We are not allowed to do the needed changes.
 			return False
@@ -3352,7 +3396,13 @@ class depgraph(object):
 			backtrack_infos.setdefault("config", {})
 			backtrack_infos["config"].setdefault("needed_unstable_keywords", set())
 			backtrack_infos["config"]["needed_unstable_keywords"].add(pkg)
-			
+
+		if masked_by_p_mask:
+			self._dynamic_config._needed_p_mask_changes.add(pkg)
+			backtrack_infos = self._dynamic_config._backtrack_infos
+			backtrack_infos.setdefault("config", {})
+			backtrack_infos["config"].setdefault("needed_p_mask_changes", set())
+			backtrack_infos["config"]["needed_p_mask_changes"].add(pkg)
 
 		if missing_licenses:
 			self._dynamic_config._needed_license_changes.setdefault(pkg, set()).update(missing_licenses)
@@ -3450,7 +3500,7 @@ class depgraph(object):
 		return new_use
 
 	def _wrapped_select_pkg_highest_available_imp(self, root, atom, onlydeps=False, \
-		allow_use_changes=False, allow_unstable_keywords=False, allow_license_changes=False):
+		allow_use_changes=False, allow_unstable_keywords=False, allow_license_changes=False, allow_unmasks=False):
 		root_config = self._frozen_config.roots[root]
 		pkgsettings = self._frozen_config.pkgsettings[root]
 		dbs = self._dynamic_config._filtered_trees[root]["dbs"]
@@ -3586,7 +3636,8 @@ class depgraph(object):
 
 						if not self._pkg_visibility_check(pkg, \
 							allow_unstable_keywords=allow_unstable_keywords,
-							allow_license_changes=allow_license_changes):
+							allow_license_changes=allow_license_changes,
+							allow_unmasks=allow_unmasks):
 							continue
 
 						# Enable upgrade or downgrade to a version
@@ -3628,7 +3679,8 @@ class depgraph(object):
 											"ebuild", Atom("=%s" % (pkg.cpv,))):
 											if self._pkg_visibility_check(pkg_eb, \
 												allow_unstable_keywords=allow_unstable_keywords,
-												allow_license_changes=allow_license_changes):
+												allow_license_changes=allow_license_changes,
+												allow_unmasks=allow_unmasks):
 												pkg_eb_visible = True
 												break
 										if not pkg_eb_visible:
@@ -3636,7 +3688,8 @@ class depgraph(object):
 									else:
 										if not self._pkg_visibility_check(pkg_eb, \
 											allow_unstable_keywords=allow_unstable_keywords,
-											allow_license_changes=allow_license_changes):
+											allow_license_changes=allow_license_changes,
+											allow_unmasks=allow_unmasks):
 											continue
 
 					# Calculation of USE for unbuilt ebuilds is relatively
@@ -3880,18 +3933,19 @@ class depgraph(object):
 				for pkg in matched_packages:
 					if pkg.installed and self._pkg_visibility_check(pkg, \
 						allow_unstable_keywords=allow_unstable_keywords,
-						allow_license_changes=allow_license_changes):
+						allow_license_changes=allow_license_changes,
+						allow_unmasks=allow_unmasks):
 						return pkg, existing_node
 
 			visible_matches = []
 			if matched_oldpkg:
 				visible_matches = [pkg.cpv for pkg in matched_oldpkg \
 					if self._pkg_visibility_check(pkg, allow_unstable_keywords=allow_unstable_keywords,
-						allow_license_changes=allow_license_changes)]
+						allow_license_changes=allow_license_changes, allow_unmasks=allow_unmasks)]
 			if not visible_matches:
 				visible_matches = [pkg.cpv for pkg in matched_packages \
 					if self._pkg_visibility_check(pkg, allow_unstable_keywords=allow_unstable_keywords,
-						allow_license_changes=allow_license_changes)]
+						allow_license_changes=allow_license_changes, allow_unmasks=allow_unmasks)]
 			if visible_matches:
 				bestmatch = portage.best(visible_matches)
 			else:
@@ -5493,6 +5547,318 @@ class depgraph(object):
 
 		return display(self, mylist, favorites, verbosity)
 
+	def _display_autounmask(self):
+		"""
+		Display --autounmask message and optionally write it to config files
+		(using CONFIG_PROTECT). The message includes the comments and the changes.
+		"""
+
+		autounmask_write = self._frozen_config.myopts.get("--autounmask-write", "n") == True
+		pretend = "--pretend" in self._frozen_config.myopts
+		ask = "--ask" in self._frozen_config.myopts
+		enter_invalid = '--ask-enter-invalid' in self._frozen_config.myopts
+
+		def check_if_latest(pkg):
+			is_latest = True
+			is_latest_in_slot = True
+			dbs = self._dynamic_config._filtered_trees[pkg.root]["dbs"]
+			root_config = self._frozen_config.roots[pkg.root]
+
+			for db, pkg_type, built, installed, db_keys in dbs:
+				for other_pkg in self._iter_match_pkgs(root_config, pkg_type, Atom(pkg.cp)):
+					if other_pkg.cp != pkg.cp:
+						# old-style PROVIDE virtual means there are no
+						# normal matches for this pkg_type
+						break
+					if other_pkg > pkg:
+						is_latest = False
+						if other_pkg.slot_atom == pkg.slot_atom:
+							is_latest_in_slot = False
+							break
+					else:
+						# iter_match_pkgs yields highest version first, so
+						# there's no need to search this pkg_type any further
+						break
+
+				if not is_latest_in_slot:
+					break
+
+			return is_latest, is_latest_in_slot
+
+		#Set of roots we have autounmask changes for.
+		roots = set()
+
+		unstable_keyword_msg = {}
+		for pkg in self._dynamic_config._needed_unstable_keywords:
+			self._show_merge_list()
+			if pkg in self._dynamic_config.digraph:
+				root = pkg.root
+				roots.add(root)
+				unstable_keyword_msg.setdefault(root, [])
+				is_latest, is_latest_in_slot = check_if_latest(pkg)
+				pkgsettings = self._frozen_config.pkgsettings[pkg.root]
+				mreasons = _get_masking_status(pkg, pkgsettings, pkg.root_config,
+					use=self._pkg_use_enabled(pkg))
+				for reason in mreasons:
+					if reason.unmask_hint and \
+						reason.unmask_hint.key == 'unstable keyword':
+						keyword = reason.unmask_hint.value
+
+						unstable_keyword_msg[root].append(self._get_dep_chain_as_comment(pkg))
+						if is_latest:
+							unstable_keyword_msg[root].append(">=%s %s\n" % (pkg.cpv, keyword))
+						elif is_latest_in_slot:
+							unstable_keyword_msg[root].append(">=%s:%s %s\n" % (pkg.cpv, pkg.metadata["SLOT"], keyword))
+						else:
+							unstable_keyword_msg[root].append("=%s %s\n" % (pkg.cpv, keyword))
+
+		p_mask_change_msg = {}
+		for pkg in self._dynamic_config._needed_p_mask_changes:
+			self._show_merge_list()
+			if pkg in self._dynamic_config.digraph:
+				root = pkg.root
+				roots.add(root)
+				p_mask_change_msg.setdefault(root, [])
+				is_latest, is_latest_in_slot = check_if_latest(pkg)
+				pkgsettings = self._frozen_config.pkgsettings[pkg.root]
+				mreasons = _get_masking_status(pkg, pkgsettings, pkg.root_config,
+					use=self._pkg_use_enabled(pkg))
+				for reason in mreasons:
+					if reason.unmask_hint and \
+						reason.unmask_hint.key == 'p_mask':
+						keyword = reason.unmask_hint.value
+
+						p_mask_change_msg[root].append(self._get_dep_chain_as_comment(pkg))
+						if is_latest:
+							p_mask_change_msg[root].append(">=%s\n" % pkg.cpv)
+						elif is_latest_in_slot:
+							p_mask_change_msg[root].append(">=%s:%s\n" % (pkg.cpv, pkg.metadata["SLOT"]))
+						else:
+							p_mask_change_msg[root].append("=%s\n" % pkg.cpv)
+
+		use_changes_msg = {}
+		for pkg, needed_use_config_change in self._dynamic_config._needed_use_config_changes.items():
+			self._show_merge_list()
+			if pkg in self._dynamic_config.digraph:
+				root = pkg.root
+				roots.add(root)
+				use_changes_msg.setdefault(root, [])
+				is_latest, is_latest_in_slot = check_if_latest(pkg)
+				changes = needed_use_config_change[1]
+				adjustments = []
+				for flag, state in changes.items():
+					if state:
+						adjustments.append(flag)
+					else:
+						adjustments.append("-" + flag)
+				use_changes_msg[root].append(self._get_dep_chain_as_comment(pkg, unsatisfied_dependency=True))
+				if is_latest:
+					use_changes_msg[root].append(">=%s %s\n" % (pkg.cpv, " ".join(adjustments)))
+				elif is_latest_in_slot:
+					use_changes_msg[root].append(">=%s:%s %s\n" % (pkg.cpv, pkg.metadata["SLOT"], " ".join(adjustments)))
+				else:
+					use_changes_msg[root].append("=%s %s\n" % (pkg.cpv, " ".join(adjustments)))
+
+		license_msg = {}
+		for pkg, missing_licenses in self._dynamic_config._needed_license_changes.items():
+			self._show_merge_list()
+			if pkg in self._dynamic_config.digraph:
+				root = pkg.root
+				roots.add(root)
+				license_msg.setdefault(root, [])
+				is_latest, is_latest_in_slot = check_if_latest(pkg)
+
+				license_msg[root].append(self._get_dep_chain_as_comment(pkg))
+				if is_latest:
+					license_msg[root].append(">=%s %s\n" % (pkg.cpv, " ".join(sorted(missing_licenses))))
+				elif is_latest_in_slot:
+					license_msg[root].append(">=%s:%s %s\n" % (pkg.cpv, pkg.metadata["SLOT"], " ".join(sorted(missing_licenses))))
+				else:
+					license_msg[root].append("=%s %s\n" % (pkg.cpv, " ".join(sorted(missing_licenses))))
+
+		def find_config_file(abs_user_config, file_name):
+			"""
+			Searches /etc/portage for an appropriate file to append changes to.
+			If the file_name is a file it is returned, if it is a directory, the
+			last file in it is returned. Order of traversal is the identical to
+			portage.util.grablines(recursive=True).
+
+			file_name - String containing a file name like "package.use"
+			return value - String. Absolute path of file to write to. None if
+			no suitable file exists.
+			"""
+			file_path = os.path.join(abs_user_config, file_name)
+
+			try:
+				os.lstat(file_path)
+			except OSError as e:
+				if e.errno == errno.ENOENT:
+					# The file doesn't exist, so we'll
+					# simply create it.
+					return file_path
+
+				# Disk or file system trouble?
+				return None
+
+			last_file_path = None
+			stack = [file_path]
+			while stack:
+				p = stack.pop()
+				try:
+					st = os.stat(p)
+				except OSError:
+					pass
+				else:
+					if stat.S_ISREG(st.st_mode):
+						last_file_path = p
+					elif stat.S_ISDIR(st.st_mode):
+						if os.path.basename(p) in _ignorecvs_dirs:
+							continue
+						try:
+							contents = os.listdir(p)
+						except OSError:
+							pass
+						else:
+							contents.sort(reverse=True)
+							for child in contents:
+								if child.startswith(".") or \
+									child.endswith("~"):
+									continue
+								stack.append(os.path.join(p, child))
+
+			return last_file_path
+
+		write_to_file = autounmask_write and not pretend
+		#Make sure we have a file to write to before doing any write.
+		file_to_write_to = {}
+		problems = []
+		if write_to_file:
+			for root in roots:
+				settings = self._frozen_config.roots[root].settings
+				abs_user_config = os.path.join(
+					settings["PORTAGE_CONFIGROOT"], USER_CONFIG_PATH)
+
+				if root in unstable_keyword_msg:
+					file_to_write_to[(abs_user_config, "package.keywords")] = \
+						find_config_file(abs_user_config, "package.keywords")
+
+				if root in p_mask_change_msg:
+					file_to_write_to[(abs_user_config, "package.unmask")] = \
+						find_config_file(abs_user_config, "package.unmask")
+
+				if root in use_changes_msg:
+					file_to_write_to[(abs_user_config, "package.use")] = \
+						find_config_file(abs_user_config, "package.use")
+
+				if root in license_msg:
+					file_to_write_to[(abs_user_config, "package.license")] = \
+						find_config_file(abs_user_config, "package.license")
+
+			for (abs_user_config, f), path in file_to_write_to.items():
+				if path is None:
+					problems.append("!!! No file to write for '%s'\n" % os.path.join(abs_user_config, f))
+
+			write_to_file = not problems
+
+		for root in roots:
+			settings = self._frozen_config.roots[root].settings
+			abs_user_config = os.path.join(
+				settings["PORTAGE_CONFIGROOT"], USER_CONFIG_PATH)
+
+			if len(roots) > 1:
+				writemsg_stdout("\nFor %s:\n" % abs_user_config, noiselevel=-1)
+
+			if root in unstable_keyword_msg:
+				writemsg_stdout("\nThe following " + colorize("BAD", "keyword changes") + \
+					" are necessary to proceed:\n", noiselevel=-1)
+				writemsg_stdout("".join(unstable_keyword_msg[root]), noiselevel=-1)
+
+			if root in p_mask_change_msg:
+				writemsg_stdout("\nThe following " + colorize("BAD", "mask changes") + \
+					" are necessary to proceed:\n", noiselevel=-1)
+				writemsg_stdout("".join(p_mask_change_msg[root]), noiselevel=-1)
+
+			if root in use_changes_msg:
+				writemsg_stdout("\nThe following " + colorize("BAD", "USE changes") + \
+					" are necessary to proceed:\n", noiselevel=-1)
+				writemsg_stdout("".join(use_changes_msg[root]), noiselevel=-1)
+
+			if root in license_msg:
+				writemsg_stdout("\nThe following " + colorize("BAD", "license changes") + \
+					" are necessary to proceed:\n", noiselevel=-1)
+				writemsg_stdout("".join(license_msg[root]), noiselevel=-1)
+
+		protect_obj = {}
+		if write_to_file:
+			for root in roots:
+				settings = self._frozen_config.roots[root].settings
+				protect_obj[root] = ConfigProtect(settings["EROOT"], \
+					shlex_split(settings.get("CONFIG_PROTECT", "")),
+					shlex_split(settings.get("CONFIG_PROTECT_MASK", "")))
+
+		def write_changes(root, changes, file_to_write_to):
+			file_contents = None
+			try:
+				file_contents = codecs.open(
+					_unicode_encode(file_to_write_to,
+					encoding=_encodings['fs'], errors='strict'),
+					mode='r', encoding=_encodings['content'],
+					errors='replace').readlines()
+			except IOError as e:
+				if e.errno == errno.ENOENT:
+					file_contents = []
+				else:
+					problems.append("!!! Failed to read '%s': %s\n" % \
+						(file_to_write_to, e))
+			if file_contents is not None:
+				file_contents.extend(changes)
+				if protect_obj[root].isprotected(file_to_write_to):
+					file_to_write_to = new_protect_filename(file_to_write_to)
+				try:
+					write_atomic(file_to_write_to, "".join(file_contents))
+				except PortageException:
+					problems.append("!!! Failed to write '%s'\n" % file_to_write_to)
+
+		if ask and write_to_file and file_to_write_to:
+			prompt = "\nWould you like to add these " + \
+				"changes to your config files?"
+			if userquery(prompt, enter_invalid) == 'No':
+				write_to_file = False
+
+		if write_to_file:
+			for root in roots:
+				settings = self._frozen_config.roots[root].settings
+				abs_user_config = os.path.join(
+					settings["PORTAGE_CONFIGROOT"], USER_CONFIG_PATH)
+
+				if root in unstable_keyword_msg:
+					write_changes(root, unstable_keyword_msg[root],
+						file_to_write_to.get((abs_user_config, "package.keywords")))
+
+				if root in p_mask_change_msg:
+					write_changes(root, p_mask_change_msg[root],
+						file_to_write_to.get((abs_user_config, "package.unmask")))
+
+				if root in use_changes_msg:
+					write_changes(root, use_changes_msg[root],
+						file_to_write_to.get((abs_user_config, "package.use")))
+
+				if root in license_msg:
+					write_changes(root, license_msg[root],
+						file_to_write_to.get((abs_user_config, "package.license")))
+
+		if problems:
+			writemsg_stdout("\nThe following problems occurred while writing autounmask changes:\n", \
+				noiselevel=-1)
+			writemsg_stdout("".join(problems), noiselevel=-1)
+		elif write_to_file and roots:
+			writemsg_stdout("\nAutounmask changes successfully written. Remember to run etc-update.\n", \
+				noiselevel=-1)
+		elif not pretend and not autounmask_write and roots:
+			writemsg_stdout("\nUse --autounmask-write to write changes to config files (honoring CONFIG_PROTECT).\n", \
+				noiselevel=-1)
+
+
 	def display_problems(self):
 		"""
 		Display problems with the dependency graph such as slot collisions.
@@ -5505,7 +5871,7 @@ class depgraph(object):
 		go to stdout for parsing by programs such as autounmask.
 		"""
 
-		# Note that show_masked_packages() sends it's output to
+		# Note that show_masked_packages() sends its output to
 		# stdout, and some programs such as autounmask parse the
 		# output in cases when emerge bails out. However, when
 		# show_masked_packages() is called for installed packages
@@ -5543,56 +5909,7 @@ class depgraph(object):
 		else:
 			self._show_missed_update()
 
-		unstable_keyword_msg = []
-		for pkg in self._dynamic_config._needed_unstable_keywords:
-			self._show_merge_list()
-			if pkg in self._dynamic_config.digraph:
-				pkgsettings = self._frozen_config.pkgsettings[pkg.root]
-				mreasons = _get_masking_status(pkg, pkgsettings, pkg.root_config,
-					use=self._pkg_use_enabled(pkg))
-				for reason in mreasons:
-					if reason.unmask_hint and \
-						reason.unmask_hint.key == 'unstable keyword':
-						keyword = reason.unmask_hint.value
-
-						unstable_keyword_msg.append(self._get_dep_chain_as_comment(pkg))
-						unstable_keyword_msg.append("=%s %s\n" % (pkg.cpv, keyword))
-
-		use_changes_msg = []
-		for pkg, needed_use_config_change in self._dynamic_config._needed_use_config_changes.items():
-			self._show_merge_list()
-			if pkg in self._dynamic_config.digraph:
-				changes = needed_use_config_change[1]
-				adjustments = []
-				for flag, state in changes.items():
-					if state:
-						adjustments.append(flag)
-					else:
-						adjustments.append("-" + flag)
-				use_changes_msg.append(self._get_dep_chain_as_comment(pkg, unsatisfied_dependency=True))
-				use_changes_msg.append("=%s %s\n" % (pkg.cpv, " ".join(adjustments)))
-
-		license_msg = []
-		for pkg, missing_licenses in self._dynamic_config._needed_license_changes.items():
-			self._show_merge_list()
-			if pkg in self._dynamic_config.digraph:
-				license_msg.append(self._get_dep_chain_as_comment(pkg))
-				license_msg.append("=%s %s\n" % (pkg.cpv, " ".join(sorted(missing_licenses))))
-
-		if unstable_keyword_msg:
-			writemsg_stdout("\nThe following " + colorize("BAD", "keyword changes") + \
-				" are necessary to proceed:\n", noiselevel=-1)
-			writemsg_stdout("".join(unstable_keyword_msg), noiselevel=-1)
-
-		if use_changes_msg:
-			writemsg_stdout("\nThe following " + colorize("BAD", "USE changes") + \
-				" are necessary to proceed:\n", noiselevel=-1)
-			writemsg_stdout("".join(use_changes_msg), noiselevel=-1)
-
-		if license_msg:
-			writemsg_stdout("\nThe following " + colorize("BAD", "license changes") + \
-				" are necessary to proceed:\n", noiselevel=-1)
-			writemsg_stdout("".join(license_msg), noiselevel=-1)
+		self._display_autounmask()
 
 		# TODO: Add generic support for "set problem" handlers so that
 		# the below warnings aren't special cases for world only.
