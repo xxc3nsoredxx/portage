@@ -86,13 +86,16 @@ class FakeVartree(vartree):
 		if pkg in self._aux_get_history:
 			return self._aux_get(pkg, wants)
 		self._aux_get_history.add(pkg)
+		# We need to check the EAPI, and this also raises
+		# a KeyError to the caller if appropriate.
+		installed_eapi, repo = self._aux_get(pkg, ["EAPI", "repository"])
 		try:
 			# Use the live ebuild metadata if possible.
-			repo = self._aux_get(pkg, ["repository"])[0]
 			repo = _gen_valid_repo(repo)
 			live_metadata = dict(zip(self._portdb_keys,
 				self._portdb.aux_get(pkg, self._portdb_keys, myrepo=repo)))
-			if not portage.eapi_is_supported(live_metadata["EAPI"]):
+			if not portage.eapi_is_supported(live_metadata["EAPI"]) or \
+				installed_eapi != live_metadata["EAPI"]:
 				raise KeyError(pkg)
 			self.dbapi.aux_update(pkg, live_metadata)
 		except (KeyError, portage.exception.PortageException):
@@ -153,11 +156,13 @@ class FakeVartree(vartree):
 
 		# Validate counters and timestamps.
 		slot_counters = {}
-		root = self.root
+		root_config = self._pkg_root_config
 		validation_keys = ["COUNTER", "_mtime_"]
 		for cpv in current_cpv_set:
 
-			pkg_hash_key = ("installed", root, cpv, "nomerge", "installed")
+			pkg_hash_key = Package._gen_hash_key(cpv=cpv,
+				installed=True, root_config=root_config,
+				type_name="installed")
 			pkg = pkg_vardb.get(pkg_hash_key)
 			if pkg is not None:
 				counter, mtime = real_vardb.aux_get(cpv, validation_keys)

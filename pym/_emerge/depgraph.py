@@ -1036,18 +1036,6 @@ class depgraph(object):
 				return 0
 
 		if not pkg.onlydeps:
-			if not pkg.installed and \
-				"empty" not in self._dynamic_config.myparams and \
-				vardbapi.match(pkg.slot_atom):
-				# Increase the priority of dependencies on packages that
-				# are being rebuilt. This optimizes merge order so that
-				# dependencies are rebuilt/updated as soon as possible,
-				# which is needed especially when emerge is called by
-				# revdep-rebuild since dependencies may be affected by ABI
-				# breakage that has rendered them useless. Don't adjust
-				# priority here when in "empty" mode since all packages
-				# are being merged in that case.
-				priority.rebuild = True
 
 			existing_node, existing_node_matches = \
 				self._check_slot_conflict(pkg, dep.atom)
@@ -1583,6 +1571,20 @@ class depgraph(object):
 
 			if not dep_priority.ignored or \
 				self._dynamic_config._traverse_ignored_deps:
+
+				inst_pkgs = [inst_pkg for inst_pkg in vardb.match_pkgs(virt_dep.atom)
+					if not reinstall_atoms.findAtomForPackage(inst_pkg,
+							modified_use=self._pkg_use_enabled(inst_pkg))]
+				if inst_pkgs:
+					for inst_pkg in inst_pkgs:
+						if self._pkg_visibility_check(inst_pkg):
+							# highest visible
+							virt_dep.priority.satisfied = inst_pkg
+							break
+					if not virt_dep.priority.satisfied:
+						# none visible, so use highest
+						virt_dep.priority.satisfied = inst_pkgs[0]
+
 				if not self._add_pkg(virt_pkg, virt_dep):
 					return 0
 
@@ -2738,14 +2740,17 @@ class depgraph(object):
 
 
 	def _show_unsatisfied_dep(self, root, atom, myparent=None, arg=None,
-		check_backtrack=False):
+		check_backtrack=False, check_autounmask_breakage=False):
 		"""
 		When check_backtrack=True, no output is produced and
 		the method either returns or raises _backtrack_mask if
 		a matching package has been masked by backtracking.
 		"""
 		backtrack_mask = False
+		autounmask_broke_use_dep = False
 		atom_set = InternalPackageSet(initial_atoms=(atom.without_use,),
+			allow_repo=True)
+		atom_set_with_use = InternalPackageSet(initial_atoms=(atom,),
 			allow_repo=True)
 		xinfo = '"%s"' % atom.unevaluated_atom
 		if arg:
@@ -2821,6 +2826,8 @@ class depgraph(object):
 									or atom.violated_conditionals(self._pkg_use_enabled(pkg), pkg.iuse.is_valid_flag).use:
 									missing_use.append(pkg)
 									if not mreasons:
+										if atom_set_with_use.findAtomForPackage(pkg):
+											autounmask_broke_use_dep = True
 										continue
 							except InvalidAtom:
 								writemsg("violated_conditionals raised " + \
@@ -2850,6 +2857,12 @@ class depgraph(object):
 		if check_backtrack:
 			if backtrack_mask:
 				raise self._backtrack_mask()
+			else:
+				return
+
+		if check_autounmask_breakage:
+			if autounmask_broke_use_dep:
+				raise self._autounmask_breakage()
 			else:
 				return
 
@@ -4142,30 +4155,20 @@ class depgraph(object):
 		failures for some reason (package does not exist or is
 		corrupt).
 		"""
-		if type_name != "ebuild":
-			# For installed (and binary) packages we don't care for the repo
-			# when it comes to hashing, because there can only be one cpv.
-			# So overwrite the repo_key with type_name.
-			repo_key = type_name
-			myrepo = None
-		elif myrepo is None:
-			raise AssertionError(
-				"depgraph._pkg() called without 'myrepo' argument")
-		else:
-			repo_key = myrepo
 
-		operation = "merge"
-		if installed or onlydeps:
-			operation = "nomerge"
 		# Ensure that we use the specially optimized RootConfig instance
 		# that refers to FakeVartree instead of the real vartree.
 		root_config = self._frozen_config.roots[root_config.root]
 		pkg = self._frozen_config._pkg_cache.get(
-			(type_name, root_config.root, cpv, operation, repo_key))
+			Package._gen_hash_key(cpv=cpv, type_name=type_name,
+			repo_name=myrepo, root_config=root_config,
+			installed=installed, onlydeps=onlydeps))
 		if pkg is None and onlydeps and not installed:
 			# Maybe it already got pulled in as a "merge" node.
 			pkg = self._dynamic_config.mydbapi[root_config.root].get(
-				(type_name, root_config.root, cpv, 'merge', repo_key))
+				Package._gen_hash_key(cpv=cpv, type_name=type_name,
+				repo_name=myrepo, root_config=root_config,
+				installed=installed, onlydeps=False))
 
 		if pkg is None:
 			tree_type = self.pkg_tree_map[type_name]
@@ -4197,7 +4200,8 @@ class depgraph(object):
 		"""Remove any blockers from the digraph that do not match any of the
 		packages within the graph.  If necessary, create hard deps to ensure
 		correct merge order such that mutually blocking packages are never
-		installed simultaneously."""
+		installed simultaneously. Also add runtime blockers from all installed
+		packages if any of them haven't been added already (bug 128809)."""
 
 		if "--buildpkgonly" in self._frozen_config.myopts or \
 			"--nodeps" in self._frozen_config.myopts:
@@ -4208,9 +4212,11 @@ class depgraph(object):
 
 		if True:
 			# Pull in blockers from all installed packages that haven't already
-			# been pulled into the depgraph.  This is not enabled by default
-			# due to the performance penalty that is incurred by all the
-			# additional dep_check calls that are required.
+			# been pulled into the depgraph, in order to ensure that the are
+			# respected (bug 128809). Due to the performance penalty that is
+			# incurred by all the additional dep_check calls that are required,
+			# blockers returned from dep_check are cached on disk by the
+			# BlockerCache class.
 
 			# For installed packages, always ignore blockers from DEPEND since
 			# only runtime dependencies should be relevant for packages that
@@ -4936,6 +4942,7 @@ class depgraph(object):
 					if nodes:
 						# If there is a mixture of merges and uninstalls,
 						# do the uninstalls first.
+						good_uninstalls = None
 						if len(nodes) > 1:
 							good_uninstalls = []
 							for node in nodes:
@@ -4947,7 +4954,9 @@ class depgraph(object):
 							else:
 								nodes = nodes
 
-						if ignore_priority is None and not tree_mode:
+						if good_uninstalls or len(nodes) == 1 or \
+							(ignore_priority is None and \
+							not asap_nodes and not tree_mode):
 							# Greedily pop all of these nodes since no
 							# relationship has been ignored. This optimization
 							# destroys --tree output, so it's disabled in tree
@@ -4960,12 +4969,25 @@ class depgraph(object):
 							#    will not produce a leaf node, so avoid it.
 							#  * It's normal for a selected uninstall to be a
 							#    root node, so don't check them for parents.
-							for node in nodes:
-								if node.operation == "uninstall" or \
-									mygraph.parent_nodes(node):
-									selected_nodes = [node]
+							if asap_nodes:
+								prefer_asap_parents = (True, False)
+							else:
+								prefer_asap_parents = (False,)
+							for check_asap_parent in prefer_asap_parents:
+								if check_asap_parent:
+									for node in nodes:
+										parents = mygraph.parent_nodes(node,
+											ignore_priority=DepPrioritySatisfiedRange.ignore_soft)
+										if parents and set(parents).intersection(asap_nodes):
+											selected_nodes = [node]
+											break
+								else:
+									for node in nodes:
+										if mygraph.parent_nodes(node):
+											selected_nodes = [node]
+											break
+								if selected_nodes:
 									break
-
 						if selected_nodes:
 							break
 
@@ -5014,6 +5036,7 @@ class depgraph(object):
 							continue
 						if child in asap_nodes:
 							continue
+						# Merge PDEPEND asap for bug #180045.
 						asap_nodes.append(child)
 
 			if selected_nodes and len(selected_nodes) > 1:
@@ -5531,8 +5554,7 @@ class depgraph(object):
 
 				msg.append("\n")
 
-			sys.stderr.write("".join(msg))
-			sys.stderr.flush()
+			writemsg("".join(msg), noiselevel=-1)
 
 		if "--quiet" not in self._frozen_config.myopts:
 			show_blocker_docs_link()
@@ -6331,12 +6353,28 @@ class depgraph(object):
 		backtracking.
 		"""
 
+	class _autounmask_breakage(_internal_exception):
+		"""
+		This is raised by _show_unsatisfied_dep() when it's called with
+		check_autounmask_breakage=True and a matching package has been
+		been disqualified due to autounmask changes.
+		"""
+
 	def need_restart(self):
 		return self._dynamic_config._need_restart and \
 			not self._dynamic_config._skip_restart
 
 	def success_without_autounmask(self):
 		return self._dynamic_config._success_without_autounmask
+
+	def autounmask_breakage_detected(self):
+		try:
+			for pargs, kwargs in self._dynamic_config._unsatisfied_deps_for_display:
+				self._show_unsatisfied_dep(
+					*pargs, check_autounmask_breakage=True, **kwargs)
+		except self._autounmask_breakage:
+			return True
+		return False
 
 	def get_backtrack_infos(self):
 		return self._dynamic_config._backtrack_infos
@@ -6629,6 +6667,15 @@ def _backtrack_depgraph(settings, trees, myopts, myparams, myaction, myfiles, sp
 			allow_backtracking=False,
 			backtrack_parameters=backtracker.get_best_run())
 		success, favorites = mydepgraph.select_files(myfiles)
+		if not success and mydepgraph.autounmask_breakage_detected():
+			if "--debug" in myopts:
+				writemsg_level(
+					"\n\nautounmask breakage detected\n\n",
+					noiselevel=-1, level=logging.DEBUG)
+			myopts["--autounmask"] = "n"
+			mydepgraph = depgraph(settings, trees, myopts, myparams, spinner,
+				frozen_config=frozen_config, allow_backtracking=False)
+			success, favorites = mydepgraph.select_files(myfiles)
 
 	return (success, mydepgraph, favorites)
 

@@ -39,7 +39,7 @@ from portage.const import _ENABLE_DYN_LINK_MAP, _ENABLE_PRESERVE_LIBS
 from portage.dbapi import dbapi
 from portage.dep import _slot_separator
 from portage.exception import CommandNotFound, \
-	InvalidData, InvalidPackageName, \
+	InvalidData, InvalidLocation, InvalidPackageName, \
 	FileNotFound, PermissionDenied, UnsupportedAPIException
 from portage.localization import _
 from portage.util.movefile import movefile
@@ -222,7 +222,11 @@ class vardbapi(dbapi):
 		if self._fs_lock_count < 1:
 			if self._fs_lock_obj is not None:
 				raise AssertionError("already locked")
-			self._fs_lock_obj = lockfile(self._conf_mem_file)
+			try:
+				self._fs_lock_obj = lockfile(self._conf_mem_file)
+			except InvalidLocation:
+				self.settings._init_dirs()
+				self._fs_lock_obj = lockfile(self._conf_mem_file)
 		self._fs_lock_count += 1
 
 	def _fs_unlock(self):
@@ -822,11 +826,12 @@ class vardbapi(dbapi):
 				if incrementing:
 					#increment counter
 					counter += 1
-					# use same permissions as config._init_dirs()
-					ensure_dirs(os.path.dirname(self._counter_path),
-						gid=portage_gid, mode=0o2750, mask=0o2)
 					# update new global counter file
-					write_atomic(self._counter_path, str(counter))
+					try:
+						write_atomic(self._counter_path, str(counter))
+					except InvalidLocation:
+						self.settings._init_dirs()
+						write_atomic(self._counter_path, str(counter))
 				self._cached_counter = counter
 		finally:
 			self.unlock()
@@ -1532,7 +1537,7 @@ class dblink(object):
 					if unmerge_preserve:
 						for path in sorted(unmerge_preserve):
 							contents_key = self._match_contents(path)
-							if contents_key is None:
+							if not contents_key:
 								continue
 							obj_type = self.getcontents()[contents_key][0]
 							self._display_merge(_(">>> needed   %s %s\n") % \
@@ -1604,6 +1609,7 @@ class dblink(object):
 				DeprecationWarning, stacklevel=2)
 
 		background = False
+		log_path = None
 		if self._scheduler is None:
 			# We create a scheduler instance and use it to
 			# log unmerge output separately from merge output.
@@ -1614,7 +1620,8 @@ class dblink(object):
 				self.settings.backup_changes("PORTAGE_BACKGROUND")
 				background = True
 			else:
-				self.settings.pop("PORTAGE_BACKGROUND", None)
+				# Our output is redirected and logged by the parent process.
+				log_path = self.settings.pop("PORTAGE_LOG_FILE", None)
 		elif self.settings.get("PORTAGE_BACKGROUND") == "1":
 			background = True
 
@@ -1647,7 +1654,6 @@ class dblink(object):
 		myebuildpath = None
 		failures = 0
 		ebuild_phase = "prerm"
-		log_path = None
 		mystuff = os.listdir(self.dbdir)
 		for x in mystuff:
 			if x.endswith(".ebuild"):
@@ -1659,7 +1665,11 @@ class dblink(object):
 					write_atomic(os.path.join(self.dbdir, "PF"), self.pkg+"\n")
 				break
 
-		self.settings.setcpv(self.mycpv, mydb=self.vartree.dbapi)
+		if self.mycpv != self.settings.mycpv or \
+			"SLOT" not in self.settings.configdict["pkg"]:
+			# We avoid a redundant setcpv call here when
+			# the caller has already taken care of it.
+			self.settings.setcpv(self.mycpv, mydb=self.vartree.dbapi)
 		if myebuildpath:
 			try:
 				doebuild_environment(myebuildpath, "prerm",
@@ -1677,21 +1687,22 @@ class dblink(object):
 		self._prune_plib_registry(unmerge=True, needed=needed,
 			preserve_paths=preserve_paths)
 
+		builddir_locked = "PORTAGE_BUILDIR_LOCKED" in self.settings
 		builddir_lock = None
-		log_path = None
 		scheduler = self._scheduler
 		retval = os.EX_OK
 		try:
 			if myebuildpath:
-				# Only create builddir_lock if doebuild_environment
-				# succeeded, since that's needed to initialize
-				# PORTAGE_BUILDDIR.
-				builddir_lock = EbuildBuildDir(
-					scheduler=scheduler,
-					settings=self.settings)
-				builddir_lock.lock()
-				prepare_build_dirs(settings=self.settings, cleanup=True)
-				log_path = self.settings.get("PORTAGE_LOG_FILE")
+				# Only create builddir_lock if the caller
+				# has not already acquired the lock.
+				if not builddir_locked:
+					builddir_lock = EbuildBuildDir(
+						scheduler=scheduler,
+						settings=self.settings)
+					builddir_lock.lock()
+					builddir_locked = True
+					prepare_build_dirs(settings=self.settings, cleanup=True)
+					log_path = self.settings.get("PORTAGE_LOG_FILE")
 
 				phase = EbuildPhase(background=background,
 					phase=ebuild_phase, scheduler=scheduler,
@@ -1728,7 +1739,7 @@ class dblink(object):
 
 		finally:
 			self.vartree.dbapi._bump_mtime(self.mycpv)
-			if builddir_lock:
+			if builddir_locked:
 				try:
 					if myebuildpath:
 						if retval != os.EX_OK:
@@ -1771,14 +1782,17 @@ class dblink(object):
 
 					self._elog_process(phasefilter=("prerm", "postrm"))
 
-					if retval == os.EX_OK and builddir_lock is not None:
+					if retval == os.EX_OK and builddir_locked:
 						# myebuildpath might be None, so ensure
 						# it has a sane value for the clean phase,
 						# even though it won't really be sourced.
 						myebuildpath = os.path.join(self.dbdir,
 							self.pkg + ".ebuild")
-						doebuild_environment(myebuildpath, "cleanrm",
-							settings=self.settings, db=self.vartree.dbapi)
+						try:
+							doebuild_environment(myebuildpath, "cleanrm",
+								settings=self.settings, db=self.vartree.dbapi)
+						except UnsupportedAPIException:
+							pass
 						phase = EbuildPhase(background=background,
 							phase="cleanrm", scheduler=scheduler,
 							settings=self.settings)
@@ -3057,8 +3071,11 @@ class dblink(object):
 		for cur_cpv in slot_matches:
 			# Clone the config in case one of these has to be unmerged since
 			# we need it to have private ${T} etc... for things like elog.
+			settings_clone = config(clone=self.settings)
+			settings_clone.pop("PORTAGE_BUILDIR_LOCKED", None)
+			settings_clone.reset()
 			others_in_slot.append(dblink(self.cat, catsplit(cur_cpv)[1],
-				settings=config(clone=self.settings),
+				settings=settings_clone,
 				vartree=self.vartree, treetype="vartree",
 				scheduler=self._scheduler, pipe=self._pipe))
 
@@ -3443,7 +3460,12 @@ class dblink(object):
 		else:
 			emerge_log = scheduler.dblinkEmergeLog
 
-		autoclean = self.settings.get("AUTOCLEAN", "yes") == "yes"
+		# If we have any preserved libraries then autoclean
+		# is forced so that preserve-libs logic doesn't have
+		# to account for the additional complexity of the
+		# AUTOCLEAN=no mode.
+		autoclean = self.settings.get("AUTOCLEAN", "yes") == "yes" \
+			or preserve_paths
 
 		if autoclean:
 			emerge_log(_(" >>> AUTOCLEAN: %s") % (slot_atom,))
@@ -3702,9 +3724,11 @@ class dblink(object):
 		# write out our collection of md5sums
 		if cfgfiledict != cfgfiledict_orig:
 			cfgfiledict.pop("IGNORE", None)
-			ensure_dirs(os.path.dirname(self.vartree.dbapi._conf_mem_file),
-				gid=portage_gid, mode=0o2750, mask=0o2)
-			writedict(cfgfiledict, self.vartree.dbapi._conf_mem_file)
+			try:
+				writedict(cfgfiledict, self.vartree.dbapi._conf_mem_file)
+			except InvalidLocation:
+				self.settings._init_dirs()
+				writedict(cfgfiledict, self.vartree.dbapi._conf_mem_file)
 
 		return os.EX_OK
 
@@ -4170,7 +4194,7 @@ def merge(mycat, mypkg, pkgloc, infloc,
 		return errno.EACCES
 	background = (settings.get('PORTAGE_BACKGROUND') == '1')
 	merge_task = MergeProcess(
-		dblink=dblink, mycat=mycat, mypkg=mypkg, settings=settings,
+		mycat=mycat, mypkg=mypkg, settings=settings,
 		treetype=mytree, vartree=vartree,
 		scheduler=(scheduler or PollScheduler().sched_iface),
 		background=background, blockers=blockers, pkgloc=pkgloc,
