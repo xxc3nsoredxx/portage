@@ -2825,9 +2825,9 @@ class depgraph(object):
 								if not pkg.iuse.is_valid_flag(atom.unevaluated_atom.use.required) \
 									or atom.violated_conditionals(self._pkg_use_enabled(pkg), pkg.iuse.is_valid_flag).use:
 									missing_use.append(pkg)
+									if atom_set_with_use.findAtomForPackage(pkg):
+										autounmask_broke_use_dep = True
 									if not mreasons:
-										if atom_set_with_use.findAtomForPackage(pkg):
-											autounmask_broke_use_dep = True
 										continue
 							except InvalidAtom:
 								writemsg("violated_conditionals raised " + \
@@ -3902,11 +3902,15 @@ class depgraph(object):
 			if rebuilt_binaries:
 				inst_pkg = None
 				built_pkg = None
+				unbuilt_pkg = None
 				for pkg in matched_packages:
 					if pkg.installed:
 						inst_pkg = pkg
 					elif pkg.built:
 						built_pkg = pkg
+					else:
+						if unbuilt_pkg is None or pkg > unbuilt_pkg:
+							unbuilt_pkg = pkg
 				if built_pkg is not None and inst_pkg is not None:
 					# Only reinstall if binary package BUILD_TIME is
 					# non-empty, in order to avoid cases like to
@@ -3922,7 +3926,9 @@ class depgraph(object):
 					except (KeyError, ValueError):
 						installed_timestamp = 0
 
-					if "--rebuilt-binaries-timestamp" in self._frozen_config.myopts:
+					if unbuilt_pkg is not None and unbuilt_pkg > built_pkg:
+						pass
+					elif "--rebuilt-binaries-timestamp" in self._frozen_config.myopts:
 						minimal_timestamp = self._frozen_config.myopts["--rebuilt-binaries-timestamp"]
 						if built_timestamp and \
 							built_timestamp > installed_timestamp and \
@@ -6667,15 +6673,16 @@ def _backtrack_depgraph(settings, trees, myopts, myparams, myaction, myfiles, sp
 			allow_backtracking=False,
 			backtrack_parameters=backtracker.get_best_run())
 		success, favorites = mydepgraph.select_files(myfiles)
-		if not success and mydepgraph.autounmask_breakage_detected():
-			if "--debug" in myopts:
-				writemsg_level(
-					"\n\nautounmask breakage detected\n\n",
-					noiselevel=-1, level=logging.DEBUG)
-			myopts["--autounmask"] = "n"
-			mydepgraph = depgraph(settings, trees, myopts, myparams, spinner,
-				frozen_config=frozen_config, allow_backtracking=False)
-			success, favorites = mydepgraph.select_files(myfiles)
+
+	if not success and mydepgraph.autounmask_breakage_detected():
+		if "--debug" in myopts:
+			writemsg_level(
+				"\n\nautounmask breakage detected\n\n",
+				noiselevel=-1, level=logging.DEBUG)
+		myopts["--autounmask"] = "n"
+		mydepgraph = depgraph(settings, trees, myopts, myparams, spinner,
+			frozen_config=frozen_config, allow_backtracking=False)
+		success, favorites = mydepgraph.select_files(myfiles)
 
 	return (success, mydepgraph, favorites)
 

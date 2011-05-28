@@ -70,12 +70,12 @@ class AsynchronousLock(AsynchronousTask):
 			self.wait()
 
 	def _cancel(self):
-		if self._imp is not None:
+		if isinstance(self._imp, AsynchronousTask):
 			self._imp.cancel()
 
 	def _poll(self):
-		if self._imp is not None:
-			return self._imp.poll()
+		if isinstance(self._imp, AsynchronousTask):
+			self._imp.poll()
 		return self.returncode
 
 	def _wait(self):
@@ -183,7 +183,7 @@ class _LockProcess(AbstractPollTask):
 	lock and exit.
 	"""
 
-	__slots__ = ('path', 'scheduler',) + \
+	__slots__ = ('path',) + \
 		('_acquired', '_kill_test', '_proc', '_files', '_reg_id', '_unlocked')
 
 	def _start(self):
@@ -239,7 +239,7 @@ class _LockProcess(AbstractPollTask):
 
 	def _poll(self):
 		if self._proc is not None:
-			return self._proc.poll()
+			self._proc.poll()
 		return self.returncode
 
 	def _wait(self):

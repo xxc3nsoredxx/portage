@@ -812,27 +812,37 @@ class vardbapi(dbapi):
 	def counter_tick_core(self, myroot=None, incrementing=1, mycpv=None):
 		"""
 		This method will grab the next COUNTER value and record it back
-		to the global file.  Returns new counter value.
+		to the global file. Note that every package install must have
+		a unique counter, since a slotmove update can move two packages
+		into the same SLOT and in that case it's important that both
+		packages have different COUNTER metadata.
 
 		@param myroot: ignored, self._eroot is used instead
 		@param mycpv: ignored
+		@rtype: int
+		@returns: new counter value
 		"""
 		myroot = None
 		mycpv = None
 		self.lock()
 		try:
 			counter = self.get_counter_tick_core() - 1
-			if self._cached_counter != counter:
-				if incrementing:
-					#increment counter
-					counter += 1
-					# update new global counter file
-					try:
-						write_atomic(self._counter_path, str(counter))
-					except InvalidLocation:
-						self.settings._init_dirs()
-						write_atomic(self._counter_path, str(counter))
-				self._cached_counter = counter
+			if incrementing:
+				#increment counter
+				counter += 1
+				# update new global counter file
+				try:
+					write_atomic(self._counter_path, str(counter))
+				except InvalidLocation:
+					self.settings._init_dirs()
+					write_atomic(self._counter_path, str(counter))
+			self._cached_counter = counter
+
+			# Since we hold a lock, this is a good opportunity
+			# to flush the cache. Note that this will only
+			# flush the cache periodically in the main process
+			# when _aux_cache_threshold is exceeded.
+			self.flush_cache()
 		finally:
 			self.unlock()
 
@@ -1651,13 +1661,12 @@ class dblink(object):
 		contents = self.getcontents()
 		# Now, don't assume that the name of the ebuild is the same as the
 		# name of the dir; the package may have been moved.
-		myebuildpath = None
+		myebuildpath = os.path.join(self.dbdir, self.pkg + ".ebuild")
 		failures = 0
 		ebuild_phase = "prerm"
 		mystuff = os.listdir(self.dbdir)
 		for x in mystuff:
 			if x.endswith(".ebuild"):
-				myebuildpath = os.path.join(self.dbdir, self.pkg + ".ebuild")
 				if x[:-7] != self.pkg:
 					# Clean up after vardbapi.move_ent() breakage in
 					# portage versions before 2.1.2
@@ -1670,40 +1679,42 @@ class dblink(object):
 			# We avoid a redundant setcpv call here when
 			# the caller has already taken care of it.
 			self.settings.setcpv(self.mycpv, mydb=self.vartree.dbapi)
-		if myebuildpath:
-			try:
-				doebuild_environment(myebuildpath, "prerm",
-					settings=self.settings, db=self.vartree.dbapi)
-			except UnsupportedAPIException as e:
-				failures += 1
-				# Sometimes this happens due to corruption of the EAPI file.
-				showMessage(_("!!! FAILED prerm: %s\n") % \
-					os.path.join(self.dbdir, "EAPI"),
-					level=logging.ERROR, noiselevel=-1)
-				showMessage(_unicode_decode("%s\n") % (e,),
-					level=logging.ERROR, noiselevel=-1)
-				myebuildpath = None
+
+		eapi_unsupported = False
+		try:
+			doebuild_environment(myebuildpath, "prerm",
+				settings=self.settings, db=self.vartree.dbapi)
+		except UnsupportedAPIException as e:
+			eapi_unsupported = e
 
 		self._prune_plib_registry(unmerge=True, needed=needed,
 			preserve_paths=preserve_paths)
 
-		builddir_locked = "PORTAGE_BUILDIR_LOCKED" in self.settings
 		builddir_lock = None
 		scheduler = self._scheduler
 		retval = os.EX_OK
 		try:
-			if myebuildpath:
-				# Only create builddir_lock if the caller
-				# has not already acquired the lock.
-				if not builddir_locked:
-					builddir_lock = EbuildBuildDir(
-						scheduler=scheduler,
-						settings=self.settings)
-					builddir_lock.lock()
-					builddir_locked = True
-					prepare_build_dirs(settings=self.settings, cleanup=True)
-					log_path = self.settings.get("PORTAGE_LOG_FILE")
+			# Only create builddir_lock if the caller
+			# has not already acquired the lock.
+			if "PORTAGE_BUILDIR_LOCKED" not in self.settings:
+				builddir_lock = EbuildBuildDir(
+					scheduler=scheduler,
+					settings=self.settings)
+				builddir_lock.lock()
+				prepare_build_dirs(settings=self.settings, cleanup=True)
+				log_path = self.settings.get("PORTAGE_LOG_FILE")
 
+			# Log the error after PORTAGE_LOG_FILE is initialized
+			# by prepare_build_dirs above.
+			if eapi_unsupported:
+				# Sometimes this happens due to corruption of the EAPI file.
+				failures += 1
+				showMessage(_("!!! FAILED prerm: %s\n") % \
+					os.path.join(self.dbdir, "EAPI"),
+					level=logging.ERROR, noiselevel=-1)
+				showMessage(_unicode_decode("%s\n") % (eapi_unsupported,),
+					level=logging.ERROR, noiselevel=-1)
+			elif os.path.isfile(myebuildpath):
 				phase = EbuildPhase(background=background,
 					phase=ebuild_phase, scheduler=scheduler,
 					settings=self.settings)
@@ -1723,7 +1734,7 @@ class dblink(object):
 				self.vartree.dbapi._fs_unlock()
 			self._clear_contents_cache()
 
-			if myebuildpath:
+			if not eapi_unsupported and os.path.isfile(myebuildpath):
 				ebuild_phase = "postrm"
 				phase = EbuildPhase(background=background,
 					phase=ebuild_phase, scheduler=scheduler,
@@ -1739,9 +1750,8 @@ class dblink(object):
 
 		finally:
 			self.vartree.dbapi._bump_mtime(self.mycpv)
-			if builddir_locked:
-				try:
-					if myebuildpath:
+			try:
+					if not eapi_unsupported and os.path.isfile(myebuildpath):
 						if retval != os.EX_OK:
 							msg_lines = []
 							msg = _("The '%(ebuild_phase)s' "
@@ -1782,12 +1792,7 @@ class dblink(object):
 
 					self._elog_process(phasefilter=("prerm", "postrm"))
 
-					if retval == os.EX_OK and builddir_locked:
-						# myebuildpath might be None, so ensure
-						# it has a sane value for the clean phase,
-						# even though it won't really be sourced.
-						myebuildpath = os.path.join(self.dbdir,
-							self.pkg + ".ebuild")
+					if retval == os.EX_OK:
 						try:
 							doebuild_environment(myebuildpath, "cleanrm",
 								settings=self.settings, db=self.vartree.dbapi)
@@ -1798,7 +1803,7 @@ class dblink(object):
 							settings=self.settings)
 						phase.start()
 						retval = phase.wait()
-				finally:
+			finally:
 					if builddir_lock is not None:
 						builddir_lock.unlock()
 
