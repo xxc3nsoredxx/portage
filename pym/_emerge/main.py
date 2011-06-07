@@ -45,6 +45,7 @@ from _emerge.emergelog import emergelog
 from _emerge._flush_elog_mod_echo import _flush_elog_mod_echo
 from _emerge.is_valid_package_atom import is_valid_package_atom
 from _emerge.stdout_spinner import stdout_spinner
+from _emerge.userquery import userquery
 
 if sys.hexversion >= 0x3000000:
 	long = int
@@ -1734,12 +1735,15 @@ def emerge_main(args=None):
 				# access is required but the user is not in the portage group.
 				from portage.data import portage_group_warning
 				if "--ask" in myopts:
-					myopts["--pretend"] = True
-					del myopts["--ask"]
-					print(("%s access is required... " + \
-						"adding --pretend to options\n") % access_desc)
+					writemsg_stdout("This action requires %s access...\n" % \
+						(access_desc,), noiselevel=-1)
 					if portage.secpass < 1 and not need_superuser:
 						portage_group_warning()
+					if userquery("Would you like to add --pretend to options?",
+						"--ask-enter-invalid" in myopts) == "No":
+						return 1
+					myopts["--pretend"] = True
+					del myopts["--ask"]
 				else:
 					sys.stderr.write(("emerge: %s access is required\n") \
 						% access_desc)
@@ -1747,6 +1751,9 @@ def emerge_main(args=None):
 						portage_group_warning()
 					return 1
 
+	# Disable emergelog for everything except build or unmerge operations.
+	# This helps minimize parallel emerge.log entries that can confuse log
+	# parsers like genlop.
 	disable_emergelog = False
 	for x in ("--pretend", "--fetchonly", "--fetch-all-uri"):
 		if x in myopts:
@@ -1754,14 +1761,10 @@ def emerge_main(args=None):
 			break
 	if myaction in ("search", "info"):
 		disable_emergelog = True
-	if disable_emergelog:
-		""" Disable emergelog for everything except build or unmerge
-		operations.  This helps minimize parallel emerge.log entries that can
-		confuse log parsers.  We especially want it disabled during
-		parallel-fetch, which uses --resume --fetchonly."""
-		_emerge.emergelog._disable = True
 
-	else:
+	_emerge.emergelog._disable = disable_emergelog
+
+	if not disable_emergelog:
 		if 'EMERGE_LOG_DIR' in settings:
 			try:
 				# At least the parent needs to exist for the lock file.
@@ -1772,8 +1775,7 @@ def emerge_main(args=None):
 					(settings['EMERGE_LOG_DIR'], e),
 					noiselevel=-1, level=logging.ERROR)
 			else:
-				global _emerge_log_dir
-				_emerge_log_dir = settings['EMERGE_LOG_DIR']
+				_emerge.emergelog._emerge_log_dir = settings["EMERGE_LOG_DIR"]
 
 	if not "--pretend" in myopts:
 		emergelog(xterm_titles, "Started emerge on: "+\

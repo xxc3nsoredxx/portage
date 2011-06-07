@@ -563,7 +563,10 @@ def action_depclean(settings, trees, ldpath_mtimes,
 		for x in args_set:
 			if vardb.match(x):
 				matched_packages = True
-				break
+			else:
+				writemsg_level("--- Couldn't find '%s' to %s.\n" % \
+					(x.replace("null/", ""), action),
+					level=logging.WARN, noiselevel=-1)
 		if not matched_packages:
 			writemsg_level(">>> No packages selected for removal by %s\n" % \
 				action)
@@ -1197,7 +1200,7 @@ def calc_depclean(settings, trees, ldpath_mtimes,
 			ignore_priority_range = [None]
 			ignore_priority_range.extend(
 				range(UnmergeDepPriority.MIN, UnmergeDepPriority.MAX + 1))
-			while not graph.empty():
+			while graph:
 				for ignore_priority in ignore_priority_range:
 					nodes = graph.root_nodes(ignore_priority=ignore_priority)
 					if nodes:
