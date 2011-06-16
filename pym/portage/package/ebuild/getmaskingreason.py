@@ -17,7 +17,7 @@ from _emerge.Package import Package
 def getmaskingreason(mycpv, metadata=None, settings=None,
 	portdb=None, return_location=False, myrepo=None):
 	"""
-	If specified, the myrepo argument is assumed it be valid. This
+	If specified, the myrepo argument is assumed to be valid. This
 	should be a safe assumption since portdbapi methods always
 	return valid repo names and valid "repository" metadata from
 	aux_get.
@@ -46,6 +46,17 @@ def getmaskingreason(mycpv, metadata=None, settings=None,
 		myrepo = metadata.get("repository")
 		if myrepo is not None:
 			myrepo = _gen_valid_repo(metadata["repository"])
+
+	if metadata is not None and \
+		not portage.eapi_is_supported(metadata["EAPI"]):
+		# Return early since otherwise we might produce invalid
+		# results given that the EAPI is not supported. Also,
+		# metadata is mostly useless in this case since it doesn't
+		# contain essential things like SLOT.
+		if return_location:
+			return (None, None)
+		else:
+			return None
 
 	# Sometimes we can't access SLOT or repository due to corruption.
 	pkg = mycpv

@@ -1146,8 +1146,8 @@ dyn_compile() {
 
 	if hasq distcc $FEATURES && hasq distcc-pump $FEATURES ; then
 		if [[ -z $INCLUDE_SERVER_PORT ]] || [[ ! -w $INCLUDE_SERVER_PORT ]] ; then
-			eval $(/usr/bin/pump --startup)
-			trap "/usr/bin/pump --shutdown" EXIT
+			eval $(pump --startup)
+			trap "pump --shutdown" EXIT
 		fi
 	fi
 
@@ -2274,13 +2274,17 @@ if ! hasq "$EBUILD_PHASE" clean cleanrm ; then
 			PATH=$_ebuild_helpers_path:$PREROOTPATH${PREROOTPATH:+:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${ROOTPATH:+:}$ROOTPATH
 			unset _ebuild_helpers_path
 
+			# Use default ABI libdir in accordance with bug #355283.
+			x=LIBDIR_${DEFAULT_ABI}
+			[[ -n $DEFAULT_ABI && -n ${!x} ]] && x=${!x} || x=lib
+
 			if hasq distcc $FEATURES ; then
-				PATH="/usr/lib/distcc/bin:$PATH"
+				PATH="/usr/$x/distcc/bin:$PATH"
 				[[ -n $DISTCC_LOG ]] && addwrite "${DISTCC_LOG%/*}"
 			fi
 
 			if hasq ccache $FEATURES ; then
-				PATH="/usr/lib/ccache/bin:$PATH"
+				PATH="/usr/$x/ccache/bin:$PATH"
 
 				if [[ -n $CCACHE_DIR ]] ; then
 					addread "$CCACHE_DIR"
@@ -2289,6 +2293,8 @@ if ! hasq "$EBUILD_PHASE" clean cleanrm ; then
 
 				[[ -n $CCACHE_SIZE ]] && ccache -M $CCACHE_SIZE &> /dev/null
 			fi
+
+			unset x
 
 			if [[ -n $QA_PREBUILT ]] ; then
 
