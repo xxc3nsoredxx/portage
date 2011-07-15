@@ -101,7 +101,7 @@ has_multilib_profile() {
 }
 
 is_auto-multilib() {
-	if has_multilib_profile && ! hasq multilib-native ${INHERITED} && ! use multilib; then
+	if has_multilib_profile && ! has multilib-native ${INHERITED} && ! use multilib; then
 		for i in ${MULTILIB_ABIS} ; do
 			use multilib_abi_"${i}" && [[ "${i}" != "${DEFAULT_ABI}" ]] && return 0
 		done
