@@ -336,7 +336,7 @@ _finalize_abi_install() {
 		for dir in ${dirs}; do
 			if use multilib_abi_"${DEFAULT_ABI}" ; then
 				cd "${base}${dir}/gentoo-multilib/${DEFAULT_ABI}" || die
-				for i in $(find . -type f); do
+				for i in $(find . -type l ; find . -type f); do
 					for diffabi in ${ALTERNATE_ABIS}; do
 						diff -q "${i}" ../${diffabi}/"${i}" >/dev/null || files_differ=1
 					done
