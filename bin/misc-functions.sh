@@ -151,7 +151,7 @@ install_qa_check() {
 
 	export STRIP_MASK
 	prepall
-	hasq "${EAPI}" 0 1 2 3 || prepcompress
+	has "${EAPI}" 0 1 2 3 || prepcompress
 	ecompressdir --dequeue
 	ecompress --dequeue
 
@@ -176,7 +176,7 @@ install_qa_check() {
 		sleep 1
 	done
 
-	if type -P scanelf > /dev/null && ! hasq binchecks ${RESTRICT}; then
+	if type -P scanelf > /dev/null && ! has binchecks ${RESTRICT}; then
 		local qa_var insecure_rpath=0 tmp_quiet=${PORTAGE_QUIET}
 		local x
 
@@ -686,7 +686,7 @@ install_qa_check() {
 				"developers of this software." | fmt -w 70 | \
 				while read -r line ; do eqawarn "${line}" ; done
 				eqawarn "Homepage: ${HOMEPAGE}"
-				hasq stricter ${FEATURES} && die "install aborted due to" \
+				has stricter ${FEATURES} && die "install aborted due to" \
 					"poor programming practices shown above"
 			fi
 		fi
@@ -695,7 +695,7 @@ install_qa_check() {
 	# Portage regenerates this on the installed system.
 	rm -f "${D}"/usr/share/info/dir{,.gz,.bz2}
 
-	if hasq multilib-strict ${FEATURES} && \
+	if has multilib-strict ${FEATURES} && \
 	   [[ -x /usr/bin/file && -x /usr/bin/find ]] && \
 	   [[ -n ${MULTILIB_STRICT_DIRS} && -n ${MULTILIB_STRICT_DENY} ]]
 	then
@@ -718,12 +718,12 @@ install_qa_check() {
 	fi
 
 	# ensure packages don't install systemd units automagically
-	if ! hasq systemd ${INHERITED} && \
+	if ! has systemd ${INHERITED} && \
 		[[ -d "${D}"/lib/systemd/system ]]
 	then
 		eqawarn "QA Notice: package installs systemd unit files (/lib/systemd/system)"
 		eqawarn "           but does not inherit systemd.eclass."
-		hasq stricter ${FEATURES} \
+		has stricter ${FEATURES} \
 			&& die "install aborted due to missing inherit of systemd.eclass"
 	fi
 }
@@ -766,7 +766,7 @@ preinst_mask() {
 	# remove man pages, info pages, docs if requested
 	local f
 	for f in man info doc; do
-		if hasq no${f} $FEATURES; then
+		if has no${f} $FEATURES; then
 			INSTALL_MASK="${INSTALL_MASK} /usr/share/${f}"
 		fi
 	done
@@ -774,7 +774,7 @@ preinst_mask() {
 	install_mask "${D}" "${INSTALL_MASK}"
 
 	# remove share dir if unnessesary
-	if hasq nodoc $FEATURES -o hasq noman $FEATURES -o hasq noinfo $FEATURES; then
+	if has nodoc $FEATURES || has noman $FEATURES || has noinfo $FEATURES; then
 		rmdir "${D}usr/share" &> /dev/null
 	fi
 }
@@ -785,7 +785,7 @@ preinst_sfperms() {
 		 return 1
 	fi
 	# Smart FileSystem Permissions
-	if hasq sfperms $FEATURES; then
+	if has sfperms $FEATURES; then
 		local i
 		find "${D}" -type f -perm -4000 -print0 | \
 		while read -r -d $'\0' i ; do
@@ -820,7 +820,7 @@ preinst_suid_scan() {
 		 return 1
 	fi
 	# total suid control.
-	if hasq suidctl $FEATURES; then
+	if has suidctl $FEATURES; then
 		local i sfconf x
 		sfconf=${PORTAGE_CONFIGROOT}etc/portage/suidctl.conf
 		# sandbox prevents us from writing directly
@@ -858,7 +858,7 @@ preinst_selinux_labels() {
 		 eerror "${FUNCNAME}: D is unset"
 		 return 1
 	fi
-	if hasq selinux ${FEATURES}; then
+	if has selinux ${FEATURES}; then
 		# SELinux file labeling (needs to always be last in dyn_preinst)
 		# only attempt to label if setfiles is executable
 		# and 'context' is available on selinuxfs.
