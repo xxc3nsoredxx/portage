@@ -62,6 +62,7 @@ from _emerge.MiscFunctionsProcess import MiscFunctionsProcess
 import errno
 import gc
 import io
+from itertools import chain
 import logging
 import os as _os
 import re
@@ -69,6 +70,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import textwrap
 import time
 import warnings
 
@@ -1907,6 +1909,7 @@ class dblink(object):
 
 		cfgfiledict = grabdict(self.vartree.dbapi._conf_mem_file)
 		stale_confmem = []
+		protected_symlinks = []
 
 		unmerge_orphans = "unmerge-orphans" in self.settings.features
 		calc_prelink = "prelink-checksums" in self.settings.features
@@ -2026,9 +2029,34 @@ class dblink(object):
 						if dblnk.isowner(relative_path):
 							is_owned = True
 							break
-					if is_owned:
+
+					if file_type == "sym" and is_owned and \
+						(islink and statobj and stat.S_ISDIR(statobj.st_mode)):
 						# A new instance of this package claims the file, so
-						# don't unmerge it.
+						# don't unmerge it. If the file is symlink to a
+						# directory and the unmerging package installed it as
+						# a symlink, but the new owner has it listed as a
+						# directory, then we'll produce a warning since the
+						# symlink is a sort of orphan in this case (see
+						# bug #326685).
+						symlink_orphan = False
+						for dblnk in others_in_slot:
+							parent_contents_key = \
+								dblnk._match_contents(relative_path)
+							if not parent_contents_key:
+								continue
+							if not parent_contents_key.startswith(
+								real_root):
+								continue
+							if dblnk.getcontents()[
+								parent_contents_key][0] == "dir":
+								symlink_orphan = True
+								break
+
+						if symlink_orphan:
+							protected_symlinks.append(relative_path)
+
+					if is_owned:
 						show_unmerge("---", unmerge_desc["replaced"], file_type, obj)
 						continue
 					elif relative_path in cfgfiledict:
@@ -2075,6 +2103,52 @@ class dblink(object):
 					if not islink:
 						show_unmerge("---", unmerge_desc["!sym"], file_type, obj)
 						continue
+
+					# If this symlink points to a directory then we don't want
+					# to unmerge it if there are any other packages that
+					# installed files into the directory via this symlink
+					# (see bug #326685).
+					# TODO: Resolving a symlink to a directory will require
+					# simulation if $ROOT != / and the link is not relative.
+					if islink and statobj and stat.S_ISDIR(statobj.st_mode) \
+						and obj.startswith(real_root):
+
+						relative_path = obj[real_root_len:]
+						try:
+							target_dir_contents = os.listdir(obj)
+						except OSError:
+							pass
+						else:
+							if target_dir_contents:
+								# If all the children are regular files owned
+								# by this package, then the symlink should be
+								# safe to unmerge.
+								all_owned = True
+								for child in target_dir_contents:
+									child = os.path.join(relative_path, child)
+									if not self.isowner(child):
+										all_owned = False
+										break
+									try:
+										child_lstat = os.lstat(os.path.join(
+											real_root, child.lstrip(os.sep)))
+									except OSError:
+										continue
+
+									if not stat.S_ISREG(child_lstat.st_mode):
+										# Nested symlinks or directories make
+										# the issue very complex, so just
+										# preserve the symlink in order to be
+										# on the safe side.
+										all_owned = False
+										break
+
+								if not all_owned:
+									protected_symlinks.append(relative_path)
+									show_unmerge("---", unmerge_desc["!empty"],
+										file_type, obj)
+									continue
+
 					# Go ahead and unlink symlinks to directories here when
 					# they're actually recorded as symlinks in the contents.
 					# Normally, symlinks such as /lib -> lib64 are not recorded
@@ -2150,6 +2224,19 @@ class dblink(object):
 					if e.errno != errno.ENOENT:
 						show_unmerge("---", unmerge_desc["!empty"], "dir", obj)
 					del e
+
+		if protected_symlinks:
+			msg = "One or more symlinks to directories have been " + \
+				"preserved in order to ensure that files installed " + \
+				"via these symlinks remain accessible:"
+			lines = textwrap.wrap(msg, 72)
+			lines.append("")
+			protected_symlinks.reverse()
+			for f in protected_symlinks:
+				lines.append("\t%s" % (os.path.join(real_root,
+					f.lstrip(os.sep))))
+			lines.append("")
+			self._elog("eerror", "postrm", lines)
 
 		# Remove stale entries from config memory.
 		if stale_confmem:
@@ -2699,7 +2786,8 @@ class dblink(object):
 
 		self.vartree.dbapi._plib_registry.pruneNonExisting()
 
-	def _collision_protect(self, srcroot, destroot, mypkglist, mycontents):
+	def _collision_protect(self, srcroot, destroot, mypkglist,
+		file_list, symlink_list):
 
 			os = _os_merge
 
@@ -2729,10 +2817,13 @@ class dblink(object):
 			showMessage = self._display_merge
 			stopmerge = False
 			collisions = []
+			symlink_collisions = []
 			destroot = self.settings['ROOT']
 			showMessage(_(" %s checking %d files for package collisions\n") % \
-				(colorize("GOOD", "*"), len(mycontents)))
-			for i, f in enumerate(mycontents):
+				(colorize("GOOD", "*"), len(file_list) + len(symlink_list)))
+			for i, (f, f_type) in enumerate(chain(
+				((f, "reg") for f in file_list),
+				((f, "sym") for f in symlink_list))):
 				if i % 1000 == 0 and i != 0:
 					showMessage(_("%d files checked ...\n") % i)
 
@@ -2772,6 +2863,14 @@ class dblink(object):
 				if f[0] != "/":
 					f="/"+f
 
+				if stat.S_ISDIR(dest_lstat.st_mode):
+					if f_type == "sym":
+						# This case is explicitly banned
+						# by PMS (see bug #326685).
+						symlink_collisions.append(f)
+						collisions.append(f)
+						continue
+
 				plibs = plib_inodes.get((dest_lstat.st_dev, dest_lstat.st_ino))
 				if plibs:
 					for path in plibs:
@@ -2806,7 +2905,7 @@ class dblink(object):
 									break
 					if stopmerge:
 						collisions.append(f)
-			return collisions, plib_collisions
+			return collisions, symlink_collisions, plib_collisions
 
 	def _lstat_inode_map(self, path_iter):
 		"""
@@ -3233,9 +3332,9 @@ class dblink(object):
 		blockers = self._blockers
 		if blockers is None:
 			blockers = []
-		collisions, plib_collisions = \
+		collisions, symlink_collisions, plib_collisions = \
 			self._collision_protect(srcroot, destroot,
-			others_in_slot + blockers, myfilelist + mylinklist)
+			others_in_slot + blockers, myfilelist, mylinklist)
 
 		# Make sure the ebuild environment is initialized and that ${T}/elog
 		# exists for logging of collision-protect eerror messages.
@@ -3294,7 +3393,7 @@ class dblink(object):
 			eerror(msg)
 
 			owners = None
-			if collision_protect or protect_owned:
+			if collision_protect or protect_owned or symlink_collisions:
 				msg = []
 				msg.append("")
 				msg.append(_("Searching all installed"
@@ -3333,12 +3432,21 @@ class dblink(object):
 			# it may not be visible via a scrollback buffer, especially
 			# if the number of file collisions is large. Therefore,
 			# show a summary at the end.
+			abort = False
 			if collision_protect:
+				abort = True
 				msg = _("Package '%s' NOT merged due to file collisions.") % \
 					self.settings.mycpv
 			elif protect_owned and owners:
+				abort = True
 				msg = _("Package '%s' NOT merged due to file collisions.") % \
 					self.settings.mycpv
+			elif symlink_collisions:
+				abort = True
+				msg = _("Package '%s' NOT merged due to collision " + \
+				"between a symlink and a directory which is explicitly " + \
+				"forbidden by PMS (see bug #326685).") % \
+				(self.settings.mycpv,)
 			else:
 				msg = _("Package '%s' merged despite file collisions.") % \
 					self.settings.mycpv
@@ -3346,7 +3454,7 @@ class dblink(object):
 				"messages for the whole content of the above message.")
 			eerror(wrap(msg, 70))
 
-			if collision_protect or (protect_owned and owners):
+			if abort:
 				return 1
 
 		# The merge process may move files out of the image directory,
