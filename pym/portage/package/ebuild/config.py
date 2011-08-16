@@ -1474,6 +1474,9 @@ class config(object):
 		@return: A matching profile atom string or None if one is not found.
 		"""
 
+		warnings.warn("The config._getProfileMaskAtom() method is deprecated.",
+			DeprecationWarning, stacklevel=2)
+
 		cp = cpv_getkey(cpv)
 		profile_atoms = self.prevmaskdict.get(cp)
 		if profile_atoms:
