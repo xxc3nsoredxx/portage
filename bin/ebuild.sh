@@ -765,7 +765,6 @@ dyn_unpack() {
 		fi
 		is_ebuild && { unset_abi; source "${T}"/environment || die ; }
 
-	done
 	is_ebuild && { rm "${T}"/environment || die ; }
 	>> "$PORTAGE_BUILDDIR/.unpacked" || \
 		die "Failed to create $PORTAGE_BUILDDIR/.unpacked"
