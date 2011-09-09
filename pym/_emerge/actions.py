@@ -13,6 +13,7 @@ import shutil
 import signal
 import socket
 import stat
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -29,7 +30,7 @@ from portage.const import _ENABLE_DYN_LINK_MAP, _ENABLE_SET_CONFIG
 from portage.dbapi.dep_expand import dep_expand
 from portage.dbapi._expand_new_virt import expand_new_virt
 from portage.dep import Atom, extended_cp_match
-from portage.exception import InvalidAtom
+from portage.exception import InvalidAtom, PermissionDenied
 from portage.output import blue, bold, colorize, create_color_func, darkgreen, \
 	red, yellow
 good = create_color_func("GOOD")
@@ -2731,6 +2732,9 @@ def adjust_config(myopts, settings):
 	settings["EMERGE_WARNING_DELAY"] = str(EMERGE_WARNING_DELAY)
 	settings.backup_changes("EMERGE_WARNING_DELAY")
 
+	if "--buildpkg" in myopts:
+		settings.features.add("buildpkg")
+
 	if "--quiet" in myopts or "--quiet-build" in myopts:
 		settings["PORTAGE_QUIET"]="1"
 		settings.backup_changes("PORTAGE_QUIET")
@@ -2884,10 +2888,10 @@ def git_sync_timestamps(settings, portdir):
 	args = [portage.const.BASH_BINARY, "-c",
 		"cd %s && git diff-index --name-only --diff-filter=M HEAD" % \
 		portage._shell_quote(portdir)]
-	import subprocess
 	proc = subprocess.Popen(args, stdout=subprocess.PIPE)
 	modified_files = set(_unicode_decode(l).rstrip("\n") for l in proc.stdout)
 	rval = proc.wait()
+	proc.stdout.close()
 	if rval != os.EX_OK:
 		return rval
 
@@ -3046,13 +3050,26 @@ def display_news_notification(root_config, myopts):
 	NEWS_PATH = os.path.join("metadata", "news")
 	UNREAD_PATH = os.path.join(target_root, NEWS_LIB_PATH, "news")
 	newsReaderDisplay = False
-	update = "--pretend" not in myopts
 	if "news" not in settings.features:
 		return
 
+	permission_msgs = set()
 	for repo in portdb.getRepositories():
-		unreadItems = checkUpdatedNewsItems(
-			portdb, vardb, NEWS_PATH, UNREAD_PATH, repo, update=update)
+		try:
+			unreadItems = checkUpdatedNewsItems(
+				portdb, vardb, NEWS_PATH, UNREAD_PATH, repo, update=True)
+		except PermissionDenied as e:
+			# NOTE: The NewsManager typically handles permission errors by
+			# returning silently, so PermissionDenied won't necessarily be
+			# raised even if we do trigger a permission error above.
+			msg = _unicode_decode("Permission denied: '%s'\n") % (e,)
+			if msg in permission_msgs:
+				pass
+			else:
+				permission_msgs.add(msg)
+				writemsg_level(msg, level=logging.ERROR, noiselevel=-1)
+			unreadItems = None
+
 		if unreadItems:
 			if not newsReaderDisplay:
 				newsReaderDisplay = True

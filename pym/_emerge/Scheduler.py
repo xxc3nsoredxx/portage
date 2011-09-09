@@ -277,7 +277,7 @@ class Scheduler(PollScheduler):
 		if self._parallel_fetch:
 				# clear out existing fetch log if it exists
 				try:
-					open(self._fetch_log, 'w')
+					open(self._fetch_log, 'w').close()
 				except EnvironmentError:
 					pass
 
@@ -1133,6 +1133,7 @@ class Scheduler(PollScheduler):
 			failed_pkg = self._failed_pkgs_all[-1]
 			build_dir = failed_pkg.build_dir
 			log_file = None
+			log_file_real = None
 
 			log_paths = [failed_pkg.build_log]
 
@@ -1145,6 +1146,7 @@ class Scheduler(PollScheduler):
 					pass
 				else:
 					if log_path.endswith('.gz'):
+						log_file_real = log_file
 						log_file =  gzip.GzipFile(filename='',
 							mode='rb', fileobj=log_file)
 
@@ -1157,6 +1159,8 @@ class Scheduler(PollScheduler):
 						noiselevel=-1)
 				finally:
 					log_file.close()
+					if log_file_real is not None:
+						log_file_real.close()
 				failure_log_shown = True
 
 		# Dump mod_echo output now since it tends to flood the terminal.

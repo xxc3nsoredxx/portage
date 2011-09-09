@@ -87,6 +87,9 @@ def parse_args(args):
 	common.add_option("--portdir",
 		help="override the portage tree location",
 		dest="portdir")
+	common.add_option("--portdir-overlay",
+		help="override the PORTDIR_OVERLAY variable (requires that --repo is also specified)",
+		dest="portdir_overlay")
 	common.add_option("--tolerant",
 		action="store_true",
 		help="exit successfully if only minor errors occurred")
@@ -163,6 +166,10 @@ def parse_args(args):
 	if options.cache_dir is not None and not os.path.isdir(options.cache_dir):
 		parser.error("Not a directory: --cache-dir='%s'" % \
 			(options.cache_dir,))
+
+	if options.portdir_overlay is not None and \
+		options.repo is None:
+		parser.error("--portdir-overlay option requires --repo option")
 
 	for atom in args:
 		try:
@@ -465,10 +472,20 @@ class GenUseLocalDesc(object):
 					return 1
 			return (a > b) - (a < b)
 
+		class _MetadataTreeBuilder(ElementTree.TreeBuilder):
+			"""
+			Implements doctype() as required to avoid deprecation warnings
+			since Python >=2.7
+			"""
+			def doctype(self, name, pubid, system):
+				pass
+
 		for cp in self._portdb.cp_all():
 			metadata_path = os.path.join(repo_path, cp, 'metadata.xml')
 			try:
-				metadata = ElementTree.parse(metadata_path)
+				metadata = ElementTree.parse(metadata_path,
+					parser=ElementTree.XMLParser(
+					target=_MetadataTreeBuilder()))
 			except IOError:
 				pass
 			except (ExpatError, EnvironmentError) as e:
@@ -755,8 +772,6 @@ def egencache_main(args):
 	parser, options, atoms = parse_args(args)
 
 	config_root = options.config_root
-	if config_root is None:
-		config_root = '/'
 
 	# The calling environment is ignored, so the program is
 	# completely controlled by commandline arguments.
@@ -764,6 +779,8 @@ def egencache_main(args):
 
 	if options.repo is None:
 		env['PORTDIR_OVERLAY'] = ''
+	elif options.portdir_overlay:
+		env['PORTDIR_OVERLAY'] = options.portdir_overlay
 
 	if options.cache_dir is not None:
 		env['PORTAGE_DEPCACHEDIR'] = options.cache_dir
@@ -771,8 +788,10 @@ def egencache_main(args):
 	if options.portdir is not None:
 		env['PORTDIR'] = options.portdir
 
+	eprefix = os.environ.get("__PORTAGE_TEST_EPREFIX")
+
 	settings = portage.config(config_root=config_root,
-		target_root='/', local_config=False, env=env)
+		local_config=False, env=env, _eprefix=eprefix)
 
 	default_opts = None
 	if not options.ignore_default_opts:
@@ -781,14 +800,11 @@ def egencache_main(args):
 	if default_opts:
 		parser, options, args = parse_args(default_opts + args)
 
-		if options.config_root is not None:
-			config_root = options.config_root
-
 		if options.cache_dir is not None:
 			env['PORTAGE_DEPCACHEDIR'] = options.cache_dir
 
 		settings = portage.config(config_root=config_root,
-			target_root='/', local_config=False, env=env)
+			local_config=False, env=env, _eprefix=eprefix)
 
 	if not options.update and not options.update_use_local_desc \
 			and not options.update_changelogs:

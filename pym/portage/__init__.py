@@ -158,9 +158,20 @@ _encodings = {
 	'stdio'                  : 'utf_8',
 }
 
-# This can happen if python is built with USE=build (stage 1).
-if _encodings['merge'] is None:
-	_encodings['merge'] = 'ascii'
+# sys.getfilesystemencoding() can return None if python is built with
+# USE=build (stage 1). If the filesystem encoding is undefined or is a
+# subset of utf_8, then we default to utf_8 encoding for merges, since
+# it probably won't hurt, and forced conversion to ascii encoding is
+# known to break some packages that install file names with utf_8
+# encoding (see bug #381509). The ascii aliases are borrowed from
+# python's encodings.aliases.aliases dict.
+if _encodings['merge'] is None or \
+	_encodings['merge'].lower().replace('-', '_') in \
+	('ascii', '646', 'ansi_x3.4_1968', 'ansi_x3_4_1968',
+	'ansi_x3.4_1986', 'cp367', 'csascii', 'ibm367', 'iso646_us',
+	'iso_646.irv_1991', 'iso_ir_6', 'us', 'us_ascii'):
+
+	_encodings['merge'] = 'utf_8'
 
 if sys.hexversion >= 0x3000000:
 	def _unicode_encode(s, encoding=_encodings['content'], errors='backslashreplace'):
@@ -215,7 +226,7 @@ class _unicode_func_wrapper(object):
 		rval = self._func(*wrapped_args, **wrapped_kwargs)
 
 		# Don't use isinstance() since we don't want to convert subclasses
-		# of tuple such as posix.stat_result in python-3.2.
+		# of tuple such as posix.stat_result in Python >=3.2.
 		if rval.__class__ in (list, tuple):
 			decoded_rval = []
 			for x in rval:
@@ -380,9 +391,12 @@ def getcwd():
 		return "/"
 getcwd()
 
-def abssymlink(symlink):
+def abssymlink(symlink, target=None):
 	"This reads symlinks, resolving the relative symlinks, and returning the absolute."
-	mylink=os.readlink(symlink)
+	if target is not None:
+		mylink = target
+	else:
+		mylink = os.readlink(symlink)
 	if mylink[0] != '/':
 		mydir=os.path.dirname(symlink)
 		mylink=mydir+"/"+mylink
@@ -472,8 +486,9 @@ def create_trees(config_root=None, target_root=None, trees=None):
 			portdbapi.portdbapi_instances.remove(portdb)
 			del trees[myroot]["porttree"], myroot, portdb
 
+	eprefix = os.environ.get("__PORTAGE_TEST_EPREFIX")
 	settings = config(config_root=config_root, target_root=target_root,
-		config_incrementals=portage.const.INCREMENTALS)
+		config_incrementals=portage.const.INCREMENTALS, _eprefix=eprefix)
 	settings.lock()
 
 	myroots = [(settings["ROOT"], settings)]
@@ -489,7 +504,8 @@ def create_trees(config_root=None, target_root=None, trees=None):
 			v = settings.get(k)
 			if v is not None:
 				clean_env[k] = v
-		settings = config(config_root=None, target_root="/", env=clean_env)
+		settings = config(config_root=None, target_root="/",
+			env=clean_env, _eprefix=eprefix)
 		settings.lock()
 		myroots.append((settings["ROOT"], settings))
 
