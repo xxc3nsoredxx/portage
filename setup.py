@@ -31,7 +31,7 @@ import sys
 x_scripts = {
 	'bin': [
 		'bin/archive-conf', 'bin/dispatch-conf', 'bin/ebuild', 'bin/egencache',
-		'bin/emaint', 'bin/emerge', 'bin/emerge-webrsync', 'bin/emirrordist',
+		'bin/emaint', 'bin/emerge', 'bin/emirrordist',
 		'bin/env-update', 'bin/etc-update', 'bin/fixpackages', 'bin/portageq',
 		'bin/quickpkg', 'bin/regenworld', 'bin/repoman',
 	],
