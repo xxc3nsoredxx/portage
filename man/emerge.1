@@ -1,4 +1,4 @@
-.TH "EMERGE" "1" "May 2011" "Portage VERSION" "Portage"
+.TH "EMERGE" "1" "Sept 2011" "Portage VERSION" "Portage"
 .SH "NAME"
 emerge \- Command\-line interface to the Portage system
 .SH "SYNOPSIS"
@@ -304,9 +304,24 @@ the specified configuration file(s), or enable the
 \fBEMERGE_DEFAULT_OPTS\fR variable may be used to
 disable this option by default in \fBmake.conf\fR(5).
 .TP
+.BR "\-\-autounmask\-unrestricted\-atoms [ y | n ]"
+If \-\-autounmask is enabled, keyword and mask changes
+using the \'=\' operator will be written. With this
+option, \'>=\' operators will be used whenever possible.
+USE and license changes always use the latter behavior.
+.TP
+.BR "\-\-autounmask\-keep\-masks [ y | n ]"
+If \-\-autounmask is enabled, no package.unmask or ** keyword changes
+will be created. This leads to unsatisfied dependencies if
+no other solution exists.
+.TP
 .BR "\-\-autounmask\-write [ y | n ]"
 If \-\-autounmask is enabled, changes are written
 to config files, respecting \fBCONFIG_PROTECT\fR and \fB\-\-ask\fR.
+If the corresponding package.* is a file, the changes are appended to
+it, if it is a directory, changes are written to the lexicographically
+last file. This way it is always ensured that the new changes take
+precedence over existing changes.
 .TP
 .BR \-\-backtrack=COUNT
 Specifies an integer number of times to backtrack if
@@ -360,6 +375,10 @@ calculations. Note that, unlike the \fB\-\-deep\fR option, the
 be updated than would have otherwise been updated with the option disabled.
 Using \fB\-\-with\-bdeps=y\fR together with \fB\-\-complete\-graph\fR makes
 the graph as complete as possible.
+.TP
+.BR "\-\-complete\-graph\-if\-new\-ver < y | n >"
+Trigger the \fB\-\-complete\-graph\fR behavior if an installed package
+version will change (upgrade or downgrade). This option is enabled by default.
 .TP
 .BR \-\-config\-root=DIR
 Set the \fBPORTAGE_CONFIGROOT\fR environment variable.

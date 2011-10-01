@@ -622,8 +622,8 @@ install_qa_check() {
 				#esac
 				if [[ $always_overflow = yes ]] ; then
 					eerror
-					eerror "QA Notice: Package has poor programming practices which may compile"
-					eerror "           fine but exhibit random runtime failures."
+					eerror "QA Notice: Package triggers severe warnings which indicate that it"
+					eerror "           may exhibit random runtime failures."
 					eerror
 					eerror "${f}"
 					eerror
@@ -632,8 +632,8 @@ install_qa_check() {
 					eerror
 				else
 					vecho -ne '\n'
-					eqawarn "QA Notice: Package has poor programming practices which may compile"
-					eqawarn "           fine but exhibit random runtime failures."
+					eqawarn "QA Notice: Package triggers severe warnings which indicate that it"
+					eqawarn "           may exhibit random runtime failures."
 					eqawarn "${f}"
 					vecho -ne '\n'
 				fi
@@ -659,8 +659,8 @@ install_qa_check() {
 
 			if [[ $gentoo_bug = yes ]] ; then
 				eerror
-				eerror "QA Notice: Package has poor programming practices which may compile"
-				eerror "           but will almost certainly crash on 64bit architectures."
+				eerror "QA Notice: Package triggers severe warnings which indicate that it"
+				eerror "           will almost certainly crash on 64bit architectures."
 				eerror
 				eerror "${f}"
 				eerror
@@ -669,8 +669,8 @@ install_qa_check() {
 				eerror
 			else
 				vecho -ne '\n'
-				eqawarn "QA Notice: Package has poor programming practices which may compile"
-				eqawarn "           but will almost certainly crash on 64bit architectures."
+				eqawarn "QA Notice: Package triggers severe warnings which indicate that it"
+				eqawarn "           will almost certainly crash on 64bit architectures."
 				eqawarn "${f}"
 				vecho -ne '\n'
 			fi
@@ -679,7 +679,7 @@ install_qa_check() {
 		if [[ ${abort} == "yes" ]] ; then
 			if [[ $gentoo_bug = yes || $always_overflow = yes ]] ; then
 				die "install aborted due to" \
-					"poor programming practices shown above"
+					"severe warnings shown above"
 			else
 				echo "Please do not file a Gentoo bug and instead" \
 				"report the above QA issues directly to the upstream" \
@@ -687,7 +687,7 @@ install_qa_check() {
 				while read -r line ; do eqawarn "${line}" ; done
 				eqawarn "Homepage: ${HOMEPAGE}"
 				has stricter ${FEATURES} && die "install aborted due to" \
-					"poor programming practices shown above"
+					"severe warnings shown above"
 			fi
 		fi
 	fi
@@ -984,6 +984,21 @@ success_hooks() {
 	for x in $EBUILD_SUCCESS_HOOKS ; do
 		$x
 	done
+}
+
+install_hooks() {
+	local hooks_dir="${PORTAGE_CONFIGROOT}etc/portage/hooks/install"
+	local fp
+	local ret=0
+	shopt -s nullglob
+	for fp in "${hooks_dir}"/*; do
+		if [ -x "$fp" ]; then
+			"$fp"
+			ret=$(( $ret | $? ))
+		fi
+	done
+	shopt -u nullglob
+	return $ret
 }
 
 if [ -n "${MISC_FUNCTIONS_ARGS}" ]; then

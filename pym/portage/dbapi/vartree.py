@@ -1842,16 +1842,10 @@ class dblink(object):
 		else:
 			self.settings.pop("PORTAGE_LOG_FILE", None)
 
-		# Lock the config memory file to prevent symlink creation
-		# in merge_contents from overlapping with env-update.
-		self.vartree.dbapi._fs_lock()
-		try:
-			env_update(target_root=self.settings['ROOT'],
-				prev_mtimes=ldpath_mtimes,
-				contents=contents, env=self.settings,
-				writemsg_level=self._display_merge)
-		finally:
-			self.vartree.dbapi._fs_unlock()
+		env_update(target_root=self.settings['ROOT'],
+			prev_mtimes=ldpath_mtimes,
+			contents=contents, env=self.settings,
+			writemsg_level=self._display_merge, vardbapi=self.vartree.dbapi)
 
 		return os.EX_OK
 
@@ -3285,6 +3279,7 @@ class dblink(object):
 		# the check must be repeated here for binary packages (it's
 		# inexpensive since we call os.walk() here anyway).
 		unicode_errors = []
+		line_ending_re = re.compile('[\n\r]')
 
 		while True:
 
@@ -3336,7 +3331,7 @@ class dblink(object):
 
 					relative_path = fpath[srcroot_len:]
 
-					if "\n" in relative_path:
+					if line_ending_re.search(relative_path) is not None:
 						paths_with_newlines.append(relative_path)
 
 					file_mode = os.lstat(fpath).st_mode
@@ -3359,11 +3354,11 @@ class dblink(object):
 
 		if paths_with_newlines:
 			msg = []
-			msg.append(_("This package installs one or more files containing a newline (\\n) character:"))
+			msg.append(_("This package installs one or more files containing line ending characters:"))
 			msg.append("")
 			paths_with_newlines.sort()
 			for f in paths_with_newlines:
-				msg.append("\t/%s" % (f.replace("\n", "\\n")))
+				msg.append("\t/%s" % (f.replace("\n", "\\n").replace("\r", "\\r")))
 			msg.append("")
 			msg.append(_("package %s NOT merged") % self.mycpv)
 			msg.append("")
@@ -3811,17 +3806,11 @@ class dblink(object):
 			showMessage(_("!!! FAILED postinst: ")+str(a)+"\n",
 				level=logging.ERROR, noiselevel=-1)
 
-		# Lock the config memory file to prevent symlink creation
-		# in merge_contents from overlapping with env-update.
-		self.vartree.dbapi._fs_lock()
-		try:
-			#update environment settings, library paths. DO NOT change symlinks.
-			env_update(
-				target_root=self.settings['ROOT'], prev_mtimes=prev_mtimes,
-				contents=contents, env=self.settings,
-				writemsg_level=self._display_merge)
-		finally:
-			self.vartree.dbapi._fs_unlock()
+		#update environment settings, library paths. DO NOT change symlinks.
+		env_update(
+			target_root=self.settings['ROOT'], prev_mtimes=prev_mtimes,
+			contents=contents, env=self.settings,
+			writemsg_level=self._display_merge, vardbapi=self.vartree.dbapi)
 
 		# For gcc upgrades, preserved libs have to be removed after the
 		# the library path has been updated.

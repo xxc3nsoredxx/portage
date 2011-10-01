@@ -42,7 +42,8 @@ class RepoConfig(object):
 	"""Stores config of one repository"""
 
 	__slots__ = ['aliases', 'eclass_overrides', 'eclass_locations', 'location', 'user_location', 'masters', 'main_repo',
-		'missing_repo_name', 'name', 'priority', 'sync', 'format', 'sign_manifest', 'thin_manifest']
+		'missing_repo_name', 'name', 'priority', 'sync', 'format', 'sign_manifest', 'thin_manifest',
+		'allow_missing_manifest', 'create_manifest', 'disable_manifest']
 
 	def __init__(self, name, repo_opts):
 		"""Build a RepoConfig with options in repo_opts
@@ -113,9 +114,16 @@ class RepoConfig(object):
 		self.missing_repo_name = missing
 		self.sign_manifest = True
 		self.thin_manifest = False
+		self.allow_missing_manifest = False
+		self.create_manifest = True
+		self.disable_manifest = False
 
 	def load_manifest(self, *args, **kwds):
 		kwds['thin'] = self.thin_manifest
+		kwds['allow_missing'] = self.allow_missing_manifest
+		kwds['allow_create'] = self.create_manifest
+		if self.disable_manifest:
+			kwds['from_scratch'] = True
 		return manifest.Manifest(*args, **kwds)
 
 	def update(self, new_repo):
@@ -194,7 +202,14 @@ class RepoConfigLoader(object):
 		if portdir:
 			portdir = normalize_path(portdir)
 			overlays.append(portdir)
-		port_ov = [normalize_path(i) for i in shlex_split(portdir_overlay)]
+		try:
+			port_ov = [normalize_path(i) for i in shlex_split(portdir_overlay)]
+		except ValueError as e:
+			#File "/usr/lib/python3.2/shlex.py", line 168, in read_token
+			#	raise ValueError("No closing quotation")
+			writemsg(_("!!! Invalid PORTDIR_OVERLAY:"
+				" %s: %s\n") % (e, portdir_overlay), noiselevel=-1)
+			port_ov = []
 		overlays.extend(port_ov)
 		default_repo_opts = {}
 		if prepos['DEFAULT'].aliases is not None:
@@ -337,6 +352,11 @@ class RepoConfigLoader(object):
 
 			if layout_data.get('thin-manifests', '').lower() == 'true':
 				repo.thin_manifest = True
+
+			manifest_policy = layout_data.get('use-manifests', 'strict').lower()
+			repo.allow_missing_manifest = manifest_policy != 'strict'
+			repo.create_manifest = manifest_policy != 'false'
+			repo.disable_manifest = manifest_policy == 'false'
 
 		#Take aliases into account.
 		new_prepos = {}

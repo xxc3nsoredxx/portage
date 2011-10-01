@@ -431,6 +431,8 @@ def insert_optional_args(args):
 	default_arg_opts = {
 		'--ask'                  : y_or_n,
 		'--autounmask'           : y_or_n,
+		'--autounmask-keep-masks': y_or_n,
+		'--autounmask-unrestricted-atoms' : y_or_n,
 		'--autounmask-write'     : y_or_n,
 		'--buildpkg'             : y_or_n,
 		'--complete-graph'       : y_or_n,
@@ -586,6 +588,7 @@ def parse_opts(tmpcmdline, silent=False):
 	])
 
 	longopt_aliases = {"--cols":"--columns", "--skip-first":"--skipfirst"}
+	y_or_n = ("y", "n")
 	true_y_or_n = ("True", "y", "n")
 	true_y = ("True", "y")
 	argument_options = {
@@ -599,6 +602,18 @@ def parse_opts(tmpcmdline, silent=False):
 
 		"--autounmask": {
 			"help"    : "automatically unmask packages",
+			"type"    : "choice",
+			"choices" : true_y_or_n
+		},
+
+		"--autounmask-unrestricted-atoms": {
+			"help"    : "write autounmask changes with >= atoms if possible",
+			"type"    : "choice",
+			"choices" : true_y_or_n
+		},
+
+		"--autounmask-keep-masks": {
+			"help"    : "don't add package.unmask entries",
 			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
@@ -643,6 +658,12 @@ def parse_opts(tmpcmdline, silent=False):
 			"help"    : "completely account for all known dependencies",
 			"type"    : "choice",
 			"choices" : true_y_or_n
+		},
+
+		"--complete-graph-if-new-ver": {
+			"help"    : "trigger --complete-graph behavior if an installed package version will change (upgrade or downgrade)",
+			"type"    : "choice",
+			"choices" : y_or_n
 		},
 
 		"--deep": {
@@ -926,6 +947,12 @@ def parse_opts(tmpcmdline, silent=False):
 	if myoptions.autounmask in true_y:
 		myoptions.autounmask = True
 
+	if myoptions.autounmask_unrestricted_atoms in true_y:
+		myoptions.autounmask_unrestricted_atoms = True
+
+	if myoptions.autounmask_keep_masks in true_y:
+		myoptions.autounmask_keep_masks = True
+
 	if myoptions.autounmask_write in true_y:
 		myoptions.autounmask_write = True
 
@@ -941,10 +968,11 @@ def parse_opts(tmpcmdline, silent=False):
 	if myoptions.deselect in true_y:
 		myoptions.deselect = True
 
-	if myoptions.binpkg_respect_use in true_y:
-		myoptions.binpkg_respect_use = True
-	else:
-		myoptions.binpkg_respect_use = None
+	if myoptions.binpkg_respect_use is not None:
+		if myoptions.binpkg_respect_use in true_y:
+			myoptions.binpkg_respect_use = 'y'
+		else:
+			myoptions.binpkg_respect_use = 'n'
 
 	if myoptions.complete_graph in true_y:
 		myoptions.complete_graph = True
@@ -1596,7 +1624,7 @@ def emerge_main(args=None):
 			trees[settings["ROOT"]]["vartree"].dbapi) + '\n', noiselevel=-1)
 		return 0
 	elif myaction == 'help':
-		_emerge.help.help(myopts, portage.output.havecolor)
+		_emerge.help.help()
 		return 0
 
 	spinner = stdout_spinner()
@@ -1741,7 +1769,7 @@ def emerge_main(args=None):
 		print("myopts", myopts)
 
 	if not myaction and not myfiles and "--resume" not in myopts:
-		_emerge.help.help(myopts, portage.output.havecolor)
+		_emerge.help.help()
 		return 1
 
 	pretend = "--pretend" in myopts
