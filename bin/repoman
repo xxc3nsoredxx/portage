@@ -67,7 +67,6 @@ from portage import cvstree, normalize_path
 from portage import util
 from portage.exception import (FileNotFound, MissingParameter,
 	ParseError, PermissionDenied)
-from portage.manifest import Manifest
 from portage.process import find_binary, spawn
 from portage.output import bold, create_color_func, \
 	green, nocolor, red
@@ -292,7 +291,7 @@ qahelp={
 	"ebuild.patches":"PATCHES variable should be a bash array to ensure white space safety",
 	"changelog.notadded":"ChangeLogs that exist but have not been added to cvs",
 	"dependency.unknown" : "Ebuild has a dependency that refers to an unknown package (which may be valid if it is a blocker for a renamed/removed package, or is an alternative choice provided by an overlay)",
-	"file.executable":"Ebuilds, digests, metadata.xml, Manifest, and ChangeLog do note need the executable bit",
+	"file.executable":"Ebuilds, digests, metadata.xml, Manifest, and ChangeLog do not need the executable bit",
 	"file.size":"Files in the files directory must be under 20 KiB",
 	"file.size.fatal":"Files in the files directory must be under 60 KiB",
 	"file.name":"File/dir name must be composed of only the following chars: %s " % allowed_filename_chars,
@@ -587,10 +586,18 @@ portdb = trees[root]['porttree'].dbapi
 
 # Constrain dependency resolution to the master(s)
 # that are specified in layout.conf.
-portdir_overlay = os.path.realpath(portdir_overlay)
-repo_info = portdb._repo_info[portdir_overlay]
+repodir = os.path.realpath(portdir_overlay)
+repo_info = portdb._repo_info[repodir]
 portdb.porttrees = list(repo_info.eclass_db.porttrees)
 portdir = portdb.porttrees[0]
+
+# In order to disable manifest signatures, repos may set
+# "sign-manifests = false" in metadata/layout.conf. This
+# can be used to prevent merge conflicts like those that
+# thin-manifests is designed to prevent.
+sign_manifests = "sign" in repoman_settings.features and \
+	repoman_settings.repositories.get_repo_for_location(
+	repodir).sign_manifest
 
 # Generate an appropriate PORTDIR_OVERLAY value for passing into the
 # profile-specific config constructor calls.
@@ -607,7 +614,7 @@ logging.info('PORTDIR_OVERLAY = "%s"' % env['PORTDIR_OVERLAY'])
 env['FEATURES'] = env.get('FEATURES', '') + ' -unknown-features-warn'
 
 categories = []
-for path in set([portdir, portdir_overlay]):
+for path in set([portdir, repodir]):
 	categories.extend(portage.util.grabfile(
 		os.path.join(path, 'profiles', 'categories')))
 repoman_settings.categories = tuple(sorted(
@@ -634,11 +641,13 @@ if options.mode == 'commit' and repolevel not in [1,2,3]:
 	print(red("***"))
 	err("Unable to identify level we're commiting from for %s" % '/'.join(reposplit))
 
-startdir = normalize_path(mydir)
-repodir = startdir
-for x in range(0, repolevel - 1):
-	repodir = os.path.dirname(repodir)
-repodir = os.path.realpath(repodir)
+# Make startdir relative to the canonical repodir, so that we can pass
+# it to digestgen and it won't have to be canonicalized again.
+if repolevel == 1:
+	startdir = repodir
+else:
+	startdir = normalize_path(mydir)
+	startdir = os.path.join(repodir, *startdir.split(os.sep)[-2-repolevel+3:])
 
 def caterror(mycat):
 	err(mycat+" is not an official category.  Skipping QA checks in this directory.\nPlease ensure that you add "+catdir+" to "+repodir+"/profiles/categories\nif it is a new category.")
@@ -1104,7 +1113,9 @@ for x in scanlist:
 			portage._doebuild_manifest_exempt_depend += 1
 			try:
 				distdir = repoman_settings['DISTDIR']
-				mf = portage.manifest.Manifest(checkdir, distdir,
+				mf = repoman_settings.repositories.get_repo_for_location(
+					os.path.dirname(os.path.dirname(checkdir)))
+				mf = mf.load_manifest(checkdir, distdir,
 					fetchlist_dict=fetchlist_dict)
 				mf.create(requiredDistfiles=None,
 					assumeDistHashesAlways=True)
@@ -1314,7 +1325,9 @@ for x in scanlist:
 				raise
 			continue
 
-	mf = Manifest(checkdir, repoman_settings["DISTDIR"])
+	mf = repoman_settings.repositories.get_repo_for_location(
+		os.path.dirname(os.path.dirname(checkdir)))
+	mf = mf.load_manifest(checkdir, repoman_settings["DISTDIR"])
 	mydigests=mf.getTypeDigests("DIST")
 
 	fetchlist_dict = portage.FetchlistDict(checkdir, repoman_settings, portdb)
@@ -2398,7 +2411,7 @@ else:
 
 	if vcs in ('cvs', 'svn') and (myupdates or myremoved):
 		myfiles = myupdates + myremoved
-		if not myheaders and "sign" not in repoman_settings.features:
+		if not myheaders and not sign_manifests:
 			myfiles += mymanifests
 		fd, commitmessagefile = tempfile.mkstemp(".repoman.msg")
 		mymsg = os.fdopen(fd, "wb")
@@ -2544,7 +2557,7 @@ else:
 			sys.exit(1)
 
 		# Force an unsigned commit when more than one Manifest needs to be signed.
-		if repolevel < 3 and "sign" in repoman_settings.features:
+		if repolevel < 3 and sign_manifests:
 
 			fd, commitmessagefile = tempfile.mkstemp(".repoman.msg")
 			mymsg = os.fdopen(fd, "wb")
@@ -2577,7 +2590,7 @@ else:
 			manifest_commit_required = False
 
 	signed = False
-	if "sign" in repoman_settings.features:
+	if sign_manifests:
 		signed = True
 		myfiles = myupdates + myremoved + mymanifests
 		try:

@@ -3,6 +3,7 @@
 
 import errno
 import io
+import warnings
 
 import portage
 portage.proxy.lazyimport.lazyimport(globals(),
@@ -49,6 +50,12 @@ def guessManifestFileType(filename):
 	else:
 		return "DIST"
 
+def guessThinManifestFileType(filename):
+	type = guessManifestFileType(filename)
+	if type != "DIST":
+		return None
+	return "DIST"
+
 def parseManifest2(mysplit):
 	myentry = None
 	if len(mysplit) > 4 and mysplit[0] in portage.const.MANIFEST2_IDENTIFIERS:
@@ -93,23 +100,26 @@ class Manifest2Entry(ManifestEntry):
 class Manifest(object):
 	parsers = (parseManifest2,)
 	def __init__(self, pkgdir, distdir, fetchlist_dict=None,
-		manifest1_compat=False, from_scratch=False):
-		""" create new Manifest instance for package in pkgdir
-		    and add compability entries for old portage versions if manifest1_compat == True.
+		manifest1_compat=DeprecationWarning, from_scratch=False, thin=False):
+		""" Create new Manifest instance for package in pkgdir.
 		    Do not parse Manifest file if from_scratch == True (only for internal use)
 			The fetchlist_dict parameter is required only for generation of
-			a Manifest (not needed for parsing and checking sums)."""
+			a Manifest (not needed for parsing and checking sums).
+			If thin is specified, then the manifest carries only info for
+			distfiles."""
+
+		if manifest1_compat is not DeprecationWarning:
+			warnings.warn("The manifest1_compat parameter of the "
+				"portage.manifest.Manifest constructor is deprecated.",
+				DeprecationWarning, stacklevel=2)
+
 		self.pkgdir = _unicode_decode(pkgdir).rstrip(os.sep) + os.sep
 		self.fhashdict = {}
 		self.hashes = set()
 		self.hashes.update(portage.const.MANIFEST2_HASH_FUNCTIONS)
-		if manifest1_compat:
-			raise NotImplementedError("manifest1 support has been removed")
 		self.hashes.difference_update(hashname for hashname in \
 			list(self.hashes) if hashname not in hashfunc_map)
 		self.hashes.add("size")
-		if manifest1_compat:
-			raise NotImplementedError("manifest1 support has been removed")
 		self.hashes.add(portage.const.MANIFEST2_REQUIRED_HASH)
 		for t in portage.const.MANIFEST2_IDENTIFIERS:
 			self.fhashdict[t] = {}
@@ -120,7 +130,11 @@ class Manifest(object):
 		else:
 			self.fetchlist_dict = {}
 		self.distdir = distdir
-		self.guessType = guessManifestFileType
+		self.thin = thin
+		if thin:
+			self.guessType = guessThinManifestFileType
+		else:
+			self.guessType = guessManifestFileType
 
 	def getFullname(self):
 		""" Returns the absolute path to the Manifest file for this instance """
@@ -227,7 +241,7 @@ class Manifest(object):
 		try:
 			myentries = list(self._createManifestEntries())
 			update_manifest = True
-			if not force:
+			if myentries and not force:
 				try:
 					f = io.open(_unicode_encode(self.getFullname(),
 						encoding=_encodings['fs'], errors='strict'),
@@ -246,9 +260,20 @@ class Manifest(object):
 						pass
 					else:
 						raise
+
 			if update_manifest:
-				write_atomic(self.getFullname(),
-					"".join("%s\n" % str(myentry) for myentry in myentries))
+				if myentries:
+					write_atomic(self.getFullname(), "".join("%s\n" %
+						str(myentry) for myentry in myentries))
+				else:
+					# With thin manifest, there's no need to have
+					# a Manifest file if there are no DIST entries.
+					try:
+						os.unlink(self.getFullname())
+					except OSError as e:
+						if e.errno != errno.ENOENT:
+							raise
+
 			if sign:
 				self.sign()
 		except (IOError, OSError) as e:
@@ -313,64 +338,20 @@ class Manifest(object):
 			distfilehashes = {}
 		self.__init__(self.pkgdir, self.distdir,
 			fetchlist_dict=self.fetchlist_dict, from_scratch=True,
-			manifest1_compat=False)
-		cpvlist = []
+			thin=self.thin)
 		pn = os.path.basename(self.pkgdir.rstrip(os.path.sep))
 		cat = self._pkgdir_category()
 
 		pkgdir = self.pkgdir
+		if self.thin:
+			cpvlist = self._update_thin_pkgdir(cat, pn, pkgdir)
+		else:
+			cpvlist = self._update_thick_pkgdir(cat, pn, pkgdir)
 
-		for pkgdir, pkgdir_dirs, pkgdir_files in os.walk(pkgdir):
-			break
-		for f in pkgdir_files:
-			try:
-				f = _unicode_decode(f,
-					encoding=_encodings['fs'], errors='strict')
-			except UnicodeDecodeError:
-				continue
-			if f[:1] == ".":
-				continue
-			pf = None
-			if f[-7:] == '.ebuild':
-				pf = f[:-7]
-			if pf is not None:
-				mytype = "EBUILD"
-				ps = portage.versions._pkgsplit(pf)
-				cpv = "%s/%s" % (cat, pf)
-				if not ps:
-					raise PortagePackageException(
-						_("Invalid package name: '%s'") % cpv)
-				if ps[0] != pn:
-					raise PortagePackageException(
-						_("Package name does not "
-						"match directory name: '%s'") % cpv)
-				cpvlist.append(cpv)
-			elif manifest2MiscfileFilter(f):
-				mytype = "MISC"
-			else:
-				continue
-			self.fhashdict[mytype][f] = perform_multiple_checksums(self.pkgdir+f, self.hashes)
-		recursive_files = []
-
-		pkgdir = self.pkgdir
-		cut_len = len(os.path.join(pkgdir, "files") + os.sep)
-		for parentdir, dirs, files in os.walk(os.path.join(pkgdir, "files")):
-			for f in files:
-				try:
-					f = _unicode_decode(f,
-						encoding=_encodings['fs'], errors='strict')
-				except UnicodeDecodeError:
-					continue
-				full_path = os.path.join(parentdir, f)
-				recursive_files.append(full_path[cut_len:])
-		for f in recursive_files:
-			if not manifest2AuxfileFilter(f):
-				continue
-			self.fhashdict["AUX"][f] = perform_multiple_checksums(
-				os.path.join(self.pkgdir, "files", f.lstrip(os.sep)), self.hashes)
 		distlist = set()
 		for cpv in cpvlist:
 			distlist.update(self._getCpvDistfiles(cpv))
+
 		if requiredDistfiles is None:
 			# This allows us to force removal of stale digests for the
 			# ebuild --force digest option (no distfiles are required).
@@ -403,6 +384,79 @@ class Manifest(object):
 				except FileNotFound:
 					if f in requiredDistfiles:
 						raise
+
+	def _is_cpv(self, cat, pn, filename):
+		if not filename.endswith(".ebuild"):
+			return None
+		pf = filename[:-7]
+		ps = portage.versions._pkgsplit(pf)
+		cpv = "%s/%s" % (cat, pf)
+		if not ps:
+			raise PortagePackageException(
+				_("Invalid package name: '%s'") % cpv)
+		if ps[0] != pn:
+			raise PortagePackageException(
+				_("Package name does not "
+				"match directory name: '%s'") % cpv)
+		return cpv
+
+	def _update_thin_pkgdir(self, cat, pn, pkgdir):
+		for pkgdir, pkgdir_dirs, pkgdir_files in os.walk(pkgdir):
+			break
+		cpvlist = []
+		for f in pkgdir_files:
+			try:
+				f = _unicode_decode(f,
+					encoding=_encodings['fs'], errors='strict')
+			except UnicodeDecodeError:
+				continue
+			if f[:1] == '.':
+				continue
+			pf = self._is_cpv(cat, pn, f)
+			if pf is not None:
+				cpvlist.append(pf)
+		return cpvlist
+
+	def _update_thick_pkgdir(self, cat, pn, pkgdir):
+		cpvlist = []
+		for pkgdir, pkgdir_dirs, pkgdir_files in os.walk(pkgdir):
+			break
+		for f in pkgdir_files:
+			try:
+				f = _unicode_decode(f,
+					encoding=_encodings['fs'], errors='strict')
+			except UnicodeDecodeError:
+				continue
+			if f[:1] == ".":
+				continue
+			pf = self._is_cpv(cat, pn, f)
+			if pf is not None:
+				mytype = "EBUILD"
+				cpvlist.append(pf)
+			elif manifest2MiscfileFilter(f):
+				mytype = "MISC"
+			else:
+				continue
+			self.fhashdict[mytype][f] = perform_multiple_checksums(self.pkgdir+f, self.hashes)
+		recursive_files = []
+
+		pkgdir = self.pkgdir
+		cut_len = len(os.path.join(pkgdir, "files") + os.sep)
+		for parentdir, dirs, files in os.walk(os.path.join(pkgdir, "files")):
+			for f in files:
+				try:
+					f = _unicode_decode(f,
+						encoding=_encodings['fs'], errors='strict')
+				except UnicodeDecodeError:
+					continue
+				full_path = os.path.join(parentdir, f)
+				recursive_files.append(full_path[cut_len:])
+		for f in recursive_files:
+			if not manifest2AuxfileFilter(f):
+				continue
+			self.fhashdict["AUX"][f] = perform_multiple_checksums(
+				os.path.join(self.pkgdir, "files", f.lstrip(os.sep)), self.hashes)
+		return cpvlist
 
 	def _pkgdir_category(self):
 		return self.pkgdir.rstrip(os.sep).split(os.sep)[-2]

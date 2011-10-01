@@ -24,7 +24,6 @@ from portage.dbapi import dbapi
 from portage.exception import PortageException, \
 	FileNotFound, InvalidAtom, InvalidDependString, InvalidPackageName
 from portage.localization import _
-from portage.manifest import Manifest
 
 from portage import eclass_cache, auxdbkeys, \
 	eapi_is_supported, dep_check, \
@@ -597,7 +596,9 @@ class portdbapi(dbapi):
 		if myebuild is None:
 			raise AssertionError(_("ebuild not found for '%s'") % mypkg)
 		pkgdir = os.path.dirname(myebuild)
-		mf = Manifest(pkgdir, self.settings["DISTDIR"])
+		mf = self.repositories.get_repo_for_location(
+			os.path.dirname(os.path.dirname(pkgdir))).load_manifest(
+				pkgdir, self.settings["DISTDIR"])
 		checksums = mf.getDigests()
 		if not checksums:
 			if debug: 
@@ -665,7 +666,9 @@ class portdbapi(dbapi):
 		if myebuild is None:
 			raise AssertionError(_("ebuild not found for '%s'") % mypkg)
 		pkgdir = os.path.dirname(myebuild)
-		mf = Manifest(pkgdir, self.settings["DISTDIR"])
+		mf = self.repositories.get_repo_for_location(
+			os.path.dirname(os.path.dirname(pkgdir)))
+		mf = mf.load_manifest(pkgdir, self.settings["DISTDIR"])
 		mysums = mf.getDigests()
 
 		failures = {}

@@ -38,7 +38,8 @@ class ResolverPlayground(object):
 	"""
 
 	config_files = frozenset(("package.use", "package.mask", "package.keywords", \
-		"package.unmask", "package.properties", "package.license", "use.mask", "use.force"))
+		"package.unmask", "package.properties", "package.license", "use.mask", "use.force",
+		"layout.conf",))
 
 	metadata_xml_template = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE pkgmetadata SYSTEM "http://www.gentoo.org/dtd/metadata.dtd">
@@ -56,7 +57,7 @@ class ResolverPlayground(object):
 """
 
 	def __init__(self, ebuilds={}, installed={}, profile={}, repo_configs={}, \
-		user_config={}, sets={}, world=[], debug=False):
+		user_config={}, sets={}, world=[], distfiles={}, debug=False):
 		"""
 		ebuilds: cpv -> metadata mapping simulating available ebuilds. 
 		installed: cpv -> metadata mapping simulating installed packages.
@@ -67,6 +68,7 @@ class ResolverPlayground(object):
 		self.root = "/"
 		self.eprefix = tempfile.mkdtemp()
 		self.eroot = self.root + self.eprefix.lstrip(os.sep) + os.sep
+		self.distdir = os.path.join(self.eroot, "var", "portage", "distfiles")
 		self.portdir = os.path.join(self.eroot, "usr/portage")
 		self.vdbdir = os.path.join(self.eroot, "var/db/pkg")
 		os.makedirs(self.portdir)
@@ -79,6 +81,7 @@ class ResolverPlayground(object):
 		#Make sure the main repo is always created
 		self._get_repo_dir("test_repo")
 
+		self._create_distfiles(distfiles)
 		self._create_ebuilds(ebuilds)
 		self._create_installed(installed)
 		self._create_profile(ebuilds, installed, profile, repo_configs, user_config, sets)
@@ -115,6 +118,12 @@ class ResolverPlayground(object):
 
 		return self.repo_dirs[repo]
 
+	def _create_distfiles(self, distfiles):
+		os.makedirs(self.distdir)
+		for k, v in distfiles.items():
+			with open(os.path.join(self.distdir, k), 'wb') as f:
+				f.write(v)
+
 	def _create_ebuilds(self, ebuilds):
 		for cpv in ebuilds:
 			a = Atom("=" + cpv, allow_repo=True)
@@ -131,6 +140,7 @@ class ResolverPlayground(object):
 			slot = metadata.pop("SLOT", 0)
 			keywords = metadata.pop("KEYWORDS", "x86")
 			homepage = metadata.pop("HOMEPAGE", None)
+			src_uri = metadata.pop("SRC_URI", None)
 			iuse = metadata.pop("IUSE", "")
 			depend = metadata.pop("DEPEND", "")
 			rdepend = metadata.pop("RDEPEND", None)
@@ -157,6 +167,8 @@ class ResolverPlayground(object):
 				f.write('DESCRIPTION="%s"\n' % desc)
 			if homepage is not None:
 				f.write('HOMEPAGE="%s"\n' % homepage)
+			if src_uri is not None:
+				f.write('SRC_URI="%s"\n' % src_uri)
 			f.write('LICENSE="' + str(lic) + '"\n')
 			f.write('PROPERTIES="' + str(properties) + '"\n')
 			f.write('SLOT="' + str(slot) + '"\n')
@@ -256,6 +268,8 @@ class ResolverPlayground(object):
 		for repo in self.repo_dirs:
 			repo_dir = self._get_repo_dir(repo)
 			profile_dir = os.path.join(self._get_repo_dir(repo), "profiles")
+			metadata_dir = os.path.join(repo_dir, "metadata")
+			os.makedirs(metadata_dir)
 
 			#Create $REPO/profiles/categories
 			categories = set()
@@ -283,8 +297,11 @@ class ResolverPlayground(object):
 				for config_file, lines in repo_config.items():
 					if config_file not in self.config_files:
 						raise ValueError("Unknown config file: '%s'" % config_file)
-		
-					file_name = os.path.join(profile_dir, config_file)
+
+					if config_file in ("layout.conf",):
+						file_name = os.path.join(repo_dir, "metadata", config_file)
+					else:
+						file_name = os.path.join(profile_dir, config_file)
 					f = open(file_name, "w")
 					for line in lines:
 						f.write("%s\n" % line)
@@ -334,8 +351,6 @@ class ResolverPlayground(object):
 				os.symlink(sub_profile_dir, os.path.join(user_config_dir, "make.profile"))
 
 				#Create minimal herds.xml
-				metadata_dir = os.path.join(repo_dir, "metadata")
-				os.makedirs(metadata_dir)
 				herds_xml = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE herds SYSTEM "http://www.gentoo.org/dtd/herds.dtd">
 <?xml-stylesheet href="/xsl/herds.xsl" type="text/xsl" ?>
@@ -450,6 +465,7 @@ class ResolverPlayground(object):
 
 		env = {
 			"ACCEPT_KEYWORDS": "x86",
+			"DISTDIR" : self.distdir,
 			"PORTDIR": self.portdir,
 			"PORTDIR_OVERLAY": " ".join(portdir_overlay),
 			'PORTAGE_TMPDIR'       : os.path.join(self.eroot, 'var/tmp'),
