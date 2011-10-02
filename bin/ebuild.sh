@@ -156,7 +156,6 @@ if ! has "$EBUILD_PHASE" clean cleanrm depend help ; then
 	cd "$PORTAGE_BUILDDIR" || \
 		die "PORTAGE_BUILDDIR does not exist: '$PORTAGE_BUILDDIR'"
 fi
->>>>>>> v2.2.0_alpha58
 
 #if no perms are specified, dirs/files will have decent defaults
 #(not secretive, but not stupid)
