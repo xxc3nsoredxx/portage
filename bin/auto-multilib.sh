@@ -72,8 +72,8 @@ prep_ml_binaries() {
 		mv ${binary} ${binary}-${ABI} || die
 		_debug ${binary} ${binary}-${ABI}
 		if [[ ${ABI} == ${DEFAULT_ABI} ]]; then
-			ln -s /usr/bin/abi-wrapper ${binary} || die
-			_debug /usr/bin/abi-wrapper ${binary}
+			ln -s /bin/abi-wrapper ${binary} || die
+			_debug /bin/abi-wrapper ${binary}
 		fi
 	done
 }
@@ -277,14 +277,14 @@ _finalize_abi_install() {
 
 	# Create wrapper symlink for *-config files
 	local i= 
-	prep_ml_binaries $(find "${D}"usr/bin -type f -name '*-config' 2>/dev/null)
+	prep_ml_binaries $(find "${D}"usr/bin "${D}"usr/sbin "${D}"bin "${D}"sbin -type f -name '*-config' 2>/dev/null)
 
 	local noabi=()
 	for i in ${MULTILIB_ABIS}; do
 		noabi+=( ! -name '*-'${i} )
 	done
 	if [[ ${MULTILIB_BINARIES} == *${CATEGORY}/${PN}* ]]; then
-		for i in $(find "${D}"usr/bin/ -type f ${noabi[@]}) $(find "${D}"bin/ -type f ${noabi[@]}); do
+		for i in $(find "${D}"usr/bin/ "${D}"usr/sbin "${D}"bin "${D}"sbin -type f ${noabi[@]}) ); do
 			prep_ml_binaries "${i}"
 		done
 	fi
