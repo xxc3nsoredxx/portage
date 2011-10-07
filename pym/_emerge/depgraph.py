@@ -3689,6 +3689,8 @@ class depgraph(object):
 		if not isinstance(atom, portage.dep.Atom):
 			atom = portage.dep.Atom(atom)
 		atom_cp = atom.cp
+		have_new_virt = atom_cp.startswith("virtual/") and \
+			self._have_new_virt(root, atom_cp)
 		atom_set = InternalPackageSet(initial_atoms=(atom,), allow_repo=True)
 		existing_node = None
 		myeb = None
@@ -3736,6 +3738,9 @@ class depgraph(object):
 				# USE configuration.
 				for pkg in self._iter_match_pkgs(root_config, pkg_type, atom.without_use, 
 					onlydeps=onlydeps):
+					if pkg.cp != atom_cp and have_new_virt:
+						# pull in a new-style virtual instead
+						continue
 					if pkg in self._dynamic_config._runtime_pkg_mask:
 						# The package has been masked by the backtracking logic
 						continue
@@ -3953,6 +3958,7 @@ class depgraph(object):
 						e_pkg = self._dynamic_config._slot_pkg_map[root].get(pkg.slot_atom)
 						if not e_pkg:
 							break
+
 						# Use PackageSet.findAtomForPackage()
 						# for PROVIDE support.
 						if atom_set.findAtomForPackage(e_pkg, modified_use=self._pkg_use_enabled(e_pkg)):
@@ -6164,13 +6170,14 @@ class depgraph(object):
 			self._show_circular_deps(
 				self._dynamic_config._circular_deps_for_display)
 
-		# The user is only notified of a slot conflict if
-		# there are no unresolvable blocker conflicts.
-		if self._dynamic_config._unsatisfied_blockers_for_display is not None:
+		# The slot conflict display has better noise reduction than
+		# the unsatisfied blockers display, so skip unsatisfied blockers
+		# display if there are slot conflicts (see bug #385391).
+		if self._dynamic_config._slot_collision_info:
+			self._show_slot_collision_notice()
+		elif self._dynamic_config._unsatisfied_blockers_for_display is not None:
 			self._show_unsatisfied_blockers(
 				self._dynamic_config._unsatisfied_blockers_for_display)
-		elif self._dynamic_config._slot_collision_info:
-			self._show_slot_collision_notice()
 		else:
 			self._show_missed_update()
 
