@@ -3037,6 +3037,10 @@ def display_news_notification(root_config, myopts):
 		return
 
 	permission_msgs = set()
+	print(colorize("WARN", " * IMPORTANT:"), end=' ')
+	print("The overlay location has changed, so please do the following:")
+	print("		layman -d multilib ; layman -a multilib-portage")
+	print("		Afterwards update portage as usual.")
 	for repo in portdb.getRepositories():
 		try:
 			unreadItems = checkUpdatedNewsItems(
