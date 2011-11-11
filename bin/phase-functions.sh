@@ -84,7 +84,7 @@ filter_readonly_variables() {
 	local bash_misc_vars="BASH BASH_.* COMP_WORDBREAKS HISTCMD
 		HISTFILE HOSTNAME HOSTTYPE IFS LINENO MACHTYPE OLDPWD
 		OPTERR OPTIND OSTYPE POSIXLY_CORRECT PS4 PWD RANDOM
-		SECONDS SHELL SHLVL"
+		SECONDS SHELL SHLVL _"
 	local filtered_sandbox_vars="SANDBOX_ACTIVE SANDBOX_BASHRC
 		SANDBOX_DEBUG_LOG SANDBOX_DISABLED SANDBOX_LIB
 		SANDBOX_LOG SANDBOX_ON"
@@ -590,10 +590,14 @@ dyn_install() {
 	fi
 	trap "abort_install" SIGINT SIGQUIT
 	ebuild_phase pre_src_install
-	rm -rf "${PORTAGE_BUILDDIR}/image"
-	is_auto-multilib && rm -rf "${PORTAGE_BUILDDIR}"/image.${ABI}
-	mkdir "${PORTAGE_BUILDDIR}/image"
-	for LOOP_ABI in $(get_abi_list); do
+
+	_x=${ED}
+	case "$EAPI" in 0|1|2) _x=${D} ;; esac
+	rm -rf "${D}"
+	is_auto-multilib && rm -rf "${D}".${ABI}
+	mkdir -p "${_x}"
+	unset _x
+	for LOOP_ABI in $(get_abi_list); do                                                                                                                                                                                                                                                                                
 		is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
 
 	if [[ -d $S ]] ; then
@@ -649,7 +653,7 @@ dyn_install() {
 	set -f
 	local f x
 	IFS=$' \t\n\r'
-	for f in CATEGORY DEFINED_PHASES FEATURES INHERITED IUSE REQUIRED_USE \
+	for f in CATEGORY DEFINED_PHASES FEATURES INHERITED IUSE \
 		PF PKGUSE SLOT KEYWORDS HOMEPAGE DESCRIPTION ; do
 		x=$(echo -n ${!f})
 		[[ -n $x ]] && echo "$x" > $f
