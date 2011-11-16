@@ -436,7 +436,7 @@ class config(object):
 					mygcfg = {}
 			self.configlist.append(mygcfg)
 			self.configdict["defaults"]=self.configlist[-1]
-			if self.configdict["defaults"].get("MULTILIB_ABIS", "").count(' ') != 0:
+			if self.configdict["defaults"].get('DEFAULT_ABI', None) is not None:
 				self.configdict["defaults"]["USE"] = self.configdict["defaults"].get("USE", "") + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 
 			mygcfg = getconfig(
@@ -1228,7 +1228,7 @@ class config(object):
 				if pkg_defaults:
 					defaults.extend(pkg_defaults)
 		defaults = " ".join(defaults)
-		if self.configdict["defaults"].get("MULTILIB_ABIS", "").count(' ') != 0:
+		if self.configdict["defaults"].get('DEFAULT_ABI', None) is not None:
 			defaults = defaults + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 		if defaults != self.configdict["defaults"].get("USE",""):
 			self.configdict["defaults"]["USE"] = defaults
@@ -1467,9 +1467,8 @@ class config(object):
 		# FEATURES=test for all ebuilds, regardless of explicit IUSE.
 		iuse_implicit.add("test")
 
-		if self['MULTILIB_ABIS'].count(' ') != 0:
-			for multilib_abis in self.get('MULTILIB_ABIS', '').split(' '):
-				iuse_implicit.add("multilib_abi_" + multilib_abis)
+		for multilib_abis in self.get('MULTILIB_ABIS', '').split(' '):
+			iuse_implicit.add("multilib_abi_" + multilib_abis)
 
 		return iuse_implicit
 
