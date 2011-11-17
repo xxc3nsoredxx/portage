@@ -337,9 +337,16 @@ _finalize_abi_install() {
 			if use multilib_abi_"${DEFAULT_ABI}" ; then
 				cd "${base}${dir}/gentoo-multilib/${DEFAULT_ABI}" || die
 				for i in $(find . -type l ; find . -type f); do
-					for diffabi in ${ALTERNATE_ABIS}; do
-						diff -q "${i}" ../${diffabi}/"${i}" >/dev/null || files_differ=1
-					done
+					# Ignore symbolic links, they can't be
+					# ABI-ized and diff is confused when the
+					# link's target is removed (by this
+					# loop).
+					if ! [[ -L ${i} ]]; then
+						for diffabi in ${ALTERNATE_ABIS}; do
+							diff -q "${i}" ../${diffabi}/"${i}" >/dev/null || files_differ=1
+						done
+					fi
+
 					if [ -z "${files_differ}" ]; then
 						[ -d "${D}${dir}/${i%/*}" ] || mkdir -p "${D}${dir}/${i%/*}"
 						mv ${base}${dir}/gentoo-multilib/${DEFAULT_ABI}/"${i}" "${D}${dir}/${i}" || die "$DEFAULT_ABI failed"
