@@ -21,13 +21,15 @@ PORTAGE_READONLY_VARS="D EBUILD EBUILD_PHASE \
 	PORTAGE_DEBUG PORTAGE_DEPCACHEDIR PORTAGE_EBUILD_EXIT_FILE \
 	PORTAGE_GID PORTAGE_GRPNAME PORTAGE_INST_GID PORTAGE_INST_UID \
 	PORTAGE_IPC_DAEMON PORTAGE_IUSE PORTAGE_LOG_FILE \
-	PORTAGE_MUTABLE_FILTERED_VARS PORTAGE_PYM_PATH PORTAGE_PYTHON \
+	PORTAGE_MUTABLE_FILTERED_VARS PORTAGE_OVERRIDE_EPREFIX \
+	PORTAGE_PYM_PATH PORTAGE_PYTHON \
 	PORTAGE_READONLY_METADATA PORTAGE_READONLY_VARS \
-	PORTAGE_REPO_NAME PORTAGE_RESTRICT PORTAGE_SANDBOX_COMPAT_LEVEL \
+	PORTAGE_REPO_NAME PORTAGE_RESTRICT \
 	PORTAGE_SAVED_READONLY_VARS PORTAGE_SIGPIPE_STATUS \
 	PORTAGE_TMPDIR PORTAGE_UPDATE_ENV PORTAGE_USERNAME \
 	PORTAGE_VERBOSE PORTAGE_WORKDIR_MODE PORTDIR PORTDIR_OVERLAY \
-	PROFILE_PATHS REPLACING_VERSIONS REPLACED_BY_VERSION T WORKDIR"
+	PROFILE_PATHS REPLACING_VERSIONS REPLACED_BY_VERSION T WORKDIR \
+	__PORTAGE_TEST_HARDLINK_LOCKS"
 
 PORTAGE_SAVED_READONLY_VARS="A CATEGORY P PF PN PR PV PVR"
 
@@ -96,6 +98,8 @@ filter_readonly_variables() {
 	# supported by the current EAPI.
 	case "${EAPI:-0}" in
 		0|1|2)
+			[[ " ${FEATURES} " == *" force-prefix "* ]] && \
+				filtered_vars+=" ED EPREFIX EROOT"
 			;;
 		*)
 			filtered_vars+=" ED EPREFIX EROOT"
@@ -592,7 +596,8 @@ dyn_install() {
 	ebuild_phase pre_src_install
 
 	_x=${ED}
-	case "$EAPI" in 0|1|2) _x=${D} ;; esac
+	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
+		case "$EAPI" in 0|1|2) _x=${D} ;; esac
 	rm -rf "${D}"
 	is_auto-multilib && rm -rf "${D}".${ABI}
 	mkdir -p "${_x}"
@@ -681,6 +686,20 @@ dyn_install() {
 	if is_auto-multilib; then
 		echo "$(get_abi_order)" > MULTILIB_ABIS
 	fi
+
+	# Save EPREFIX, since it makes it easy to use chpathtool to
+	# adjust the content of a binary package so that it will
+	# work in a different EPREFIX from the one is was built for.
+	case "${EAPI:-0}" in
+		0|1|2)
+			[[ " ${FEATURES} " == *" force-prefix "* ]] && \
+				[ -n "${EPREFIX}" ] && echo "${EPREFIX}" > EPREFIX
+			;;
+		*)
+			[ -n "${EPREFIX}" ] && echo "${EPREFIX}" > EPREFIX
+			;;
+	esac
+
 	set +f
 
 	# local variables can leak into the saved environment.

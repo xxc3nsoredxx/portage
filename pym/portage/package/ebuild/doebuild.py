@@ -10,7 +10,6 @@ from itertools import chain
 import logging
 import os as _os
 import re
-import shutil
 import signal
 import stat
 import sys
@@ -31,7 +30,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 )
 
 from portage import auxdbkeys, bsd_chflags, \
-	eapi_is_supported, merge, os, selinux, \
+	eapi_is_supported, merge, os, selinux, shutil, \
 	unmerge, _encodings, _parse_eapi_ebuild_head, _os_merge, \
 	_shell_quote, _unicode_decode, _unicode_encode
 from portage.const import EBUILD_SH_ENV_FILE, EBUILD_SH_ENV_DIR, \
@@ -239,11 +238,11 @@ def doebuild_environment(myebuild, mydo, myroot=None, settings=None,
 	mysettings["FILESDIR"] = pkg_dir+"/files"
 	mysettings["PF"]       = mypv
 
-	if hasattr(mydbapi, '_repo_info'):
-		repo_info = mydbapi._repo_info[mytree]
-		mysettings['PORTDIR'] = repo_info.portdir
-		mysettings['PORTDIR_OVERLAY'] = repo_info.portdir_overlay
-		mysettings.configdict["pkg"]["PORTAGE_REPO_NAME"] = repo_info.name
+	if hasattr(mydbapi, 'repositories'):
+		repo = mydbapi.repositories.get_repo_for_location(mytree)
+		mysettings['PORTDIR'] = repo.eclass_db.porttrees[0]
+		mysettings['PORTDIR_OVERLAY'] = ' '.join(repo.eclass_db.porttrees[1:])
+		mysettings.configdict["pkg"]["PORTAGE_REPO_NAME"] = repo.name
 
 	mysettings["PORTDIR"] = os.path.realpath(mysettings["PORTDIR"])
 	mysettings["DISTDIR"] = os.path.realpath(mysettings["DISTDIR"])
@@ -560,6 +559,7 @@ def doebuild(myebuild, mydo, _unused=None, settings=None, debug=0, listonly=0,
 			os.path.dirname(os.path.dirname(pkgdir)))
 	else:
 		repo_config = None
+
 	mf = None
 	if "strict" in features and \
 		"digest" not in features and \
@@ -733,6 +733,13 @@ def doebuild(myebuild, mydo, _unused=None, settings=None, debug=0, listonly=0,
 			rval = _validate_deps(mysettings, myroot, mydo, mydbapi)
 			if rval != os.EX_OK:
 				return rval
+
+		else:
+			# FEATURES=noauto only makes sense for porttree, and we don't want
+			# it to trigger redundant sourcing of the ebuild for API consumers
+			# that are using binary packages
+			if "noauto" in mysettings.features:
+				mysettings.features.discard("noauto")
 
 		# The info phase is special because it uses mkdtemp so and
 		# user (not necessarily in the portage group) can run it.

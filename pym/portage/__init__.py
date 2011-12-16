@@ -486,7 +486,8 @@ class _trees_dict(dict):
 		self._running_eroot = None
 		self._target_eroot = None
 
-def create_trees(config_root=None, target_root=None, trees=None, env=None):
+def create_trees(config_root=None, target_root=None, trees=None, env=None,
+	eprefix=None):
 	if trees is not None:
 		# clean up any existing portdbapi instances
 		for myroot in trees:
@@ -504,9 +505,9 @@ def create_trees(config_root=None, target_root=None, trees=None, env=None):
 
 	if env is None:
 		env = os.environ
-	eprefix = env.get("__PORTAGE_TEST_EPREFIX")
+
 	settings = config(config_root=config_root, target_root=target_root,
-		env=env, _eprefix=eprefix)
+		env=env, eprefix=eprefix)
 	settings.lock()
 
 	trees._target_eroot = settings['EROOT']
@@ -521,12 +522,13 @@ def create_trees(config_root=None, target_root=None, trees=None, env=None):
 		clean_env = {}
 		for k in ('PATH', 'PORTAGE_GRPNAME', 'PORTAGE_USERNAME',
 			'SSH_AGENT_PID', 'SSH_AUTH_SOCK', 'TERM',
-			'ftp_proxy', 'http_proxy', 'no_proxy'):
+			'ftp_proxy', 'http_proxy', 'no_proxy',
+			'__PORTAGE_TEST_HARDLINK_LOCKS'):
 			v = settings.get(k)
 			if v is not None:
 				clean_env[k] = v
 		settings = config(config_root=None, target_root="/",
-			env=clean_env, _eprefix=eprefix)
+			env=clean_env, eprefix=eprefix)
 		settings.lock()
 		trees._running_eroot = settings['EROOT']
 		myroots.append((settings['EROOT'], settings))

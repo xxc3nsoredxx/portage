@@ -2,11 +2,11 @@
 # Distributed under the terms of the GNU General Public License v2
 
 from itertools import permutations
-import shutil
 import sys
 import tempfile
 import portage
 from portage import os
+from portage import shutil
 from portage.const import (GLOBAL_CONFIG_PATH, PORTAGE_BASE_PATH,
 	USER_CONFIG_PATH)
 from portage.dbapi.vartree import vartree
@@ -475,7 +475,6 @@ class ResolverPlayground(object):
 				portdir_overlay.append(path)
 
 		env = {
-			"__PORTAGE_TEST_EPREFIX": self.eprefix,
 			"ACCEPT_KEYWORDS": "x86",
 			"DISTDIR" : self.distdir,
 			"PKGDIR": os.path.join(self.eroot, "usr/portage/packages"),
@@ -484,6 +483,10 @@ class ResolverPlayground(object):
 			'PORTAGE_TMPDIR'       : os.path.join(self.eroot, 'var/tmp'),
 		}
 
+		if os.environ.get("SANDBOX_ON") == "1":
+			# avoid problems from nested sandbox instances
+			env["FEATURES"] = "-sandbox"
+
 		# Pass along PORTAGE_USERNAME and PORTAGE_GRPNAME since they
 		# need to be inherited by ebuild subprocesses.
 		if 'PORTAGE_USERNAME' in os.environ:
@@ -491,7 +494,7 @@ class ResolverPlayground(object):
 		if 'PORTAGE_GRPNAME' in os.environ:
 			env['PORTAGE_GRPNAME'] = os.environ['PORTAGE_GRPNAME']
 
-		trees = portage.create_trees(env=env)
+		trees = portage.create_trees(env=env, eprefix=self.eprefix)
 		for root, root_trees in trees.items():
 			settings = root_trees["vartree"].settings
 			settings._init_dirs()

@@ -27,6 +27,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.util.digraph:digraph',
 	'portage.util.env_update:env_update',
 	'portage.util.listdir:dircache,listdir',
+	'portage.util.movefile:movefile',
 	'portage.util._dyn_libs.PreservedLibsRegistry:PreservedLibsRegistry',
 	'portage.util._dyn_libs.LinkageMapELF:LinkageMapELF@LinkageMap',
 	'portage.versions:best,catpkgsplit,catsplit,cpv_getkey,pkgcmp,' + \
@@ -42,12 +43,12 @@ from portage.exception import CommandNotFound, \
 	InvalidData, InvalidLocation, InvalidPackageName, \
 	FileNotFound, PermissionDenied, UnsupportedAPIException
 from portage.localization import _
-from portage.util.movefile import movefile
 
 from portage import abssymlink, _movefile, bsd_chflags
 
 # This is a special version of the os module, wrapped for unicode support.
 from portage import os
+from portage import shutil
 from portage import _encodings
 from portage import _os_merge
 from portage import _selinux_merge
@@ -69,7 +70,6 @@ import logging
 import os as _os
 import pwd
 import re
-import shutil
 import stat
 import sys
 import tempfile

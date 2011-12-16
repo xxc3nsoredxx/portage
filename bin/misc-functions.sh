@@ -17,7 +17,8 @@ shift $#
 source "${PORTAGE_BIN_PATH:-/usr/lib/portage/bin}/ebuild.sh"
 
 install_symlink_html_docs() {
-	case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
+		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
 	[[ -e "${ED}" ]] || return 0
 	cd "${ED}" || die "cd failed"
 	#symlink the html documentation (if DOC_SYMLINKS_DIR is set in make.conf)
@@ -66,7 +67,8 @@ canonicalize() {
 prepcompress() {
 	local -a include exclude incl_d incl_f
 	local f g i real_f real_d
-	case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
+		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
 
 	# Canonicalize path names and check for their existence.
 	real_d=$(canonicalize "${ED}")
@@ -148,7 +150,8 @@ prepcompress() {
 
 install_qa_check() {
 	local f i x
-	case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
+		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
 
 	[[ -d "${ED}" ]] || return 0
 	cd "${ED}" || die "cd failed"
@@ -888,7 +891,8 @@ preinst_mask() {
 		 return 1
 	fi
 
-	case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
+		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
 
 	# Make sure $PWD is not ${D} so that we don't leave gmon.out files
 	# in there in case any tools were built with -pg in CFLAGS.
@@ -916,7 +920,8 @@ preinst_sfperms() {
 		 return 1
 	fi
 
-	case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
+		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
 
 	# Smart FileSystem Permissions
 	if has sfperms $FEATURES; then
@@ -954,7 +959,8 @@ preinst_suid_scan() {
 		 return 1
 	fi
 
-	case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
+		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
 
 	# total suid control.
 	if has suidctl $FEATURES; then
@@ -1019,7 +1025,8 @@ preinst_selinux_labels() {
 
 dyn_package() {
 
-	case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
+		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
 
 	# Make sure $PWD is not ${D} so that we don't leave gmon.out files
 	# in there in case any tools were built with -pg in CFLAGS.
@@ -1099,7 +1106,8 @@ __END1__
 
 dyn_rpm() {
 
-	case "$EAPI" in 0|1|2) local EPREFIX= ;; esac
+	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
+		case "$EAPI" in 0|1|2) local EPREFIX= ;; esac
 
 	cd "${T}" || die "cd failed"
 	local machine_name=$(uname -m)

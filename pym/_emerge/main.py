@@ -1091,7 +1091,7 @@ def parse_opts(tmpcmdline, silent=False):
 		myoptions.quiet = None
 
 	if myoptions.quiet_build in true_y:
-		myoptions.quiet_build = None
+		myoptions.quiet_build = 'y'
 
 	if myoptions.rebuild_if_new_ver in true_y:
 		myoptions.rebuild_if_new_ver = True
@@ -1560,7 +1560,7 @@ def config_protect_check(trees):
 			writemsg_level(msg, level=logging.WARN, noiselevel=-1)
 
 def profile_check(trees, myaction):
-	if myaction in ("help", "info", "sync", "version"):
+	if myaction in ("help", "info", "search", "sync", "version"):
 		return os.EX_OK
 	for root, root_trees in trees.items():
 		if root_trees["root_config"].settings.profiles:
@@ -1570,7 +1570,7 @@ def profile_check(trees, myaction):
 		msg = ("Your current profile is invalid. If you have just changed "
 			"your profile configuration, you should revert back to the "
 			"previous configuration. Allowed actions are limited to "
-			"--help, --info, --sync, and --version.")
+			"--help, --info, --search, --sync, and --version.")
 		writemsg_level("".join("!!! %s\n" % l for l in textwrap.wrap(msg, 70)),
 			level=logging.ERROR, noiselevel=-1)
 		return 1

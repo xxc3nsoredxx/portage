@@ -10,7 +10,6 @@ import platform
 import pwd
 import random
 import re
-import shutil
 import signal
 import socket
 import stat
@@ -27,6 +26,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 )
 
 from portage import os
+from portage import shutil
 from portage import subprocess_getstatusoutput
 from portage import _unicode_decode
 from portage.cache.cache_errors import CacheError
@@ -588,15 +588,18 @@ def action_depclean(settings, trees, ldpath_mtimes,
 		return rval
 
 	if cleanlist:
-		unmerge(root_config, myopts, "unmerge",
+		if unmerge(root_config, myopts, "unmerge",
 			cleanlist, ldpath_mtimes, ordered=ordered,
-			scheduler=scheduler)
+			scheduler=scheduler):
+			rval = os.EX_OK
+		else:
+			rval = 1
 
 	if action == "prune":
-		return
+		return rval
 
 	if not cleanlist and "--quiet" in myopts:
-		return
+		return rval
 
 	print("Packages installed:   " + str(len(vardb.cpv_all())))
 	print("Packages in world:    " + \
@@ -608,6 +611,8 @@ def action_depclean(settings, trees, ldpath_mtimes,
 		print("Number to remove:     "+str(len(cleanlist)))
 	else:
 		print("Number removed:       "+str(len(cleanlist)))
+
+	return rval
 
 def calc_depclean(settings, trees, ldpath_mtimes,
 	myopts, action, args_set, spinner):
@@ -1668,7 +1673,7 @@ def action_metadata(settings, portdb, myopts, porttrees=None):
 
 		if src_db is not None:
 			porttrees_data.append(TreeData(portdb.auxdb[path],
-				portdb._repo_info[path].eclass_db, path, src_db))
+				portdb.repositories.get_repo_for_location(path).eclass_db, path, src_db))
 
 	porttrees = [tree_data.path for tree_data in porttrees_data]
 
@@ -1967,6 +1972,7 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 	os.umask(0o022)
 	dosyncuri = syncuri
 	updatecache_flg = False
+	git = False
 	if myaction == "metadata":
 		print("skipping sync")
 		updatecache_flg = True
@@ -1995,9 +2001,7 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 		msg = ">>> Git pull in %s successful" % myportdir
 		emergelog(xterm_titles, msg)
 		writemsg_level(msg + "\n")
-		exitcode = git_sync_timestamps(portdb, myportdir)
-		if exitcode == os.EX_OK:
-			updatecache_flg = True
+		git = True
 	elif syncuri[:8]=="rsync://" or syncuri[:6]=="ssh://":
 		for vcs_dir in vcs_dirs:
 			writemsg_level(("!!! %s appears to be under revision " + \
@@ -2439,16 +2443,24 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 			noiselevel=-1, level=logging.ERROR)
 		return 1
 
-	if updatecache_flg and  \
-		myaction != "metadata" and \
-		"metadata-transfer" not in settings.features:
-		updatecache_flg = False
-
 	# Reload the whole config from scratch.
 	settings, trees, mtimedb = load_emerge_config(trees=trees)
 	adjust_configs(myopts, trees)
 	root_config = trees[settings['EROOT']]['root_config']
 	portdb = trees[settings['EROOT']]['porttree'].dbapi
+
+	if git:
+		# NOTE: Do this after reloading the config, in case
+		# it did not exist prior to sync, so that the config
+		# and portdb properly account for its existence.
+		exitcode = git_sync_timestamps(portdb, myportdir)
+		if exitcode == os.EX_OK:
+			updatecache_flg = True
+
+	if updatecache_flg and  \
+		myaction != "metadata" and \
+		"metadata-transfer" not in settings.features:
+		updatecache_flg = False
 
 	if updatecache_flg and \
 		os.path.exists(os.path.join(myportdir, 'metadata', 'cache')):
@@ -2985,7 +2997,6 @@ def load_emerge_config(trees=None):
 	settings = trees[trees._target_eroot]['vartree'].settings
 	mtimedbfile = os.path.join(settings['EROOT'], portage.CACHE_PATH, "mtimedb")
 	mtimedb = portage.MtimeDB(mtimedbfile)
-	portage.output._init(config_root=settings['PORTAGE_CONFIGROOT'])
 	QueryCommand._db = trees
 	return settings, trees, mtimedb
 

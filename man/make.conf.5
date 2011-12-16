@@ -322,6 +322,12 @@ fixes (order of flags, duplicated entries, ...)
 Only fetch files from configured mirrors, ignoring \fBSRC_URI\fR,
 except when \fImirror\fR is in the \fBebuild\fR(5) \fBRESTRICT\fR variable.
 .TP
+.B force\-prefix
+Enable prefix support for all ebuilds, regardless of EAPI, since older EAPIs
+would otherwise be useless with prefix configurations. This brings
+compatibility with the prefix branch of portage, which also supports EPREFIX
+for all EAPIs (for obvious reasons).
+.TP
 .B lmirror
 When \fImirror\fR is enabled in \fBFEATURES\fR, fetch files even
 when \fImirror\fR is also in the \fBebuild\fR(5) \fBRESTRICT\fR variable.
@@ -525,6 +531,10 @@ operations.
 .TP
 .B webrsync-gpg
 Enable GPG verification when using \fIemerge\-webrsync\fR.
+.TP
+.B xattr
+Preserve extended attributes (filesystem-stored metadata) when installing
+files (see \fBattr\fR(1)).
 .RE
 .TP
 .B FETCHCOMMAND
@@ -877,13 +887,15 @@ Per\-package USE from \fB/etc/portage/package.use\fR (see \fBportage\fR(5))
 USE from make.conf
 .TP
 .B defaults
-USE from make.defaults and package.use in the profile (see \fBportage\fR(5))
+USE from make.defaults and package.use in the profile
+(e.g. /etc/portage/make.profile/package.use) (see \fBportage\fR(5))
 .TP
 .B pkginternal
 USE from \fBebuild\fR(5) IUSE defaults
 .TP
 .B repo
-USE from make.defaults and package.use in the repo (see \fBportage\fR(5))
+USE from make.defaults and package.use in the repo's profiles/ top dir
+(e.g. /usr/portage/profiles/package.use) (see \fBportage\fR(5))
 .TP
 .B env.d
 USE from the environment variables, such as LINGUAS, defined by files in

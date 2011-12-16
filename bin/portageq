@@ -708,6 +708,8 @@ def get_repos(argv):
 		sys.exit(2)
 	print(" ".join(portage.db[argv[0]]["porttree"].dbapi.getRepositories()))
 
+get_repos.uses_root = True
+
 def get_repo_path(argv):
 	"""<eroot> <repo_id>+
 	Returns the path to the repo named argv[1], argv[0] = $EROOT
@@ -720,6 +722,8 @@ def get_repo_path(argv):
 		if path is None:
 			path = ""
 		print(path)
+
+get_repo_path.uses_root = True
 
 def list_preserved_libs(argv):
 	"""<eroot>
@@ -838,7 +842,7 @@ def main():
 			sys.stderr.write("Run portageq with --help for info\n")
 			sys.stderr.flush()
 			sys.exit(os.EX_USAGE)
-		eprefix = os.environ.get("__PORTAGE_TEST_EPREFIX")
+		eprefix = portage.const.EPREFIX
 		eroot = portage.util.normalize_path(sys.argv[2])
 		if eprefix:
 			root = eroot[:1-len(eprefix)]
