@@ -310,27 +310,85 @@ install_qa_check() {
 			sleep 1
 		fi
 
+		# Merge QA_FLAGS_IGNORED and QA_DT_HASH into a single array, since
+		# QA_DT_HASH is deprecated.
+		qa_var="QA_FLAGS_IGNORED_${ARCH/-/_}"
+		eval "[[ -n \${!qa_var} ]] && QA_FLAGS_IGNORED=(\"\${${qa_var}[@]}\")"
+		if [[ ${#QA_FLAGS_IGNORED[@]} -eq 1 ]] ; then
+			local shopts=$-
+			set -o noglob
+			QA_FLAGS_IGNORED=(${QA_FLAGS_IGNORED})
+			set +o noglob
+			set -${shopts}
+		fi
+
+		qa_var="QA_DT_HASH_${ARCH/-/_}"
+		eval "[[ -n \${!qa_var} ]] && QA_DT_HASH=(\"\${${qa_var}[@]}\")"
+		if [[ ${#QA_DT_HASH[@]} -eq 1 ]] ; then
+			local shopts=$-
+			set -o noglob
+			QA_DT_HASH=(${QA_DT_HASH})
+			set +o noglob
+			set -${shopts}
+		fi
+
+		if [[ -n ${QA_DT_HASH} ]] ; then
+			QA_FLAGS_IGNORED=("${QA_FLAGS_IGNORED[@]}" "${QA_DT_HASH[@]}")
+			unset QA_DT_HASH
+		fi
+
+		# Merge QA_STRICT_FLAGS_IGNORED and QA_STRICT_DT_HASH, since
+		# QA_STRICT_DT_HASH is deprecated
+		if [ "${QA_STRICT_FLAGS_IGNORED-unset}" = unset ] && \
+			[ "${QA_STRICT_DT_HASH-unset}" != unset ] ; then
+			QA_STRICT_FLAGS_IGNORED=1
+			unset QA_STRICT_DT_HASH
+		fi
+
+		# Check for files built without respecting *FLAGS. Note that
+		# -frecord-gcc-switches must be in all *FLAGS variables, in
+		# order to avoid false positive results here.
+		if [[ "${CFLAGS}" == *-frecord-gcc-switches* ]] && \
+			[[ "${CXXFLAGS}" == *-frecord-gcc-switches* ]] && \
+			[[ "${FFLAGS}" == *-frecord-gcc-switches* ]] && \
+			[[ "${FCFLAGS}" == *-frecord-gcc-switches* ]] && \
+			! has binchecks ${RESTRICT} ; then
+			f=$(scanelf -qyRF '%k %p' -k \!.GCC.command.line "${ED}" | sed -e "s:\!.GCC.command.line ::")
+			if [[ -n ${f} ]] ; then
+				echo "${f}" > "${T}"/scanelf-ignored-CFLAGS.log
+				if [ "${QA_STRICT_FLAGS_IGNORED-unset}" = unset ] ; then
+					for x in "${QA_FLAGS_IGNORED[@]}" ; do
+						sed -e "s#^${x#/}\$##" -i "${T}"/scanelf-ignored-CFLAGS.log
+					done
+				fi
+				# Filter anything under /usr/lib/debug/ in order to avoid
+				# duplicate warnings for splitdebug files.
+				sed -e "s#^usr/lib/debug/.*##" -e "/^\$/d" -e "s#^#/#" \
+					-i "${T}"/scanelf-ignored-CFLAGS.log
+				f=$(<"${T}"/scanelf-ignored-CFLAGS.log)
+				if [[ -n ${f} ]] ; then
+					vecho -ne '\n'
+					eqawarn "${BAD}QA Notice: Files built without respecting CFLAGS have been detected${NORMAL}"
+					eqawarn " Please include the following list of files in your report:"
+					eqawarn "${f}"
+					vecho -ne '\n'
+					sleep 1
+				else
+					rm -f "${T}"/scanelf-ignored-CFLAGS.log
+				fi
+			fi
+		fi
+
 		# Check for files built without respecting LDFLAGS
-		if [[ "${LDFLAGS}" == *,--hash-style=gnu* ]] && [[ "${PN}" != *-bin ]] ; then
-			qa_var="QA_DT_HASH_${ARCH/-/_}"
-			eval "[[ -n \${!qa_var} ]] && QA_DT_HASH=(\"\${${qa_var}[@]}\")"
+		if [[ "${LDFLAGS}" == *,--hash-style=gnu* ]] && \
+			! has binchecks ${RESTRICT} ; then 
 			f=$(scanelf -qyRF '%k %p' -k .hash "${ED}" | sed -e "s:\.hash ::")
 			if [[ -n ${f} ]] ; then
 				echo "${f}" > "${T}"/scanelf-ignored-LDFLAGS.log
-				if [ "${QA_STRICT_DT_HASH-unset}" == unset ] ; then
-					if [[ ${#QA_DT_HASH[@]} -gt 1 ]] ; then
-						for x in "${QA_DT_HASH[@]}" ; do
-							sed -e "s#^${x#/}\$##" -i "${T}"/scanelf-ignored-LDFLAGS.log
-						done
-					else
-						local shopts=$-
-						set -o noglob
-						for x in ${QA_DT_HASH} ; do
-							sed -e "s#^${x#/}\$##" -i "${T}"/scanelf-ignored-LDFLAGS.log
-						done
-						set +o noglob
-						set -${shopts}
-					fi
+				if [ "${QA_STRICT_FLAGS_IGNORED-unset}" = unset ] ; then
+					for x in "${QA_FLAGS_IGNORED[@]}" ; do
+						sed -e "s#^${x#/}\$##" -i "${T}"/scanelf-ignored-LDFLAGS.log
+					done
 				fi
 				# Filter anything under /usr/lib/debug/ in order to avoid
 				# duplicate warnings for splitdebug files.

@@ -74,6 +74,8 @@ PORTAGE_MUTABLE_FILTERED_VARS="AA HOSTNAME"
 #
 # ---allow-extra-vars causes some extra vars to be allowd through, such
 # as ${PORTAGE_SAVED_READONLY_VARS} and ${PORTAGE_MUTABLE_FILTERED_VARS}.
+# This is enabled automatically if EMERGE_FROM=binary, since it preserves
+# variables from when the package was originally built.
 #
 # In bash-3.2_p20+ an attempt to assign BASH_*, FUNCNAME, GROUPS or any
 # readonly variable cause the shell to exit while executing the "source"
@@ -83,13 +85,15 @@ filter_readonly_variables() {
 	local x filtered_vars
 	local readonly_bash_vars="BASHOPTS BASHPID DIRSTACK EUID
 		FUNCNAME GROUPS PIPESTATUS PPID SHELLOPTS UID"
-	local bash_misc_vars="BASH BASH_.* COMP_WORDBREAKS HISTCMD
+	local bash_misc_vars="BASH BASH_.* COLUMNS COMP_WORDBREAKS HISTCMD
 		HISTFILE HOSTNAME HOSTTYPE IFS LINENO MACHTYPE OLDPWD
 		OPTERR OPTIND OSTYPE POSIXLY_CORRECT PS4 PWD RANDOM
 		SECONDS SHELL SHLVL _"
 	local filtered_sandbox_vars="SANDBOX_ACTIVE SANDBOX_BASHRC
 		SANDBOX_DEBUG_LOG SANDBOX_DISABLED SANDBOX_LIB
 		SANDBOX_LOG SANDBOX_ON"
+	# Untrusted due to possible application of package renames to binpkgs
+	local binpkg_untrusted_vars="CATEGORY P PF PN PR PV PVR"
 	local misc_garbage_vars="_portage_filter_opts"
 	filtered_vars="$readonly_bash_vars $bash_misc_vars
 		$PORTAGE_READONLY_VARS $misc_garbage_vars"
@@ -123,11 +127,14 @@ filter_readonly_variables() {
 			LC_NUMERIC LC_PAPER LC_TIME"
 	fi
 	if ! has --allow-extra-vars $* ; then
-		filtered_vars="
-			${filtered_vars}
-			${PORTAGE_SAVED_READONLY_VARS}
-			${PORTAGE_MUTABLE_FILTERED_VARS}
-		"
+		if [ "${EMERGE_FROM}" = binary ] ; then
+			# preserve additional variables from build time,
+			# while excluding untrusted variables
+			filtered_vars+=" ${binpkg_untrusted_vars}"
+		else
+			filtered_vars+=" ${PORTAGE_SAVED_READONLY_VARS}"
+			filtered_vars+=" ${PORTAGE_MUTABLE_FILTERED_VARS}"
+		fi
 	fi
 	if has --filter-metadata $* ; then
 		filtered_vars+=" ${PORTAGE_READONLY_METADATA} filter_opts"
