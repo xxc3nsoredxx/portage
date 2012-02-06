@@ -1,4 +1,4 @@
-# Copyright 2010-2011 Gentoo Foundation
+# Copyright 2010-2012 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 import io
@@ -19,8 +19,8 @@ from portage import eclass_cache, os
 from portage.const import (MANIFEST2_HASH_FUNCTIONS, MANIFEST2_REQUIRED_HASH,
 	REPO_NAME_LOC, USER_CONFIG_PATH)
 from portage.env.loaders import KeyValuePairFileLoader
-from portage.util import (normalize_path, writemsg, writemsg_level,
-	shlex_split, stack_lists)
+from portage.util import (normalize_path, read_corresponding_eapi_file, shlex_split,
+	stack_lists, writemsg, writemsg_level)
 from portage.localization import _
 from portage import _unicode_decode
 from portage import _unicode_encode
@@ -46,10 +46,10 @@ class RepoConfig(object):
 	"""Stores config of one repository"""
 
 	__slots__ = ('aliases', 'allow_missing_manifest',
-		'cache_formats', 'create_manifest', 'disable_manifest',
+		'cache_formats', 'create_manifest', 'disable_manifest', 'eapi',
 		'eclass_db', 'eclass_locations', 'eclass_overrides', 'format', 'location',
 		'main_repo', 'manifest_hashes', 'masters', 'missing_repo_name',
-		'name', 'priority', 'sign_manifest', 'sync', 'thin_manifest',
+		'name', 'priority', 'sign_commit', 'sign_manifest', 'sync', 'thin_manifest',
 		'update_changelog', 'user_location', 'portage1_profiles',
 		'portage1_profiles_compat')
 
@@ -106,14 +106,20 @@ class RepoConfig(object):
 			location = None
 		self.location = location
 
+		eapi = None
 		missing = True
 		if self.location is not None:
+			eapi = read_corresponding_eapi_file(os.path.join(self.location, REPO_NAME_LOC))
 			name, missing = self._read_valid_repo_name(self.location)
-
 		elif name == "DEFAULT": 
 			missing = False
+
+		self.eapi = eapi
 		self.name = name
 		self.missing_repo_name = missing
+		# sign_commit is disabled by default, since it requires Git >=1.7.9,
+		# and key_id configured by `git config user.signingkey key_id`
+		self.sign_commit = False
 		self.sign_manifest = True
 		self.thin_manifest = False
 		self.allow_missing_manifest = False
@@ -145,7 +151,7 @@ class RepoConfig(object):
 
 			for value in ('allow-missing-manifest', 'cache-formats',
 				'create-manifest', 'disable-manifest', 'manifest-hashes',
-				'sign-manifest', 'thin-manifest', 'update-changelog'):
+				'sign-commit', 'sign-manifest', 'thin-manifest', 'update-changelog'):
 				setattr(self, value.lower().replace("-", "_"), layout_data[value])
 
 			self.portage1_profiles = any(x.startswith("portage-1") \
@@ -338,7 +344,7 @@ class RepoConfigLoader(object):
 					if repos_conf_opts is not None:
 						# Selectively copy only the attributes which
 						# repos.conf is allowed to override.
-						for k in ('aliases', 'eclass_overrides', 'masters'):
+						for k in ('aliases', 'eclass_overrides', 'masters', 'priority'):
 							v = getattr(repos_conf_opts, k, None)
 							if v is not None:
 								setattr(repo, k, v)
@@ -353,7 +359,7 @@ class RepoConfigLoader(object):
 
 					if ov == portdir and portdir not in port_ov:
 						repo.priority = -1000
-					else:
+					elif repo.priority is None:
 						repo.priority = base_priority
 						base_priority += 1
 
@@ -666,6 +672,7 @@ def _get_repo_name(repo_location, cached=None):
 	return name
 
 def parse_layout_conf(repo_location, repo_name=None):
+	eapi = read_corresponding_eapi_file(os.path.join(repo_location, REPO_NAME_LOC))
 
 	layout_filename = os.path.join(repo_location, "metadata", "layout.conf")
 	layout_file = KeyValuePairFileLoader(layout_filename, None, None)
@@ -683,6 +690,9 @@ def parse_layout_conf(repo_location, repo_name=None):
 		masters = tuple(masters.split())
 	data['masters'] = masters
 	data['aliases'] = tuple(layout_data.get('aliases', '').split())
+
+	data['sign-commit'] = layout_data.get('sign-commits', 'false').lower() \
+		== 'true'
 
 	data['sign-manifest'] = layout_data.get('sign-manifests', 'true').lower() \
 		== 'true'
@@ -739,7 +749,10 @@ def parse_layout_conf(repo_location, repo_name=None):
 
 	raw_formats = layout_data.get('profile-formats')
 	if raw_formats is None:
-		raw_formats = ('portage-1-compat',)
+		if eapi in ('4-python',):
+			raw_formats = ('portage-1',)
+		else:
+			raw_formats = ('portage-1-compat',)
 	else:
 		raw_formats = set(raw_formats.split())
 		unknown = raw_formats.difference(['pms', 'portage-1'])
