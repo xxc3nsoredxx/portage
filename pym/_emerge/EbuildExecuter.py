@@ -109,9 +109,13 @@ class EbuildExecuter(CompositeTask):
 			# This initializes PORTAGE_LOG_FILE.
 			portage.prepare_build_dirs(pkg.root, settings, cleanup)
 
+		setup_phase = EbuildPhase(background=self.background,
+			phase="setup", scheduler=scheduler,
+			settings=settings)
+
 			setup_phase = EbuildPhase(background=self.background,
-				pkg=pkg, phase="setup", scheduler=scheduler,
-				settings=settings, tree=self)
+				phase="setup", scheduler=scheduler,
+				settings=settings)
 
 			setup_phase.addExitListener(self._setup_exit)
 			self._current_task = setup_phase

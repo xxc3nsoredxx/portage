@@ -124,7 +124,11 @@ get_abi_order() {
 	fi
 
 	if [ -z "${order}" ]; then
-		die "Could not determine your profile ABI(s).  Perhaps your USE flags or MULTILIB_ABIS are too restrictive for this package or your profile does not set DEFAULT_ABI."
+		if ! [ -z "${DEFAULT_ABI}" ]; then
+			order=${DEFAULT_ABI}
+		else
+			die "Could not determine your profile ABI(s).  Perhaps your USE flags or MULTILIB_ABIS are too restrictive for this package or your profile does not set DEFAULT_ABI."
+		fi
 	fi
 
 	echo ${order}
