@@ -441,8 +441,10 @@ class config(object):
 					mygcfg = {}
 			self.configlist.append(mygcfg)
 			self.configdict["defaults"]=self.configlist[-1]
-			if self.configdict["defaults"].get('DEFAULT_ABI', None) is not None:
-				self.configdict["defaults"]["USE"] = self.configdict["defaults"].get("USE", "") + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
+
+			if 'force-multilib' in confs.get("FEATURES", ""):
+				if self.configdict["defaults"].get('DEFAULT_ABI', None) is not None:
+					self.configdict["defaults"]["USE"] = self.configdict["defaults"].get("USE", "") + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 
 			mygcfg = getconfig(
 				os.path.join(config_root, MAKE_CONF_FILE),
@@ -772,9 +774,10 @@ class config(object):
 					self[var] = default_val
 				self.backup_changes(var)
 
-			#add multilib_abi internally to list of USE_EXPANDed vars
-			self["USE_EXPAND"] = "multilib_abi" + " " + self.get("USE_EXPAND", "")
-			self.backup_changes("USE_EXPAND")
+			if 'force-multilib' in self.get("FEATURES", ""):
+				#add multilib_abi internally to list of USE_EXPANDed vars
+				self["USE_EXPAND"] = "multilib_abi" + " " + self.get("USE_EXPAND", "")
+				self.backup_changes("USE_EXPAND")
 
 			# initialize self.features
 			self.regenerate()
@@ -1286,8 +1289,9 @@ class config(object):
 				if pkg_defaults:
 					defaults.extend(pkg_defaults)
 		defaults = " ".join(defaults)
-		if self.configdict["defaults"].get('DEFAULT_ABI', None) is not None:
-			defaults = defaults + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
+		if 'force-multilib' in self.get("FEATURES", ""):
+			if self.configdict["defaults"].get('DEFAULT_ABI', None) is not None:
+				defaults = defaults + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 		if defaults != self.configdict["defaults"].get("USE",""):
 			self.configdict["defaults"]["USE"] = defaults
 			has_changed = True
@@ -1525,8 +1529,9 @@ class config(object):
 		# FEATURES=test for all ebuilds, regardless of explicit IUSE.
 		iuse_implicit.add("test")
 
-		for multilib_abis in self.get('MULTILIB_ABIS', '').split(' '):
-			iuse_implicit.add("multilib_abi_" + multilib_abis)
+		if 'force-multilib' in self.get("FEATURES", ""):
+			for multilib_abis in self.get('MULTILIB_ABIS', '').split(' '):
+				iuse_implicit.add("multilib_abi_" + multilib_abis)
 
 		return iuse_implicit
 
@@ -1935,7 +1940,8 @@ class config(object):
 
 		# Do the USE calculation last because it depends on USE_EXPAND.
 		use_expand = self.get("USE_EXPAND", "").split()
-		use_expand.append("MULTILIB_ABI")
+		if 'force-multilib' in self.get("FEATURES", ""):
+			use_expand.append("MULTILIB_ABI")
 		use_expand_dict = self._use_expand_dict
 		use_expand_dict.clear()
 		for k in use_expand:
