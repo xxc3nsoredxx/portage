@@ -114,34 +114,42 @@ is_ebuild() {
 }
 
 get_abi_order() {
-	local order=
-	use multilib_abi_"${DEFAULT_ABI}" && order=${DEFAULT_ABI}
+	if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+		local order=
+		use multilib_abi_"${DEFAULT_ABI}" && order=${DEFAULT_ABI}
 
-	if is_auto-multilib; then
-		for x in ${MULTILIB_ABIS/${DEFAULT_ABI}} ; do
-			use multilib_abi_"${x}" && order+=" ${x}"
-		done
-	fi
-
-	if [ -z "${order}" ]; then
-		if ! [ -z "${DEFAULT_ABI}" ]; then
-			order=${DEFAULT_ABI}
-		else
-			die "Could not determine your profile ABI(s).  Perhaps your USE flags or MULTILIB_ABIS are too restrictive for this package or your profile does not set DEFAULT_ABI."
+		if is_auto-multilib; then
+			for x in ${MULTILIB_ABIS/${DEFAULT_ABI}} ; do
+				use multilib_abi_"${x}" && order+=" ${x}"
+			done
 		fi
-	fi
 
-	echo ${order}
+		if [ -z "${order}" ]; then
+			if ! [ -z "${DEFAULT_ABI}" ]; then
+				order=${DEFAULT_ABI}
+			else
+				die "Could not determine your profile ABI(s).  Perhaps your USE flags or MULTILIB_ABIS are too restrictive for this package or your profile does not set DEFAULT_ABI."
+			fi
+		fi
+
+		echo ${order}
+	else
+		echo "default"
+	fi
 }
 
 get_abi_list() {
-	if ! is_ebuild; then
-		for my_abi in $(get_abi_order); do
-			[[ -e "${D%/}".${my_abi} ]] || break
-		done
-	fi
+	if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+		if ! is_ebuild; then
+			for my_abi in $(get_abi_order); do
+				[[ -e "${D%/}".${my_abi} ]] || break
+			done
+		fi
 
-	is_ebuild && echo $(get_abi_order) || echo ${my_abi}
+		is_ebuild && echo $(get_abi_order) || echo ${my_abi}
+	else
+		echo "default"
+	fi
 }
 
 set_abi() {
@@ -215,9 +223,9 @@ unset_abi() {
 }
 
 _get_abi_string() {
-	if is_auto-multilib && [ -n "${ABI}" ]; then
+	[[ " ${FEATURES} " == *" force-multilib "* ]] && \
+		is_auto-multilib && [ -n "${ABI}" ] && \
 		echo " (for ABI=${ABI})"
-	fi
 }
 
 _setup_abi_env() {
