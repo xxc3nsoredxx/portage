@@ -93,7 +93,7 @@ class EbuildExecuter(CompositeTask):
 				phase=phase, scheduler=self.scheduler,
 				settings=self.settings))
 
-		if 'force-multilib' in self.settings:
+		if 'force-multilib' in self.settings["FEATURES"]:
 			self._start_task(ebuild_phases, self._install_exit)
 		else:
 			self._start_task(ebuild_phases, self._default_final_exit)
