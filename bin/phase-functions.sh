@@ -225,34 +225,42 @@ dyn_pretend() {
 }
 
 dyn_setup() {
-	if ! is_auto-multilib && ! use multilib_abi_"${DEFAULT_ABI}" ; then
-		ewarn
-		ewarn "You disabled all ABIs"
-		ewarn "You should enable at least one ABI"
-		ewarn "Enabling the default ABI now"
-		ewarn
+	if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+		if ! is_auto-multilib && ! use multilib_abi_"${DEFAULT_ABI}" ; then
+			ewarn
+			ewarn "You disabled all ABIs"
+			ewarn "You should enable at least one ABI"
+			ewarn "Enabling the default ABI now"
+			ewarn
+		fi
 	fi
 	for LOOP_ABI in $(get_abi_list); do
-		set_abi ${LOOP_ABI}
-		if is_ebuild; then
-			source "${T}"/environment || die
-		else
-			rm -f "${T}"/environment
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+			set_abi ${LOOP_ABI}
+			if is_ebuild; then
+				source "${T}"/environment || die
+			else
+				rm -f "${T}"/environment
+			fi
+			if [[ -e $PORTAGE_BUILDDIR/.setuped.${ABI} ]] ; then
+				vecho ">>> It appears that '$PF' is already setup; skipping."
+				vecho ">>> Remove '$PORTAGE_BUILDDIR/.setuped.${ABI}' to force setup."
+				return 0
+			fi
 		fi
-	if [[ -e $PORTAGE_BUILDDIR/.setuped.${ABI} ]] ; then
-		vecho ">>> It appears that '$PF' is already setup; skipping."
-		vecho ">>> Remove '$PORTAGE_BUILDDIR/.setuped.${ABI}' to force setup."
-		return 0
-	fi
 	ebuild_phase pre_pkg_setup
 	ebuild_phase pkg_setup
 	>> "$PORTAGE_BUILDDIR/.setuped.${ABI}" || \
 		die "Failed to create $PORTAGE_BUILDDIR/.setuped"
+
+		[[ " ${FEATURES} " == *" force-multilib "* ]] && is_ebuild && { unset_abi; source "${T}"/environment || die ; }
+	done
+
+	>> "$PORTAGE_BUILDDIR/.setuped" || \
+		die "Failed to create $PORTAGE_BUILDDIR/.setuped"
 	ebuild_phase post_pkg_setup
 
-		is_ebuild && { unset_abi; source "${T}"/environment || die ; }
-	done
-	is_ebuild && { rm "${T}"/environment || die ; }
+	[[ " ${FEATURES} " == *" force-multilib "* ]] && is_ebuild && { rm "${T}"/environment || die ; }
 }
 
 dyn_unpack() {
@@ -268,12 +276,14 @@ dyn_unpack() {
 	vecho ">>> Unpacking source$(_get_abi_string)..."
 	ebuild_phase src_unpack
 
-		if is_auto-multilib && is_ebuild; then
-			>> "$PORTAGE_BUILDDIR"/.unpacked."${LOOP_ABI}" || die "IO Failure -- Failed to 'touch .unpacked.${LOOP_ABI}'"
-		fi
-		is_ebuild && { unset_abi; source "${T}"/environment || die ; }
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+			if is_auto-multilib && is_ebuild; then
+				>> "$PORTAGE_BUILDDIR"/.unpacked."${LOOP_ABI}" || die "IO Failure -- Failed to 'touch .unpacked.${LOOP_ABI}'"
+			fi
+			is_ebuild && { unset_abi; source "${T}"/environment || die ; }
 
-	is_ebuild && { rm "${T}"/environment || die ; }
+			is_ebuild && { rm "${T}"/environment || die ; }
+		fi
 	>> "$PORTAGE_BUILDDIR/.unpacked" || \
 		die "Failed to create $PORTAGE_BUILDDIR/.unpacked"
 	vecho ">>> Source unpacked in ${WORKDIR}"
@@ -392,13 +402,15 @@ dyn_prepare() {
 	fi
 
 	for LOOP_ABI in $(get_abi_list); do
-		is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+			is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
 
-	if [ "${PORTAGE_BUILDDIR}"/.prepared.${LOOP_ABI} -nt "${WORKDIR}" ]; then
-		echo ">>> It appears that ${PN} is already prepared for ABI=${LOOP_ABI}; skipping."
-		echo ">>> Remove '$PORTAGE_BUILDDIR/.prepared.${LOOP_ABI}' to force prepare."
-		continue
-	fi
+			if [ "${PORTAGE_BUILDDIR}"/.prepared.${LOOP_ABI} -nt "${WORKDIR}" ]; then
+				echo ">>> It appears that ${PN} is already prepared for ABI=${LOOP_ABI}; skipping."
+				echo ">>> Remove '$PORTAGE_BUILDDIR/.prepared.${LOOP_ABI}' to force prepare."
+				continue
+			fi
+		fi
 	if [[ -d $S ]] ; then
 		cd "${S}"
 	elif has $EAPI 0 1 2 3 3_pre2 ; then
@@ -415,12 +427,14 @@ dyn_prepare() {
 	vecho ">>> Preparing source in $PWD$(_get_abi_string) ..."
 	ebuild_phase src_prepare
 
-		if is_auto-multilib && is_ebuild; then
-			>> "$PORTAGE_BUILDDIR"/.prepared."${LOOP_ABI}" || die "IO Failure -- Failed to 'touch .prepared.${LOOP_ABI}'"
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+			if is_auto-multilib && is_ebuild; then
+				>> "$PORTAGE_BUILDDIR"/.prepared."${LOOP_ABI}" || die "IO Failure -- Failed to 'touch .prepared.${LOOP_ABI}'"
+			fi
+			is_ebuild && { unset_abi; source "${T}"/environment || die ; }
 		fi
-		is_ebuild && { unset_abi; source "${T}"/environment || die ; }
 	done
-	is_ebuild && { rm "${T}"/environment || die ; }
+	[[ " ${FEATURES} " == *" force-multilib "* ]] && is_ebuild && { rm "${T}"/environment || die ; }
 
 	>> "$PORTAGE_BUILDDIR/.prepared" || \
 		die "Failed to create $PORTAGE_BUILDDIR/.prepared"
@@ -439,13 +453,15 @@ dyn_configure() {
 	fi
 
 	for LOOP_ABI in $(get_abi_list); do
-		is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+			is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
 
-	if [ ${PORTAGE_BUILDDIR}/.configured.${LOOP_ABI} -nt "${WORKDIR}" ]; then
-		echo ">>> It appears that ${PN} is already configured for ABI=${LOOP_ABI}; skipping."
-		echo ">>> Remove '$PORTAGE_BUILDDIR/.configured.${LOOP_ABI}' to force configuration."
-		continue
-	fi
+			if [ ${PORTAGE_BUILDDIR}/.configured.${LOOP_ABI} -nt "${WORKDIR}" ]; then
+				echo ">>> It appears that ${PN} is already configured for ABI=${LOOP_ABI}; skipping."
+				echo ">>> Remove '$PORTAGE_BUILDDIR/.configured.${LOOP_ABI}' to force configuration."
+				continue
+			fi
+		fi
 	if [[ -d $S ]] ; then
 		cd "${S}"
 	elif has $EAPI 0 1 2 3 3_pre2 ; then
@@ -463,12 +479,14 @@ dyn_configure() {
 	vecho ">>> Configuring source in $PWD$(_get_abi_string) ..."
 	ebuild_phase src_configure
 
-		if is_auto-multilib && is_ebuild; then
-			>> "$PORTAGE_BUILDDIR"/.configured."${LOOP_ABI}" || die "IO Failure -- Failed to 'touch .configured.${LOOP_ABI}'"
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+			if is_auto-multilib && is_ebuild; then
+				>> "$PORTAGE_BUILDDIR"/.configured."${LOOP_ABI}" || die "IO Failure -- Failed to 'touch .configured.${LOOP_ABI}'"
+			fi
+			is_ebuild && { unset_abi; source "${T}"/environment || die ; }
 		fi
-		is_ebuild && { unset_abi; source "${T}"/environment || die ; }
 	done
-	is_ebuild && { rm "${T}"/environment || die ; }
+	[[ " ${FEATURES} " == *" force-multilib "* ]] && is_ebuild && { rm "${T}"/environment || die ; }
 	>> "$PORTAGE_BUILDDIR/.configured" || \
 		die "Failed to create $PORTAGE_BUILDDIR/.configured"
 	vecho ">>> Source configured."
@@ -487,12 +505,14 @@ dyn_compile() {
 	fi
 
 	for LOOP_ABI in $(get_abi_list); do
-		is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+			is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
 
-		if [ ${PORTAGE_BUILDDIR}/.compiled.${LOOP_ABI} -nt "${WORKDIR}" ]; then
-			echo ">>> It appears that ${PN} is already compiled for ABI=${LOOP_ABI}; skipping."
-			echo ">>> Remove '$PORTAGE_BUILDDIR/.compiled.${LOOP_ABI}' to force compilation."
-			continue
+			if [ ${PORTAGE_BUILDDIR}/.compiled.${LOOP_ABI} -nt "${WORKDIR}" ]; then
+				echo ">>> It appears that ${PN} is already compiled for ABI=${LOOP_ABI}; skipping."
+				echo ">>> Remove '$PORTAGE_BUILDDIR/.compiled.${LOOP_ABI}' to force compilation."
+				continue
+			fi
 		fi
 	if [[ -d $S ]] ; then
 		cd "${S}"
@@ -518,12 +538,14 @@ dyn_compile() {
 	vecho ">>> Compiling source in $PWD$(_get_abi_string) ..."
 	ebuild_phase src_compile
 
-		if is_auto-multilib && is_ebuild; then
-			>> "$PORTAGE_BUILDDIR"/.compiled."${LOOP_ABI}" || die "IO Failure -- Failed to 'touch .compiled.${LOOP_ABI}'"
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+			if is_auto-multilib && is_ebuild; then
+				>> "$PORTAGE_BUILDDIR"/.compiled."${LOOP_ABI}" || die "IO Failure -- Failed to 'touch .compiled.${LOOP_ABI}'"
+			fi
+			is_ebuild && { unset_abi; source "${T}"/environment || die ; }
 		fi
-		is_ebuild && { unset_abi; source "${T}"/environment || die ; }
 	done
-	is_ebuild && { rm "${T}"/environment || die ; }
+	[[ " ${FEATURES} " == *" force-multilib "* ]] && is_ebuild && { rm "${T}"/environment || die ; }
 	>> "$PORTAGE_BUILDDIR/.compiled" || \
 		die "Failed to create $PORTAGE_BUILDDIR/.compiled"
 	vecho ">>> Source compiled."
@@ -534,7 +556,6 @@ dyn_compile() {
 }
 
 dyn_test() {
-
 	if [[ -e $PORTAGE_BUILDDIR/.tested ]] ; then
 		vecho ">>> It appears that ${PN} has already been tested; skipping."
 		vecho ">>> Remove '${PORTAGE_BUILDDIR}/.tested' to force test."
@@ -549,7 +570,7 @@ dyn_test() {
 
 	trap "abort_test" SIGINT SIGQUIT
 	for LOOP_ABI in $(get_abi_list); do
-		is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
+		[[ " ${FEATURES} " == *" force-multilib "* ]] && is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
 
 	if [ -d "${S}" ]; then
 		cd "${S}"
@@ -563,10 +584,12 @@ dyn_test() {
 		einfo "Skipping make test/check due to ebuild restriction."
 		vecho ">>> Test phase [explicitly disabled]: ${CATEGORY}/${PF}"
 	else
-		if [ ${PORTAGE_BUILDDIR}/.tested.${LOOP_ABI} -nt "${WORKDIR}" ]; then
-			echo ">>> It appears that ${PN} is already tested for ABI=${LOOP_ABI}; skipping."
-			echo ">>> Remove '$PORTAGE_BUILDDIR/.tested.${LOOP_ABI}' to force testing."
-			continue
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+			if [ ${PORTAGE_BUILDDIR}/.tested.${LOOP_ABI} -nt "${WORKDIR}" ]; then
+				echo ">>> It appears that ${PN} is already tested for ABI=${LOOP_ABI}; skipping."
+				echo ">>> Remove '$PORTAGE_BUILDDIR/.tested.${LOOP_ABI}' to force testing."
+				continue
+			fi
 		fi
 
 		local save_sp=${SANDBOX_PREDICT}
@@ -574,18 +597,20 @@ dyn_test() {
 		ebuild_phase pre_src_test
 		ebuild_phase src_test
 
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
 			if is_auto-multilib && is_ebuild; then
 				>> "$PORTAGE_BUILDDIR"/.tested."${LOOP_ABI}" || die "IO Failure -- Failed to 'touch .tested.${LOOP_ABI}'"
 			fi
+		fi
 		>> "$PORTAGE_BUILDDIR/.tested" || \
 			die "Failed to create $PORTAGE_BUILDDIR/.tested"
 		ebuild_phase post_src_test
 		SANDBOX_PREDICT=${save_sp}
 	fi
 
-		is_ebuild && { unset_abi; source "${T}"/environment || die ; }
+			[[ " ${FEATURES} " == *" force-multilib "* ]] && is_ebuild && { unset_abi; source "${T}"/environment || die ; }
 	done
-	is_ebuild && { rm "${T}"/environment || die ; }
+	[[ " ${FEATURES} " == *" force-multilib "* ]] && is_ebuild && { rm "${T}"/environment || die ; }
 
 	trap - SIGINT SIGQUIT
 }
@@ -606,11 +631,11 @@ dyn_install() {
 	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
 		case "$EAPI" in 0|1|2) _x=${D} ;; esac
 	rm -rf "${D}"
-	is_auto-multilib && rm -rf "${D}".${ABI}
+	[[ " ${FEATURES} " == *" force-multilib "* ]] && is_auto-multilib && rm -rf "${D}".${ABI}
 	mkdir -p "${_x}"
 	unset _x
-	for LOOP_ABI in $(get_abi_list); do                                                                                                                                                                                                                                                                                
-		is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
+	for LOOP_ABI in $(get_abi_list); do
+		[[ " ${FEATURES} " == *" force-multilib "* ]] && is_ebuild && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
 
 	if [[ -d $S ]] ; then
 		cd "${S}"
@@ -638,7 +663,7 @@ dyn_install() {
 
 	ebuild_phase src_install
 
-		if is_auto-multilib ; then
+		if ( [[ " ${FEATURES} " == *" force-multilib "* ]] && is_auto-multilib ) ; then
 			_finalize_abi_install
 			cp "${T}"/environment "${PORTAGE_BUILDDIR}"/build-info/environment.${LOOP_ABI} || die
 			if is_ebuild; then
@@ -648,14 +673,16 @@ dyn_install() {
 		fi
 	done
 	if [[ -d "${D}" ]]; then
-		if [[ ${CATEGORY}/${PN} == sys-devel/libtool ]] ; then
-			ewarn "Preserving libltdl.la because of extensive usage"
-			ewarn "even in m4 macros of libtool"
-		elif [[ ${CATEGORY}/${PN} == media-libs/gst-plugins-* ]] ; then
-			ewarn "Preserving .la files for gst plugins"
-			ewarn "because of broken Gentoo package"
-		else
-			find "${D}" -name '*.la' ! -exec grep -q shouldnotlink=yes {} \; -exec rm {} \;
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+			if [[ ${CATEGORY}/${PN} == sys-devel/libtool ]] ; then
+				ewarn "Preserving libltdl.la because of extensive usage"
+				ewarn "even in m4 macros of libtool"
+			elif [[ ${CATEGORY}/${PN} == media-libs/gst-plugins-* ]] ; then
+				ewarn "Preserving .la files for gst plugins"
+				ewarn "because of broken Gentoo package"
+			else
+				find "${D}" -name '*.la' ! -exec grep -q shouldnotlink=yes {} \; -exec rm {} \;
+			fi
 		fi
 
 	>> "$PORTAGE_BUILDDIR/.installed" || \
@@ -681,18 +708,20 @@ dyn_install() {
 			[[ -n $x ]] && echo "$x" > $f
 		done
 	fi
-	if has_multilib_profile ; then
-		local i= x=
-		for i in ${MULTILIB_ABIS} ; do
-			x+=" multilib_abi_${i}"
-		done
-		echo "${IUSE}${x}"      > IUSE
+	if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+		if has_multilib_profile ; then
+			local i= x=
+			for i in ${MULTILIB_ABIS} ; do
+				x+=" multilib_abi_${i}"
+			done
+			echo "${IUSE}${x}"      > IUSE
+		fi
+		if is_auto-multilib; then
+			echo "$(get_abi_order)" > MULTILIB_ABIS
+		fi
 	fi
 	echo "${USE}"       > USE
 	echo "${EAPI:-0}"   > EAPI
-	if is_auto-multilib; then
-		echo "$(get_abi_order)" > MULTILIB_ABIS
-	fi
 
 	# Save EPREFIX, since it makes it easy to use chpathtool to
 	# adjust the content of a binary package so that it will
@@ -726,21 +755,21 @@ dyn_install() {
 	fi
 
 	else
-		cd "${PORTAGE_BUILDDIR}"
-		if [[ $EMERGE_FROM = binary ]] || ! has keepwork $FEATURES; then
-			rm -f "$PORTAGE_BUILDDIR"/.{ebuild_changed,exit_status,logid,unpacked,prepared} \
-				"$PORTAGE_BUILDDIR"/.{configured,compiled,tested,packaged} \
-				"$PORTAGE_BUILDDIR"/.die_hooks
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+			cd "${PORTAGE_BUILDDIR}"
+			if [[ $EMERGE_FROM = binary ]] || ! has keepwork $FEATURES; then
+				rm -f "$PORTAGE_BUILDDIR"/.{ebuild_changed,exit_status,logid,unpacked,prepared} \
+					"$PORTAGE_BUILDDIR"/.{configured,compiled,tested,packaged} \
+					"$PORTAGE_BUILDDIR"/.die_hooks
 
-#                       rm -rf "${PORTAGE_BUILDDIR}/build-info"
-			rm -rf "${WORKDIR}"
-		fi
+				rm -rf "${WORKDIR}"
+			fi
 
-		if [ -f "${PORTAGE_BUILDDIR}/.unpacked" ]; then
-			find "${PORTAGE_BUILDDIR}" -type d ! -regex "^${WORKDIR}" | sort -r | tr "\n" "\0" | $XARGS -0 rmdir &>/dev/null
+			if [ -f "${PORTAGE_BUILDDIR}/.unpacked" ]; then
+				find "${PORTAGE_BUILDDIR}" -type d ! -regex "^${WORKDIR}" | sort -r | tr "\n" "\0" | $XARGS -0 rmdir &>/dev/null
+			fi
 		fi
 	fi
-
 	trap - SIGINT SIGQUIT
 }
 
@@ -750,11 +779,9 @@ dyn_preinst() {
 		return 1
 	fi
 	for LOOP_ABI in $(get_abi_order); do
-		set_abi ${LOOP_ABI}; source "${T}"/environment || die
-
-	ebuild_phase_with_hooks pkg_preinst
-
-		unset_abi; source "${T}"/environment || die
+		[[ " ${FEATURES} " == *" force-multilib "* ]] && { set_abi ${LOOP_ABI}; source "${T}"/environment || die ; }
+		ebuild_phase_with_hooks pkg_preinst
+		[[ " ${FEATURES} " == *" force-multilib "* ]] && { unset_abi; source "${T}"/environment || die ; }
 	done
 }
 
@@ -1035,24 +1062,62 @@ ebuild_main() {
 		fi
 		;;
 	prerm|postrm|postinst)
-		for LOOP_ABI in $(get_abi_order); do
-			if is_auto-multilib ; then
-				case ${1} in
-					postinst)
-						set_abi ${LOOP_ABI}
-						;;
-					prerm|postrm)
-						# if = backward compactibility for previous versions, which did not
-						# install a per-ABI environment
-						if [[ -f "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 ]] ; then
-							bzcat "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 > "${T}"/environment || die
-							preprocess_ebuild_env --filter-metadata
-						fi
-						;;
-				esac
-				# >/dev/null = backward compactibility for prerm/postrm
-				source "${T}"/environment 2>/dev/null || die
-			fi
+		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+			for LOOP_ABI in $(get_abi_order); do
+				if is_auto-multilib ; then
+					case ${1} in
+						postinst)
+							set_abi ${LOOP_ABI}
+							;;
+						prerm|postrm)
+							# if = backward compactibility for previous versions, which did not
+							# install a per-ABI environment
+							if [[ -f "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 ]] ; then
+								bzcat "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 > "${T}"/environment || die
+								preprocess_ebuild_env --filter-metadata
+							fi
+							;;
+					esac
+					# >/dev/null = backward compactibility for prerm/postrm
+					source "${T}"/environment 2>/dev/null || die
+				fi
+				export SANDBOX_ON="0"
+				if [ "${PORTAGE_DEBUG}" != "1" ] || [ "${-/x/}" != "$-" ]; then
+					ebuild_phase_with_hooks pkg_${1}
+				else
+					set -x
+					ebuild_phase_with_hooks pkg_${1}
+					set +x
+				fi
+
+				if [[ $EBUILD_PHASE == postinst ]] && [[ -n $PORTAGE_UPDATE_ENV ]]; then
+					# Update environment.bz2 in case installation phases
+					# need to pass some variables to uninstallation phases.
+					save_ebuild_env --exclude-init-phases | \
+						filter_readonly_variables --filter-path \
+						--filter-sandbox --allow-extra-vars \
+						| ${PORTAGE_BZIP2_COMMAND} -c -f9 > "$PORTAGE_UPDATE_ENV"
+					assert "save_ebuild_env failed"
+				fi
+				if is_auto-multilib ; then
+					case ${1} in
+						postinst)
+							unset_abi
+							;;
+						prerm|postrm)
+							#if = backward compactibility for previous versions, which did not
+							#install a per-ABI environment
+							if [[ -f "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 ]] ; then
+								preprocess_ebuild_env --filter-metadata
+								bzcat "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 > "${T}"/environment || die
+							fi
+							;;
+					esac
+					# >/dev/null = backward compactibility for prerm/postrm
+					source "${T}"/environment 2>/dev/null || die
+				fi
+			done
+		else
 			export SANDBOX_ON="0"
 			if [ "${PORTAGE_DEBUG}" != "1" ] || [ "${-/x/}" != "$-" ]; then
 				ebuild_phase_with_hooks pkg_${1}
@@ -1061,34 +1126,16 @@ ebuild_main() {
 				ebuild_phase_with_hooks pkg_${1}
 				set +x
 			fi
-
-			if [[ $EBUILD_PHASE == postinst ]] && [[ -n $PORTAGE_UPDATE_ENV ]]; then
-				# Update environment.bz2 in case installation phases
-				# need to pass some variables to uninstallation phases.
-				save_ebuild_env --exclude-init-phases | \
-					filter_readonly_variables --filter-path \
-					--filter-sandbox --allow-extra-vars \
-					| ${PORTAGE_BZIP2_COMMAND} -c -f9 > "$PORTAGE_UPDATE_ENV"
-				assert "save_ebuild_env failed"
-			fi
-			if is_auto-multilib ; then
-				case ${1} in
-					postinst)
-						unset_abi
-						;;
-					prerm|postrm)
-						#if = backward compactibility for previous versions, which did not
-						#install a per-ABI environment
-						if [[ -f "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 ]] ; then
-							preprocess_ebuild_env --filter-metadata
-							bzcat "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 > "${T}"/environment || die
-						fi
-						;;
-				esac
-				# >/dev/null = backward compactibility for prerm/postrm
-				source "${T}"/environment 2>/dev/null || die
-			fi
-		done
+		fi
+               if [[ $EBUILD_PHASE == postinst ]] && [[ -n $PORTAGE_UPDATE_ENV ]]; then
+                       # Update environment.bz2 in case installation phases
+                       # need to pass some variables to uninstallation phases.
+                       save_ebuild_env --exclude-init-phases | \
+                               filter_readonly_variables --filter-path \
+                               --filter-sandbox --allow-extra-vars \
+                               | ${PORTAGE_BZIP2_COMMAND} -c -f9 > "$PORTAGE_UPDATE_ENV"
+                       assert "save_ebuild_env failed"
+               fi
 		;;
 	unpack|prepare|configure|compile|test|clean|install)
 		if [[ ${SANDBOX_DISABLED:-0} = 0 ]] ; then
