@@ -1653,10 +1653,13 @@ def emerge_main(args=None):
 	adjust_configs(myopts, trees)
 	apply_priorities(settings)
 
-	if settings.get("NO_AUTO_FLAG", "") is "":
-		writemsg_level(bad("!!! Failed to find vars from extra profile") + "\n",level=logging.ERROR, noiselevel=-1)
-		writemsg_level(bad("!!! Please make sure that you did follow the instructions and included the extra profile\n"),level=logging.ERROR, noiselevel=-1)
-		return 1
+	if 'force-multilib' in settings.get("FEATURES", ""):
+		if settings.get("NO_AUTO_FLAG", "") is "":
+			writemsg_level(bad("!!! Failed to find vars from extra profile") + "\n",level=logging.ERROR, noiselevel=-1)
+			writemsg_level(bad("!!! Please make sure that you did follow the instructions and included the extra profile\n"),level=logging.ERROR, noiselevel=-1)
+			writemsg_level(bad("!!! http://git.overlays.gentoo.org/gitweb/?p=proj/multilib-portage.git;a=blob;f=doc/portage-multilib-instructions\n"),level=logging.ERROR, noiselevel=-1)
+			writemsg_level(bad("!!! has some basic instructions for the setup\n"),level=logging.ERROR, noiselevel=-1)
+			return 1
 
 	if myaction == 'version':
 		writemsg_stdout(getportageversion(
