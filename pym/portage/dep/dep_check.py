@@ -69,20 +69,21 @@ def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 		if repoman:
 			x = x._eval_qa_conditionals(use_mask, use_force)
 
-		if not repoman :
-			for multilib_abis in mysettings.get("MULTILIB_ABIS", '').split(' '):
-				if multilib_abis not in ("multilib_abi_" + x) and portage.dep_getkey(x) not in mysettings.get("NO_AUTO_FLAG", None):
-					if ']' in x:
-						x = str(x).replace(']',',multilib_abi_' + multilib_abis + '?]')
-					else:
-						x = str(x) + '[multilib_abi_' + multilib_abis + '?]'
-					try:
-						x = portage.dep.Atom(x)
-						x = x.evaluate_conditionals(myuse)
-					except portage.exception.InvalidAtom:
-						if portage.dep._dep_check_strict:
-							raise portage.exception.ParseError(
-								"invalid atom: '%s'" % x)
+		if 'force-multilib' in mysettings.get("FEATURES", ''):
+			if not repoman :
+				for multilib_abis in mysettings.get("MULTILIB_ABIS", '').split(' '):
+					if multilib_abis not in ("multilib_abi_" + x) and portage.dep_getkey(x) not in mysettings.get("NO_AUTO_FLAG", None):
+						if ']' in x:
+							x = str(x).replace(']',',multilib_abi_' + multilib_abis + '?]')
+						else:
+							x = str(x) + '[multilib_abi_' + multilib_abis + '?]'
+						try:
+							x = portage.dep.Atom(x)
+							x = x.evaluate_conditionals(myuse)
+						except portage.exception.InvalidAtom:
+							if portage.dep._dep_check_strict:
+								raise portage.exception.ParseError(
+									"invalid atom: '%s'" % x)
 
 		mykey = x.cp
 		if not mykey.startswith("virtual/"):
