@@ -196,11 +196,10 @@ use() {
 
 	# Make sure we have this USE flag in IUSE
 	elif [[ -n $PORTAGE_IUSE && -n $EBUILD_PHASE ]] ; then
-		if [[ $u != multilib ]]; then
-		[[ $u =~ $PORTAGE_IUSE ]] || \
+		( [[ " ${FEATURES} " == *" force-multilib "* ]] && [[ $u == multilib ]] ) || \
+			[[ $u =~ $PORTAGE_IUSE ]] || \
 			eqawarn "QA Notice: USE Flag '${u}' not" \
 				"in IUSE for ${CATEGORY}/${PF}"
-		fi
 	fi
 
 	if has ${u} ${USE} ; then
