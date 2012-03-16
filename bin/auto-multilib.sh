@@ -297,7 +297,7 @@ _finalize_abi_install() {
 	for i in ${MULTILIB_ABIS}; do
 		noabi+=( ! -name '*-'${i} )
 	done
-	if [[ ${MULTILIB_BINARIES} == *${CATEGORY}/${PN}* ]]; then
+	if ! [[ ${RESTRICT_MULTILIB_BINARIES} == *${CATEGORY}/${PN}* ]]; then
 		for i in $(find "${D}"usr/bin/ "${D}"usr/sbin "${D}"bin "${D}"sbin -type f ${noabi[@]}); do
 			prep_ml_binaries "${i}"
 		done
