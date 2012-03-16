@@ -304,8 +304,10 @@ _finalize_abi_install() {
 	fi
 	local LIBDIR=$(get_abi_var LIBDIR $1)
 	if ( [[ -d "${D}${LIBDIR}" ]] || [[ -d "${D}usr/${LIBDIR}" ]] || [[ -d "${base}" ]] || \
-		(shopt -s nullglob dotglob; f=("${D}"usr/bin/*-config); ((${#f[@]}))) || \
-		( [[ ${MULTILIB_BINARIES} == *${CATEGORY}/${PN}* ]] && [[ -d "${D}"usr/bin ]] ) ); then
+			(shopt -s nullglob dotglob; f=("${D}"usr/bin/*-config); ((${#f[@]}))) || \
+		( ! [[ ${MULTILIB_BINARIES} == *${CATEGORY}/${PN}* ]] && \
+			( [[ -d "${D}"usr/bin ]] || \
+				[[ -d "${D}"usr/sbin ]] || [[ -d "${D}"bin ]] || [[ -d "${D}"sbin ]])) ); then
 
 		mv "${D}" "${D%/}".${ABI} || die
 		for my_abi in ${ALL_ABIS}; do
