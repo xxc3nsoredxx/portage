@@ -229,28 +229,30 @@ _get_abi_string() {
 }
 
 _setup_abi_env() {
-	# Set the CHOST native first so that we pick up the native
-	# toolchain and not a cross-compiler by accident #202811.
-	export CHOST=$(get_abi_var CHOST ${DEFAULT_ABI})
-	export AS="$(tc-getPROG AS as)"
-	export CC="$(tc-getPROG CC gcc)"
-	export CXX="$(tc-getPROG CXX g++)"
-	export FC="$(tc-getPROG FC gfortran)"
-	export CHOST=$(get_abi_var CHOST $1)
-	export CBUILD=$(get_abi_var CHOST $1)
-	export CDEFINE="$(get_abi_var CDEFINE $1)"
-	export CCASFLAGS="${CCASFLAGS:-${CFLAGS}} $(get_abi_var CFLAGS)"
-	export CFLAGS="${CFLAGS} $(get_abi_var CFLAGS)"
-	export CPPFLAGS="${CPPFLAGS} $(get_abi_var CPPFLAGS)"
-	export CXXFLAGS="${CXXFLAGS} $(get_abi_var CFLAGS)"
-	export FCFLAGS="${FCFLAGS} $(get_abi_var CFLAGS)"
-	export FFLAGS="${FFLAGS} $(get_abi_var CFLAGS)"
-	export ASFLAGS="${ASFLAGS} $(get_abi_var ASFLAGS)"
-	export LDFLAGS="${LDFLAGS} $(get_abi_var CFLAGS)"
-	local LIBDIR=$(get_abi_var LIBDIR $1)
-	export PKG_CONFIG_PATH="/usr/${LIBDIR}/pkgconfig"
-	if [[ "${ABI}" != "${DEFAULT_ABI}" ]]; then
-		[[ -z ${CCACHE_DIR} ]] || export CCACHE_DIR=${CCACHE_DIR}/${ABI}
+	if is_auto-multilib ; then
+		# Set the CHOST native first so that we pick up the native
+		# toolchain and not a cross-compiler by accident #202811.
+		export CHOST=$(get_abi_var CHOST ${DEFAULT_ABI})
+		export AS="$(tc-getPROG AS as)"
+		export CC="$(tc-getPROG CC gcc)"
+		export CXX="$(tc-getPROG CXX g++)"
+		export FC="$(tc-getPROG FC gfortran)"
+		export CHOST=$(get_abi_var CHOST $1)
+		export CBUILD=$(get_abi_var CHOST $1)
+		export CDEFINE="$(get_abi_var CDEFINE $1)"
+		export CCASFLAGS="${CCASFLAGS:-${CFLAGS}} $(get_abi_var CFLAGS)"
+		export CFLAGS="${CFLAGS} $(get_abi_var CFLAGS)"
+		export CPPFLAGS="${CPPFLAGS} $(get_abi_var CPPFLAGS)"
+		export CXXFLAGS="${CXXFLAGS} $(get_abi_var CFLAGS)"
+		export FCFLAGS="${FCFLAGS} $(get_abi_var CFLAGS)"
+		export FFLAGS="${FFLAGS} $(get_abi_var CFLAGS)"
+		export ASFLAGS="${ASFLAGS} $(get_abi_var ASFLAGS)"
+		export LDFLAGS="${LDFLAGS} $(get_abi_var CFLAGS)"
+		local LIBDIR=$(get_abi_var LIBDIR $1)
+		export PKG_CONFIG_PATH="/usr/${LIBDIR}/pkgconfig"
+		if [[ "${ABI}" != "${DEFAULT_ABI}" ]]; then
+			[[ -z ${CCACHE_DIR} ]] || export CCACHE_DIR=${CCACHE_DIR}/${ABI}
+		fi
 	fi
 }
 
