@@ -50,7 +50,7 @@ from portage.exception import DigestException, FileNotFound, \
 	IncorrectParameter, InvalidDependString, PermissionDenied, \
 	UnsupportedAPIException
 from portage.localization import _
-from portage.output import style_to_ansi_code
+from portage.output import colormap
 from portage.package.ebuild.prepare_build_dirs import prepare_build_dirs
 from portage.util import apply_recursive_permissions, \
 	apply_secpass_permissions, noiselimit, normalize_path, \
@@ -300,11 +300,7 @@ def doebuild_environment(myebuild, mydo, myroot=None, settings=None,
 		mysettings["PORTAGE_CONFIGROOT"], EBUILD_SH_ENV_DIR)
 
 	# Allow color.map to control colors associated with einfo, ewarn, etc...
-	mycolors = []
-	for c in ("GOOD", "WARN", "BAD", "HILITE", "BRACKET"):
-		mycolors.append("%s=$'%s'" % \
-			(c, style_to_ansi_code(c)))
-	mysettings["PORTAGE_COLORMAP"] = "\n".join(mycolors)
+	mysettings["PORTAGE_COLORMAP"] = colormap()
 
 	if "COLUMNS" not in mysettings:
 		# Set COLUMNS, in order to prevent unnecessary stty calls
@@ -1693,6 +1689,7 @@ def _post_src_install_uid_fix(mysettings, out):
 	_preinst_bsdflags(mysettings)
 
 	destdir = mysettings["D"]
+	ed_len = len(mysettings["ED"])
 	unicode_errors = []
 
 	while True:
@@ -1716,7 +1713,7 @@ def _post_src_install_uid_fix(mysettings, out):
 					encoding=_encodings['merge'], errors='replace')
 				os.rename(parent, new_parent)
 				unicode_error = True
-				unicode_errors.append(new_parent[len(destdir):])
+				unicode_errors.append(new_parent[ed_len:])
 				break
 
 			for fname in chain(dirs, files):
@@ -1735,7 +1732,7 @@ def _post_src_install_uid_fix(mysettings, out):
 					new_fpath = os.path.join(parent, new_fname)
 					os.rename(fpath, new_fpath)
 					unicode_error = True
-					unicode_errors.append(new_fpath[len(destdir):])
+					unicode_errors.append(new_fpath[ed_len:])
 					fname = new_fname
 					fpath = new_fpath
 				else:
@@ -1809,7 +1806,7 @@ def _post_src_install_uid_fix(mysettings, out):
 
 	if unicode_errors:
 		for l in _merge_unicode_error(unicode_errors):
-			eerror(l, phase='install', key=mysettings.mycpv, out=out)
+			eqawarn(l, phase='install', key=mysettings.mycpv, out=out)
 
 	build_info_dir = os.path.join(mysettings['PORTAGE_BUILDDIR'],
 		'build-info')
@@ -2010,26 +2007,14 @@ def _post_src_install_soname_symlinks(mysettings, out):
 def _merge_unicode_error(errors):
 	lines = []
 
-	msg = _("This package installs one or more file names containing "
-		"characters that do not match your current locale "
-		"settings. The current setting for filesystem encoding is '%s'.") \
-		% _encodings['merge']
+	msg = _("QA Notice: This package installs one or more file names "
+		"containing characters that are not encoded with the UTF-8 encoding.")
 	lines.extend(wrap(msg, 72))
 
 	lines.append("")
 	errors.sort()
 	lines.extend("\t" + x for x in errors)
 	lines.append("")
-
-	if _encodings['merge'].lower().replace('_', '').replace('-', '') != 'utf8':
-		msg = _("For best results, UTF-8 encoding is recommended. See "
-			"the Gentoo Linux Localization Guide for instructions "
-			"about how to configure your locale for UTF-8 encoding:")
-		lines.extend(wrap(msg, 72))
-		lines.append("")
-		lines.append("\t" + \
-			"http://www.gentoo.org/doc/en/guide-localization.xml")
-		lines.append("")
 
 	return lines
 
