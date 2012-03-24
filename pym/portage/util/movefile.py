@@ -1,4 +1,4 @@
-# Copyright 2010-2011 Gentoo Foundation
+# Copyright 2010-2012 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 __all__ = ['movefile']
@@ -8,6 +8,7 @@ import os as _os
 import shutil as _shutil
 import stat
 import subprocess
+import textwrap
 
 import portage
 from portage import bsd_chflags, _encodings, _os_overrides, _selinux, \
@@ -85,15 +86,20 @@ def movefile(src, dest, newmtime=None, sstat=None, mysettings=None,
 		mysettings = portage.settings
 
 	src_bytes = _unicode_encode(src, encoding=encoding, errors='strict')
+	dest_bytes = _unicode_encode(dest, encoding=encoding, errors='strict')
 	xattr_enabled = "xattr" in mysettings.features
 	selinux_enabled = mysettings.selinux_enabled()
 	if selinux_enabled:
 		selinux = _unicode_module_wrapper(_selinux, encoding=encoding)
+		_copyfile = selinux.copyfile
+		_rename = selinux.rename
+	else:
+		_copyfile = _shutil.copyfile
+		_rename = _os.rename
 
 	lchown = _unicode_func_wrapper(portage.data.lchown, encoding=encoding)
 	os = _unicode_module_wrapper(_os,
 		encoding=encoding, overrides=_os_overrides)
-	shutil = _unicode_module_wrapper(_shutil, encoding=encoding)
 
 	try:
 		if not sstat:
@@ -222,19 +228,23 @@ def movefile(src, dest, newmtime=None, sstat=None, mysettings=None,
 			dest_tmp_bytes = _unicode_encode(dest_tmp, encoding=encoding,
 				errors='strict')
 			try: # For safety copy then move it over.
-				if selinux_enabled:
-					selinux.copyfile(src, dest_tmp)
-					if xattr_enabled:
+				_copyfile(src_bytes, dest_tmp_bytes)
+				if xattr_enabled:
+					try:
 						_copyxattr(src_bytes, dest_tmp_bytes)
-					_apply_stat(sstat, dest_tmp_bytes)
-					selinux.rename(dest_tmp, dest)
-				else:
-					shutil.copyfile(src, dest_tmp)
-					if xattr_enabled:
-						_copyxattr(src_bytes, dest_tmp_bytes)
-					_apply_stat(sstat, dest_tmp_bytes)
-					os.rename(dest_tmp, dest)
-				os.unlink(src)
+					except SystemExit:
+						raise
+					except:
+						msg = _("Failed to copy extended attributes. "
+							"In order to avoid this error, set "
+							"FEATURES=\"-xattr\" in make.conf.")
+						msg = textwrap.wrap(msg, 65)
+						for line in msg:
+							writemsg("!!! %s\n" % (line,), noiselevel=-1)
+						raise
+				_apply_stat(sstat, dest_tmp_bytes)
+				_rename(dest_tmp_bytes, dest_bytes)
+				_os.unlink(src_bytes)
 			except SystemExit as e:
 				raise
 			except Exception as e:
