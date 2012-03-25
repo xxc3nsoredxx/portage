@@ -71,7 +71,7 @@ prep_ml_binaries() {
 	for binary in "$@"; do
 		mv ${binary} ${binary}-${ABI} || die
 		_debug ${binary} ${binary}-${ABI}
-		if [[ ${ABI} == ${DEFAULT_ABI} ]]; then
+		if [[ ${ABI} == ${first_installed_abi} ]]; then
 			ln -s /bin/abi-wrapper ${binary} || die
 			_debug /bin/abi-wrapper ${binary}
 		fi
@@ -269,6 +269,8 @@ _finalize_abi_install() {
 	local ALTERNATE_ABIS=${ALL_ABIS#* }
 	local dirs=${ABI_HEADER_DIRS-/usr/include}
 	local base=
+	local first_installed_abi=
+	local i
 
 	# Save header files for each ABI
 	for dir in ${dirs}; do
@@ -281,11 +283,14 @@ _finalize_abi_install() {
 	done
 
 	# Symlinks are not overwritten without the "-f" option, so
-	# remove them in non-default ABI
-	if [ "${ABI}" != "${DEFAULT_ABI}" ]; then
+	# remove them in second and following enabled ABIs
+	for i in ${ALL_ABIS} ; do
+		use multilib_abi_${i} && first_installed_abi=${i} && break
+	done
+	if [ "${ABI}" != "${first_installed_abi}" ]; then
 		vecho ">>> Removing installed symlinks $(_get_abi_string)"
 		for i in $(find ${D} -type l) ; do
-			[[ -e "${D%/}".${DEFAULT_ABI}/${i/${D}} ]] && rm -f ${i}
+			[[ -e "${D%/}".${first_installed_abi}/${i/${D}} ]] && rm -f ${i}
 		done
 	fi
 
