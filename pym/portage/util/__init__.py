@@ -346,12 +346,11 @@ def grabdict(myfilename, juststrings=0, empty=0, recursive=0, incremental=1):
 	@param incremental: Append to the return list, don't overwrite
 	@type incremental: Boolean (integer)
 	@rtype: Dictionary
-	@returns:
+	@return:
 	1.  Returns the lines in a file in a dictionary, for example:
 		'sys-apps/portage x86 amd64 ppc'
 		would return
 		{ "sys-apps/portage" : [ 'x86', 'amd64', 'ppc' ]
-		the line syntax is key : [list of values]
 	"""
 	newdict={}
 	for x in grablines(myfilename, recursive):

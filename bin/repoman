@@ -1026,7 +1026,7 @@ def fetch_metadata_dtd():
 	Fetch metadata.dtd if it doesn't exist or the ctime is older than
 	metadata_dtd_ctime_interval.
 	@rtype: bool
-	@returns: True if successful, otherwise False
+	@return: True if successful, otherwise False
 	"""
 
 	must_fetch = True
@@ -2622,7 +2622,7 @@ else:
 
 	if options.ask and userquery('Commit changes?', True) != 'Yes':
 		print("* aborting commit.")
-		sys.exit(1)
+		sys.exit(128 + signal.SIGINT)
 
 	# Handle the case where committed files have keywords which
 	# will change and need a priming commit before the Manifest
