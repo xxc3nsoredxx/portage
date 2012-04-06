@@ -519,6 +519,10 @@ class depgraph(object):
 			preload_installed_pkgs = \
 				"--nodeps" not in self._frozen_config.myopts
 
+			if self._frozen_config.myopts.get("--root-deps") is not None and \
+				myroot != self._frozen_config.target_root:
+				continue
+
 			fake_vartree = self._frozen_config.trees[myroot]["vartree"]
 			if not fake_vartree.dbapi:
 				# This needs to be called for the first depgraph, but not for
@@ -4325,7 +4329,8 @@ class depgraph(object):
 		args = self._dynamic_config._initial_arg_list[:]
 		for root in self._frozen_config.roots:
 			if root != self._frozen_config.target_root and \
-				"remove" in self._dynamic_config.myparams:
+				("remove" in self._dynamic_config.myparams or
+				self._frozen_config.myopts.get("--root-deps") is not None):
 				# Only pull in deps for the relevant root.
 				continue
 			depgraph_sets = self._dynamic_config.sets[root]
@@ -4466,6 +4471,11 @@ class depgraph(object):
 			# are already built.
 			dep_keys = ["RDEPEND", "PDEPEND"]
 			for myroot in self._frozen_config.trees:
+
+				if self._frozen_config.myopts.get("--root-deps") is not None and \
+					myroot != self._frozen_config.target_root:
+					continue
+
 				vardb = self._frozen_config.trees[myroot]["vartree"].dbapi
 				pkgsettings = self._frozen_config.pkgsettings[myroot]
 				root_config = self._frozen_config.roots[myroot]
