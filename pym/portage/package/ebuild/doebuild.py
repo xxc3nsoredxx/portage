@@ -1654,6 +1654,10 @@ def _post_src_install_chost_fix(settings):
 
 	for k in ('IUSE',):
 		v = settings.get(k)
+		if "force-multilib" in settings.get('FEATURES'):
+			v = v + " abiwrapper"
+			for i in settings.get('MULTILIB_ABIS').split(' '):
+				v = v + " multilib_abi_" + i
 		if v is not None:
 			write_atomic(os.path.join(build_info_dir, k), v + '\n')
 

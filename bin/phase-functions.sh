@@ -709,13 +709,10 @@ dyn_install() {
 		done
 	fi
 	if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
-		if has_multilib_profile ; then
-			local i= x=
-			for i in ${MULTILIB_ABIS} ; do
-				x+=" multilib_abi_${i}"
-			done
-			echo "${IUSE}${x}"      > IUSE
-		fi
+		#IUSE is changed in _post_src_install_chost_fix
+		#in pym/portage/package/ebuild/doebuild.py
+		#which is run after dyn_install, so useless to
+		#add internal USE flags here 
 		if is_auto-multilib; then
 			echo "$(get_abi_order)" > MULTILIB_ABIS
 		fi
