@@ -151,7 +151,7 @@ prepcompress() {
 install_qa_check() {
 	local f i qa_var x
 	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
-		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+		case "$EAPI" in 0|1|2) local EPREFIX= ED=${D} ;; esac
 
 	[[ -d "${ED}" ]] || return 0
 	cd "${ED}" || die "cd failed"
@@ -435,43 +435,6 @@ install_qa_check() {
 			fi
 		fi
 
-		# Save NEEDED information after removing self-contained providers
-		rm -f "$PORTAGE_BUILDDIR"/build-info/NEEDED{,.ELF.2}
-		scanelf -qyRF '%a;%p;%S;%r;%n' "${D}" | { while IFS= read -r l; do
-			arch=${l%%;*}; l=${l#*;}
-			obj="/${l%%;*}"; l=${l#*;}
-			soname=${l%%;*}; l=${l#*;}
-			rpath=${l%%;*}; l=${l#*;}; [ "${rpath}" = "  -  " ] && rpath=""
-			needed=${l%%;*}; l=${l#*;}
-			if [ -z "${rpath}" -o -n "${rpath//*ORIGIN*}" ]; then
-				# object doesn't contain $ORIGIN in its runpath attribute
-				echo "${obj} ${needed}"	>> "${PORTAGE_BUILDDIR}"/build-info/NEEDED
-				echo "${arch:3};${obj};${soname};${rpath};${needed}" >> "${PORTAGE_BUILDDIR}"/build-info/NEEDED.ELF.2
-			else
-				dir=${obj%/*}
-				# replace $ORIGIN with the dirname of the current object for the lookup
-				opath=$(echo :${rpath}: | sed -e "s#.*:\(.*\)\$ORIGIN\(.*\):.*#\1${dir}\2#")
-				sneeded=$(echo ${needed} | tr , ' ')
-				rneeded=""
-				for lib in ${sneeded}; do
-					found=0
-					for path in ${opath//:/ }; do
-						[ -e "${D}/${path}/${lib}" ] && found=1 && break
-					done
-					[ "${found}" -eq 0 ] && rneeded="${rneeded},${lib}"
-				done
-				rneeded=${rneeded:1}
-				if [ -n "${rneeded}" ]; then
-					echo "${obj} ${rneeded}" >> "${PORTAGE_BUILDDIR}"/build-info/NEEDED
-					echo "${arch:3};${obj};${soname};${rpath};${rneeded}" >> "${PORTAGE_BUILDDIR}"/build-info/NEEDED.ELF.2
-				fi
-			fi
-		done }
-
-		[ -n "${QA_SONAME_NO_SYMLINK}" ] && \
-			echo "${QA_SONAME_NO_SYMLINK}" > \
-			"${PORTAGE_BUILDDIR}"/build-info/QA_SONAME_NO_SYMLINK
-
 		if [[ ${insecure_rpath} -eq 1 ]] ; then
 			die "Aborting due to serious QA concerns with RUNPATH/RPATH"
 		elif [[ -n ${die_msg} ]] && has stricter ${FEATURES} ; then
@@ -547,6 +510,34 @@ install_qa_check() {
 		fi
 
 		PORTAGE_QUIET=${tmp_quiet}
+	fi
+
+	# Create NEEDED.ELF.2 regardless of RESTRICT=binchecks, since this info is
+	# too useful not to have (it's required for things like preserve-libs), and
+	# it's tempting for ebuild authors to set RESTRICT=binchecks for packages
+	# containing pre-built binaries.
+	if type -P scanelf > /dev/null ; then
+		# Save NEEDED information after removing self-contained providers
+		rm -f "$PORTAGE_BUILDDIR"/build-info/NEEDED{,.ELF.2}
+		scanelf -qyRF '%a;%p;%S;%r;%n' "${D}" | { while IFS= read -r l; do
+			arch=${l%%;*}; l=${l#*;}
+			obj="/${l%%;*}"; l=${l#*;}
+			soname=${l%%;*}; l=${l#*;}
+			rpath=${l%%;*}; l=${l#*;}; [ "${rpath}" = "  -  " ] && rpath=""
+			needed=${l%%;*}; l=${l#*;}
+			echo "${obj} ${needed}"	>> "${PORTAGE_BUILDDIR}"/build-info/NEEDED
+			echo "${arch:3};${obj};${soname};${rpath};${needed}" >> "${PORTAGE_BUILDDIR}"/build-info/NEEDED.ELF.2
+		done }
+
+		[ -n "${QA_SONAME_NO_SYMLINK}" ] && \
+			echo "${QA_SONAME_NO_SYMLINK}" > \
+			"${PORTAGE_BUILDDIR}"/build-info/QA_SONAME_NO_SYMLINK
+
+		if has binchecks ${RESTRICT} && \
+			[ -s "${PORTAGE_BUILDDIR}/build-info/NEEDED.ELF.2" ] ; then
+			eqawarn "QA Notice: RESTRICT=binchecks prevented checks on these ELF files:"
+			eqawarn "$(while read -r x; do x=${x#*;} ; x=${x%%;*} ; echo "${x#${EPREFIX}}" ; done < "${PORTAGE_BUILDDIR}"/build-info/NEEDED.ELF.2)"
+		fi
 	fi
 
 	local unsafe_files=$(find "${ED}" -type f '(' -perm -2002 -o -perm -4002 ')' | sed -e "s:^${ED}:/:")

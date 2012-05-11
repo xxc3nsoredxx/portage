@@ -5,10 +5,14 @@ from _emerge.SubProcess import SubProcess
 import sys
 from portage.cache.mappings import slot_dict_class
 import portage
+portage.proxy.lazyimport.lazyimport(globals(),
+	'portage.package.ebuild._eapi_invalid:eapi_invalid',
+)
 from portage import os
 from portage import _encodings
 from portage import _unicode_decode
 from portage import _unicode_encode
+
 import errno
 import fcntl
 import io
@@ -20,9 +24,9 @@ class EbuildMetadataPhase(SubProcess):
 	used to extract metadata from the ebuild.
 	"""
 
-	__slots__ = ("cpv", "eapi", "ebuild_hash", "fd_pipes", "metadata_callback",
-		"metadata", "portdb", "repo_path", "settings") + \
-		("_raw_metadata",)
+	__slots__ = ("cpv", "ebuild_hash", "fd_pipes",
+		"metadata_callback", "metadata", "portdb", "repo_path", "settings") + \
+		("_eapi", "_eapi_lineno", "_raw_metadata",)
 
 	_file_names = ("ebuild",)
 	_files_dict = slot_dict_class(_file_names, prefix="")
@@ -33,26 +37,31 @@ class EbuildMetadataPhase(SubProcess):
 		settings.setcpv(self.cpv)
 		ebuild_path = self.ebuild_hash.location
 
-		# the caller can pass in eapi in order to avoid
-		# redundant _parse_eapi_ebuild_head calls
-		eapi = self.eapi
-		if eapi is None and \
-			'parse-eapi-ebuild-head' in settings.features:
-			with io.open(_unicode_encode(ebuild_path,
-				encoding=_encodings['fs'], errors='strict'),
-				mode='r', encoding=_encodings['repo.content'],
-				errors='replace') as f:
-				eapi = portage._parse_eapi_ebuild_head(f)
+		with io.open(_unicode_encode(ebuild_path,
+			encoding=_encodings['fs'], errors='strict'),
+			mode='r', encoding=_encodings['repo.content'],
+			errors='replace') as f:
+			self._eapi, self._eapi_lineno = portage._parse_eapi_ebuild_head(f)
 
-		if eapi is not None:
-			if not portage.eapi_is_supported(eapi):
-				self.metadata = self.metadata_callback(self.cpv,
-					self.repo_path, {'EAPI' : eapi}, self.ebuild_hash)
-				self._set_returncode((self.pid, os.EX_OK << 8))
-				self.wait()
-				return
+		parsed_eapi = self._eapi
+		if parsed_eapi is None:
+			parsed_eapi = "0"
 
-			settings.configdict['pkg']['EAPI'] = eapi
+		if not parsed_eapi:
+			# An empty EAPI setting is invalid.
+			self._eapi_invalid(None)
+			self._set_returncode((self.pid, 1 << 8))
+			self.wait()
+			return
+
+		if not portage.eapi_is_supported(parsed_eapi):
+			self.metadata = self.metadata_callback(self.cpv,
+				self.repo_path, {'EAPI' : parsed_eapi}, self.ebuild_hash)
+			self._set_returncode((self.pid, os.EX_OK << 8))
+			self.wait()
+			return
+
+		settings.configdict['pkg']['EAPI'] = parsed_eapi
 
 		debug = settings.get("PORTAGE_DEBUG") == "1"
 		master_fd = None
@@ -144,7 +153,29 @@ class EbuildMetadataPhase(SubProcess):
 				# number of lines is incorrect.
 				self.returncode = 1
 			else:
-				metadata = zip(portage.auxdbkeys, metadata_lines)
-				self.metadata = self.metadata_callback(self.cpv,
-					self.repo_path, metadata, self.ebuild_hash)
+				metadata_valid = True
+				metadata = dict(zip(portage.auxdbkeys, metadata_lines))
+				parsed_eapi = self._eapi
+				if parsed_eapi is None:
+					parsed_eapi = "0"
+				if (not metadata["EAPI"] or
+					portage.eapi_is_supported(metadata["EAPI"])) and \
+					metadata["EAPI"] != parsed_eapi:
+					self._eapi_invalid(metadata)
+					if 'parse-eapi-ebuild-head' in self.settings.features:
+						metadata_valid = False
 
+				if metadata_valid:
+					self.metadata = self.metadata_callback(self.cpv,
+						self.repo_path, metadata, self.ebuild_hash)
+				else:
+					self.returncode = 1
+
+	def _eapi_invalid(self, metadata):
+		repo_name = self.portdb.getRepositoryName(self.repo_path)
+		if metadata is not None:
+			eapi_var = metadata["EAPI"]
+		else:
+			eapi_var = None
+		eapi_invalid(self, self.cpv, repo_name, self.settings,
+			eapi_var, self._eapi, self._eapi_lineno)

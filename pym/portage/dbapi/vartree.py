@@ -63,6 +63,7 @@ from _emerge.PollScheduler import PollScheduler
 from _emerge.MiscFunctionsProcess import MiscFunctionsProcess
 
 import errno
+import fnmatch
 import gc
 import grp
 import io
@@ -3076,9 +3077,13 @@ class dblink(object):
 
 			os = _os_merge
 
-			collision_ignore = set([normalize_path(myignore) for myignore in \
-				portage.util.shlex_split(
-				self.settings.get("COLLISION_IGNORE", ""))])
+			collision_ignore = []
+			for x in portage.util.shlex_split(
+				self.settings.get("COLLISION_IGNORE", "")):
+				if os.path.isdir(os.path.join(self._eroot, x.lstrip(os.sep))):
+					x = normalize_path(x)
+					x += "/*"
+				collision_ignore.append(x)
 
 			# For collisions with preserved libraries, the current package
 			# will assume ownership and the libraries will be unregistered.
@@ -3179,15 +3184,12 @@ class dblink(object):
 				if not isowned and self.isprotected(full_path):
 					isowned = True
 				if not isowned:
+					f_match = full_path[len(self._eroot)-1:]
 					stopmerge = True
-					if collision_ignore:
-						if f in collision_ignore:
+					for pattern in collision_ignore:
+						if fnmatch.fnmatch(f_match, pattern):
 							stopmerge = False
-						else:
-							for myignore in collision_ignore:
-								if f.startswith(myignore + os.path.sep):
-									stopmerge = False
-									break
+							break
 					if stopmerge:
 						collisions.append(f)
 			return collisions, symlink_collisions, plib_collisions
