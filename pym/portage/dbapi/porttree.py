@@ -14,7 +14,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.package.ebuild.doebuild:doebuild',
 	'portage.util:ensure_dirs,shlex_split,writemsg,writemsg_level',
 	'portage.util.listdir:listdir',
-	'portage.versions:best,catpkgsplit,_pkgsplit@pkgsplit,ver_regexp',
+	'portage.versions:best,catpkgsplit,_pkgsplit@pkgsplit,ver_regexp,_pkg_str',
 )
 
 from portage.cache import volatile
@@ -708,7 +708,7 @@ class portdbapi(dbapi):
 						writemsg(_("\nInvalid ebuild version: %s\n") % \
 							os.path.join(oroot, mycp, x), noiselevel=-1)
 						continue
-					d[mysplit[0]+"/"+pf] = None
+					d[_pkg_str(mysplit[0]+"/"+pf)] = None
 		if invalid_category and d:
 			writemsg(_("\n!!! '%s' has a category that is not listed in " \
 				"%setc/portage/categories\n") % \
@@ -869,7 +869,8 @@ class portdbapi(dbapi):
 			xcache_this_level = self.xcache.get(level)
 			if xcache_this_level is not None:
 				xcache_this_level[cache_key] = myval
-				myval = myval[:]
+				if not isinstance(myval, _pkg_str):
+					myval = myval[:]
 
 		return myval
 

@@ -5,6 +5,10 @@ from __future__ import absolute_import
 
 import io
 import sys
+try:
+	from urllib.request import urlopen as urllib_request_urlopen
+except ImportError:
+	from urllib import urlopen as urllib_request_urlopen
 import re
 import xml.dom.minidom
 
@@ -13,8 +17,8 @@ from portage import os
 from portage import _encodings
 from portage import _unicode_decode
 from portage import _unicode_encode
-from portage.versions import pkgsplit, catpkgsplit, pkgcmp, best
-from portage.util import grabfile, urlopen
+from portage.versions import pkgsplit, vercmp, best
+from portage.util import grabfile
 from portage.const import CACHE_PATH
 from portage.localization import _
 from portage.dep import _slot_separator
@@ -368,17 +372,14 @@ def getMinUpgrade(vulnerableList, unaffectedList, portdbapi, vardbapi, minimize=
 	for u in unaffectedList:
 		mylist = match(u, portdbapi, match_type="match-all")
 		for c in mylist:
-			c_pv = catpkgsplit(c)
-			i_pv = catpkgsplit(best(v_installed))
-			if pkgcmp(c_pv[1:], i_pv[1:]) > 0 \
+			i = best(v_installed)
+			if vercmp(c.version, i.version) > 0 \
 					and (rValue == None \
 						or not match("="+rValue, portdbapi) \
-						or (minimize ^ (pkgcmp(c_pv[1:], catpkgsplit(rValue)[1:]) > 0)) \
+						or (minimize ^ (vercmp(c.version, rValue.version) > 0)) \
 							and match("="+c, portdbapi)) \
 					and portdbapi.aux_get(c, ["SLOT"]) == vardbapi.aux_get(best(v_installed), ["SLOT"]):
-				rValue = c_pv[0]+"/"+c_pv[1]+"-"+c_pv[2]
-				if c_pv[3] != "r0":		# we don't like -r0 for display
-					rValue += "-"+c_pv[3]
+				rValue = c
 	return rValue
 
 def format_date(datestr):
@@ -472,7 +473,7 @@ class Glsa:
 			myurl = "file://"+self.nr
 		else:
 			myurl = repository + "glsa-%s.xml" % str(self.nr)
-		self.parse(urlopen(myurl))
+		self.parse(urllib_request_urlopen(myurl))
 		return None
 
 	def parse(self, myfile):

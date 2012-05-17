@@ -43,7 +43,7 @@ from portage.util import ensure_dirs, getconfig, grabdict, \
 	grabdict_package, grabfile, grabfile_package, LazyItemsDict, \
 	normalize_path, shlex_split, stack_dictlist, stack_dicts, stack_lists, \
 	writemsg, writemsg_level
-from portage.versions import catpkgsplit, catsplit, cpv_getkey
+from portage.versions import catpkgsplit, catsplit, cpv_getkey, _pkg_str
 
 from portage.package.ebuild._config import special_env_vars
 from portage.package.ebuild._config.env_var_validation import validate_cmd_var
@@ -414,11 +414,11 @@ class config(object):
 			portdir_overlay = ""
 			for confs in [make_globals, make_conf, self.configdict["env"]]:
 				v = confs.get("PORTDIR")
-				if v:
+				if v is not None:
 					portdir = v
 					known_repos.append(v)
 				v = confs.get("PORTDIR_OVERLAY")
-				if v:
+				if v is not None:
 					portdir_overlay = v
 					known_repos.extend(shlex_split(v))
 			known_repos = frozenset(known_repos)
@@ -928,11 +928,26 @@ class config(object):
 					writemsg(_("!!! INVALID ACCEPT_KEYWORDS: %s\n") % str(group),
 						noiselevel=-1)
 
-		abs_profile_path = os.path.join(self["PORTAGE_CONFIGROOT"],
-			PROFILE_PATH)
-		if (not self.profile_path or \
-			not os.path.exists(os.path.join(self.profile_path, "parent"))) and \
-			os.path.exists(os.path.join(self["PORTDIR"], "profiles")):
+		profile_broken = not self.profile_path or \
+			not os.path.exists(os.path.join(self.profile_path, "parent")) and \
+			os.path.exists(os.path.join(self["PORTDIR"], "profiles"))
+
+		if profile_broken:
+			abs_profile_path = None
+			for x in (PROFILE_PATH, 'etc/portage/make.profile'):
+				x = os.path.join(self["PORTAGE_CONFIGROOT"], x)
+				try:
+					os.lstat(x)
+				except OSError:
+					pass
+				else:
+					abs_profile_path = x
+					break
+
+			if abs_profile_path is None:
+				abs_profile_path = os.path.join(self["PORTAGE_CONFIGROOT"],
+					PROFILE_PATH)
+
 			writemsg(_("\n\n!!! %s is not a symlink and will probably prevent most merges.\n") % abs_profile_path,
 				noiselevel=-1)
 			writemsg(_("!!! It should point into a profile within %s/profiles/\n") % self["PORTDIR"])
@@ -1248,7 +1263,7 @@ class config(object):
 			slot = pkg_configdict["SLOT"]
 			iuse = pkg_configdict["IUSE"]
 			if pkg is None:
-				cpv_slot = "%s:%s" % (self.mycpv, slot)
+				cpv_slot = _pkg_str(self.mycpv, slot=slot, repo=repository)
 			else:
 				cpv_slot = pkg
 			pkginternaluse = []
@@ -1707,11 +1722,13 @@ class config(object):
 		@return: A list of properties that have not been accepted.
 		"""
 		accept_properties = self._accept_properties
+		if not hasattr(cpv, 'slot'):
+			cpv = _pkg_str(cpv, slot=metadata["SLOT"],
+				repo=metadata.get("repository"))
 		cp = cpv_getkey(cpv)
 		cpdict = self._ppropertiesdict.get(cp)
 		if cpdict:
-			cpv_slot = "%s:%s" % (cpv, metadata["SLOT"])
-			pproperties_list = ordered_by_atom_specificity(cpdict, cpv_slot, repo=metadata.get('repository'))
+			pproperties_list = ordered_by_atom_specificity(cpdict, cpv)
 			if pproperties_list:
 				accept_properties = list(self._accept_properties)
 				for x in pproperties_list:

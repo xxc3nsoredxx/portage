@@ -26,14 +26,6 @@ import string
 import sys
 import traceback
 import glob
-try:
-	import urllib.parse as urllib_parse
-	import urllib.request as urllib_request
-	from urllib.parse import splituser as urllib_parse_splituser
-except ImportError:
-	import urlparse as urllib_parse
-	import urllib2 as urllib_request
-	from urllib import splituser as urllib_parse_splituser
 
 import portage
 portage.proxy.lazyimport.lazyimport(globals(),
@@ -49,7 +41,7 @@ from portage import _os_merge
 from portage import _unicode_encode
 from portage import _unicode_decode
 from portage.exception import InvalidAtom, PortageException, FileNotFound, \
-       OperationNotPermitted, PermissionDenied, ReadOnlyFileSystem
+       OperationNotPermitted, ParseError, PermissionDenied, ReadOnlyFileSystem
 from portage.localization import _
 from portage.proxy.objectproxy import ObjectProxy
 from portage.cache.mappings import UserDict
@@ -581,6 +573,7 @@ def getconfig(mycfg, tolerant=0, allow_sourcing=False, expand=True):
 		writemsg(("!!! " + _("Please use dos2unix to convert line endings " + \
 			"in config file: '%s'") + "\n") % mycfg, noiselevel=-1)
 
+	lex = None
 	try:
 		if tolerant:
 			shlex_class = _tolerant_shlex
@@ -604,43 +597,38 @@ def getconfig(mycfg, tolerant=0, allow_sourcing=False, expand=True):
 				break;
 			equ=lex.get_token()
 			if (equ==''):
-				#unexpected end of file
-				#lex.error_leader(self.filename,lex.lineno)
+				msg = lex.error_leader() + _("Unexpected EOF")
 				if not tolerant:
-					writemsg(_("!!! Unexpected end of config file: variable %s\n") % key,
-						noiselevel=-1)
-					raise Exception(_("ParseError: Unexpected EOF: %s: on/before line %s") % (mycfg, lex.lineno))
+					raise ParseError(msg)
 				else:
+					writemsg("%s\n" % msg, noiselevel=-1)
 					return mykeys
 			elif (equ!='='):
-				#invalid token
-				#lex.error_leader(self.filename,lex.lineno)
+				msg = lex.error_leader() + \
+					_("Invalid token '%s' (not '=')") % (equ,)
 				if not tolerant:
-					raise Exception(_("ParseError: Invalid token "
-						"'%s' (not '='): %s: line %s") % \
-						(equ, mycfg, lex.lineno))
+					raise ParseError(msg)
 				else:
+					writemsg("%s\n" % msg, noiselevel=-1)
 					return mykeys
 			val=lex.get_token()
 			if val is None:
-				#unexpected end of file
-				#lex.error_leader(self.filename,lex.lineno)
+				msg = lex.error_leader() + \
+					_("Unexpected end of config file: variable '%s'") % (key,)
 				if not tolerant:
-					writemsg(_("!!! Unexpected end of config file: variable %s\n") % key,
-						noiselevel=-1)
-					raise portage.exception.CorruptionError(_("ParseError: Unexpected EOF: %s: line %s") % (mycfg, lex.lineno))
+					raise ParseError(msg)
 				else:
+					writemsg("%s\n" % msg, noiselevel=-1)
 					return mykeys
 			key = _unicode_decode(key)
 			val = _unicode_decode(val)
 
 			if _invalid_var_name_re.search(key) is not None:
+				msg = lex.error_leader() + \
+					_("Invalid variable name '%s'") % (key,)
 				if not tolerant:
-					raise Exception(_(
-						"ParseError: Invalid variable name '%s': line %s") % \
-						(key, lex.lineno - 1))
-				writemsg(_("!!! Invalid variable name '%s': line %s in %s\n") \
-					% (key, lex.lineno - 1, mycfg), noiselevel=-1)
+					raise ParseError(msg)
+				writemsg("%s\n" % msg, noiselevel=-1)
 				continue
 
 			if expand:
@@ -652,7 +640,12 @@ def getconfig(mycfg, tolerant=0, allow_sourcing=False, expand=True):
 	except SystemExit as e:
 		raise
 	except Exception as e:
-		raise portage.exception.ParseError(str(e)+" in "+mycfg)
+		if isinstance(e, ParseError) or lex is None:
+			raise
+		msg = _unicode_decode("%s%s") % (lex.error_leader(), e)
+		writemsg("%s\n" % msg, noiselevel=-1)
+		raise
+
 	return mykeys
 
 _varexpand_word_chars = frozenset(string.ascii_letters + string.digits + "_")
@@ -1648,14 +1641,3 @@ def getlibpaths(root, env=None):
 	rval.append("/lib")
 
 	return [normalize_path(x) for x in rval if x]
-
-def urlopen(url):	
-	parse_result = urllib_parse.urlparse(url)
-	netloc = urllib_parse_splituser(parse_result.netloc)[1]
-	url = urllib_parse.urlunparse((parse_result.scheme, netloc, parse_result.path, parse_result.params, parse_result.query, parse_result.fragment))
-	password_manager = urllib_request.HTTPPasswordMgrWithDefaultRealm()
-	if parse_result.username is not None:
-		password_manager.add_password(None, url, parse_result.username, parse_result.password)
-	auth_handler = urllib_request.HTTPBasicAuthHandler(password_manager)
-	opener = urllib_request.build_opener(auth_handler)
-	return opener.open(url)
