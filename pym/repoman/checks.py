@@ -575,7 +575,8 @@ _eclass_info = {
 		'funcs': (
 			'elibtoolize',
 		),
-		'comprehensive': True
+		'comprehensive': True,
+		'exempt_eclasses': ('autotools',)
 	},
 
 	'multilib': {
@@ -584,7 +585,7 @@ _eclass_info = {
 		),
 
 		# These are "eclasses are the whole ebuild" type thing.
-		'exempt_eclasses': _eclass_export_functions,
+		'exempt_eclasses': _eclass_export_functions + ('autotools', 'libtool'),
 
 		'comprehensive': False
 	},
