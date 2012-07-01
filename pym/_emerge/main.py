@@ -477,6 +477,7 @@ def insert_optional_args(args):
 		'--package-moves'        : y_or_n,
 		'--quiet'                : y_or_n,
 		'--quiet-build'          : y_or_n,
+		'--rebuild-if-new-slot-abi': y_or_n,
 		'--rebuild-if-new-rev'   : y_or_n,
 		'--rebuild-if-new-ver'   : y_or_n,
 		'--rebuild-if-unbuilt'   : y_or_n,
@@ -746,6 +747,16 @@ def parse_opts(tmpcmdline, silent=False):
 			"choices" : true_y_or_n
 		},
 
+		"--ignore-built-slot-abi-deps": {
+			"help": "Ignore the SLOT/ABI := operator parts of dependencies that have "
+				"been recorded when packages where built. This option is intended "
+				"only for debugging purposes, and it only affects built packages "
+				"that specify SLOT/ABI := operator dependencies using the "
+				"experimental \"4-slot-abi\" EAPI.",
+			"type": "choice",
+			"choices": y_or_n
+		},
+
 		"--jobs": {
 
 			"shortopt" : "-j",
@@ -857,6 +868,15 @@ def parse_opts(tmpcmdline, silent=False):
 			"help"     : "redirect build output to logs",
 			"type"     : "choice",
 			"choices"  : true_y_or_n,
+		},
+
+		"--rebuild-if-new-slot-abi": {
+			"help"     : ("Automatically rebuild or reinstall packages when SLOT/ABI := "
+				"operator dependencies can be satisfied by a newer slot, so that "
+				"older packages slots will become eligible for removal by the "
+				"--depclean action as soon as possible."),
+			"type"     : "choice",
+			"choices"  : true_y_or_n
 		},
 
 		"--rebuild-if-new-rev": {
@@ -1099,6 +1119,9 @@ def parse_opts(tmpcmdline, silent=False):
 
 	if myoptions.quiet_build in true_y:
 		myoptions.quiet_build = 'y'
+
+	if myoptions.rebuild_if_new_slot_abi in true_y:
+		myoptions.rebuild_if_new_slot_abi = 'y'
 
 	if myoptions.rebuild_if_new_ver in true_y:
 		myoptions.rebuild_if_new_ver = True
@@ -1347,14 +1370,9 @@ def clean_logs(settings):
 			"PORT_LOGDIR_CLEAN usage instructions.")
 
 def setconfig_fallback(root_config):
-	from portage._sets.base import DummyPackageSet
-	from portage._sets.files import WorldSelectedSet
-	from portage._sets.profiles import PackagesSystemSet
 	setconfig = root_config.setconfig
-	setconfig.psets['world'] = DummyPackageSet(atoms=['@selected', '@system'])
-	setconfig.psets['selected'] = WorldSelectedSet(root_config.settings['EROOT'])
-	setconfig.psets['system'] = \
-		PackagesSystemSet(root_config.settings.profiles)
+	setconfig._create_default_config()
+	setconfig._parse(update=True)
 	root_config.sets = setconfig.getSets()
 
 def get_missing_sets(root_config):

@@ -12,7 +12,8 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.dbapi.dep_expand:dep_expand',
 	'portage.dbapi._MergeProcess:MergeProcess',
 	'portage.dep:dep_getkey,isjustname,match_from_list,' + \
-	 	'use_reduce,_slot_re',
+	 	'use_reduce,_get_slot_re',
+	'portage.eapi:_get_eapi_attrs',
 	'portage.elog:collect_ebuild_messages,collect_messages,' + \
 		'elog_process,_merge_logentries',
 	'portage.locks:lockdir,unlockdir,lockfile,unlockfile',
@@ -687,7 +688,8 @@ class vardbapi(dbapi):
 					(mydir_mtime, cache_data)
 				self._aux_cache["modified"].add(mycpv)
 
-		if _slot_re.match(mydata['SLOT']) is None:
+		eapi_attrs = _get_eapi_attrs(mydata['EAPI'])
+		if _get_slot_re(eapi_attrs).match(mydata['SLOT']) is None:
 			# Empty or invalid slot triggers InvalidAtom exceptions when
 			# generating slot atoms for packages, so translate it to '0' here.
 			mydata['SLOT'] = _unicode_decode('0')
@@ -2062,7 +2064,9 @@ class dblink(object):
 
 			#process symlinks second-to-last, directories last.
 			mydirs = set()
-			modprotect = os.path.join(self._eroot, "lib/modules/")
+
+			uninstall_ignore = portage.util.shlex_split(
+				self.settings.get("UNINSTALL_IGNORE", ""))
 
 			def unlink(file_name, lstatobj):
 				if bsd_chflags:
@@ -2169,6 +2173,24 @@ class dblink(object):
 				if lstatobj is None:
 						show_unmerge("---", unmerge_desc["!found"], file_type, obj)
 						continue
+
+				f_match = obj[len(eroot)-1:]
+				ignore = False
+				for pattern in uninstall_ignore:
+					if fnmatch.fnmatch(f_match, pattern):
+						ignore = True
+						break
+
+				if not ignore:
+					if islink and f_match in \
+						("/lib", "/usr/lib", "/usr/local/lib"):
+						# Ignore libdir symlinks for bug #423127.
+						ignore = True
+
+				if ignore:
+					show_unmerge("---", unmerge_desc["cfgpro"], file_type, obj)
+					continue
+
 				# don't use EROOT, CONTENTS entries already contain EPREFIX
 				if obj.startswith(real_root):
 					relative_path = obj[real_root_len:]
@@ -2178,8 +2200,9 @@ class dblink(object):
 							is_owned = True
 							break
 
-					if file_type == "sym" and is_owned and \
-						(islink and statobj and stat.S_ISDIR(statobj.st_mode)):
+					if is_owned and islink and \
+						file_type in ("sym", "dir") and \
+						statobj and stat.S_ISDIR(statobj.st_mode):
 						# A new instance of this package claims the file, so
 						# don't unmerge it. If the file is symlink to a
 						# directory and the unmerging package installed it as
@@ -2211,18 +2234,6 @@ class dblink(object):
 						continue
 					elif relative_path in cfgfiledict:
 						stale_confmem.append(relative_path)
-				# next line includes a tweak to protect modules from being unmerged,
-				# but we don't protect modules from being overwritten if they are
-				# upgraded. We effectively only want one half of the config protection
-				# functionality for /lib/modules. For portage-ng both capabilities
-				# should be able to be independently specified.
-				# TODO: For rebuilds, re-parent previous modules to the new
-				# installed instance (so they are not orphans). For normal
-				# uninstall (not rebuild/reinstall), remove the modules along
-				# with all other files (leave no orphans).
-				if obj.startswith(modprotect):
-					show_unmerge("---", unmerge_desc["cfgpro"], file_type, obj)
-					continue
 
 				# Don't unlink symlinks to directories here since that can
 				# remove /lib and /usr/lib symlinks.
@@ -2244,12 +2255,12 @@ class dblink(object):
 					show_unmerge("---", unmerge_desc["!mtime"], file_type, obj)
 					continue
 
-				if pkgfiles[objkey][0] == "dir":
+				if file_type == "dir" and not islink:
 					if lstatobj is None or not stat.S_ISDIR(lstatobj.st_mode):
 						show_unmerge("---", unmerge_desc["!dir"], file_type, obj)
 						continue
 					mydirs.add((obj, (lstatobj.st_dev, lstatobj.st_ino)))
-				elif pkgfiles[objkey][0] == "sym":
+				elif file_type == "sym" or (file_type == "dir" and islink):
 					if not islink:
 						show_unmerge("---", unmerge_desc["!sym"], file_type, obj)
 						continue
@@ -2359,7 +2370,11 @@ class dblink(object):
 		if protected_symlinks:
 			msg = "One or more symlinks to directories have been " + \
 				"preserved in order to ensure that files installed " + \
-				"via these symlinks remain accessible:"
+				"via these symlinks remain accessible. " + \
+				"This indicates that the mentioned symlink(s) may " + \
+				"be obsolete remnants of an old install, and it " + \
+				"may be appropriate to replace a given symlink " + \
+				"with the directory that it points to."
 			lines = textwrap.wrap(msg, 72)
 			lines.append("")
 			flat_list = set()
@@ -2369,7 +2384,7 @@ class dblink(object):
 				lines.append("\t%s" % (os.path.join(real_root,
 					f.lstrip(os.sep))))
 			lines.append("")
-			self._elog("eerror", "postrm", lines)
+			self._elog("elog", "postrm", lines)
 
 		# Remove stale entries from config memory.
 		if stale_confmem:
@@ -3462,6 +3477,10 @@ class dblink(object):
 		if not os.path.exists(self.dbcatdir):
 			ensure_dirs(self.dbcatdir)
 
+		# NOTE: We use SLOT obtained from the inforoot
+		#	directory, in order to support USE=multislot.
+		# Use _pkg_str discard the sub-slot part if necessary.
+		slot = _pkg_str(self.mycpv, slot=slot).slot
 		cp = self.mysplit[0]
 		slot_atom = "%s:%s" % (cp, slot)
 
