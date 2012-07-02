@@ -1595,7 +1595,7 @@ class config(object):
 		iuse_implicit.add("test")
 
 		if 'force-multilib' in self.features:
-			for multilib_abis in self.get('MULTILIB_ABIS', '').split(' '):
+			for multilib_abis in self.get('MULTILIB_ABIS', '').split():
 				iuse_implicit.add("multilib_abi_" + multilib_abis)
 
 		return iuse_implicit

@@ -676,7 +676,7 @@ class _PackageMetadataWrapper(_PackageMetadataWrapperBase):
 	def _set_iuse(self, k, v):
 		if 'force-multilib' in self._pkg.root_config.settings.features:
 			if self._pkg.built is False:
-				for multilib_abis in self._pkg.root_config.settings.get("MULTILIB_ABIS", '').split(' '):
+				for multilib_abis in self._pkg.root_config.settings.get("MULTILIB_ABIS", '').split():
 					v = v + " multilib_abi_" + multilib_abis
 				v = v + " abiwrapper"
 		self._pkg.iuse = self._pkg._iuse(
