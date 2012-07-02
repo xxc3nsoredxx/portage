@@ -67,7 +67,7 @@ def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 		if repoman:
 			x = x._eval_qa_conditionals(use_mask, use_force)
 
-		if 'force-multilib' in mysettings.get("FEATURES", ''):
+		if 'force-multilib' in mysettings.features:
 			if not repoman :
 				for multilib_abis in mysettings.get("MULTILIB_ABIS", '').split(' '):
 					if multilib_abis not in ("multilib_abi_" + x) and portage.dep_getkey(x) not in mysettings.get("NO_AUTO_FLAG", None):

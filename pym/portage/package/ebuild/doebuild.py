@@ -1639,7 +1639,7 @@ def _post_src_install_write_metadata(settings):
 
 	for k in ('IUSE',):
 		v = settings.get(k)
-		if "force-multilib" in settings.get('FEATURES'):
+		if "force-multilib" in settings.features:
 			v = v + " abiwrapper"
 			for i in settings.get('MULTILIB_ABIS').split(' '):
 				v = v + " multilib_abi_" + i

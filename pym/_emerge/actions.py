@@ -1504,7 +1504,7 @@ def action_info(settings, trees, myopts, myfiles):
 
 	myvars = portage.util.unique_array(myvars)
 	use_expand = settings.get('USE_EXPAND', '').split()
-	if 'force-multilib' in settings.get("FEATURES", ""):
+	if 'force-multilib' in settings.features:
 		use_expand.append("MULTILIB_ABIS")
 	use_expand.sort()
 	unset_vars = []

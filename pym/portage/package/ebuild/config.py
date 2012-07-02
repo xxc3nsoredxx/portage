@@ -426,6 +426,7 @@ class config(object):
 			known_repos = []
 			portdir = ""
 			portdir_overlay = ""
+			features = []
 			for confs in [make_globals, make_conf, self.configdict["env"]]:
 				v = confs.get("PORTDIR")
 				if v is not None:
@@ -435,6 +436,9 @@ class config(object):
 				if v is not None:
 					portdir_overlay = v
 					known_repos.extend(shlex_split(v))
+				v = confs.get("FEATURES")
+				if v is not None:
+					features.append(v.split())
 			known_repos = frozenset(known_repos)
 			self["PORTDIR"] = portdir
 			self["PORTDIR_OVERLAY"] = portdir_overlay
@@ -474,7 +478,8 @@ class config(object):
 			self.configlist.append(mygcfg)
 			self.configdict["defaults"]=self.configlist[-1]
 
-			if 'force-multilib' in confs.get("FEATURES", ""):
+			features = stack_lists(features)
+			if 'force-multilib' in features:
 				if self.configdict["defaults"].get('DEFAULT_ABI', None) is not None:
 					self.configdict["defaults"]["USE"] = self.configdict["defaults"].get("USE", "") + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 
@@ -791,9 +796,9 @@ class config(object):
 					self[var] = default_val
 				self.backup_changes(var)
 
-			if 'force-multilib' in self.get("FEATURES", ""):
+			if 'force-multilib' in features:
 				#add multilib_abi internally to list of USE_EXPANDed vars
-				self["USE_EXPAND"] = "multilib_abi" + " " + self.get("USE_EXPAND", "")
+				self["USE_EXPAND"] = "MULTILIB_ABI" + " " + self.get("USE_EXPAND", "")
 				self.backup_changes("USE_EXPAND")
 
 			# initialize self.features
@@ -1349,7 +1354,7 @@ class config(object):
 				if pkg_defaults:
 					defaults.extend(pkg_defaults)
 		defaults = " ".join(defaults)
-		if 'force-multilib' in self.get("FEATURES", ""):
+		if 'force-multilib' in self.features:
 			if self.configdict["defaults"].get('DEFAULT_ABI', None) is not None:
 				defaults = defaults + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 		if defaults != self.configdict["defaults"].get("USE",""):
@@ -1589,7 +1594,7 @@ class config(object):
 		# FEATURES=test for all ebuilds, regardless of explicit IUSE.
 		iuse_implicit.add("test")
 
-		if 'force-multilib' in self.get("FEATURES", ""):
+		if 'force-multilib' in self.features:
 			for multilib_abis in self.get('MULTILIB_ABIS', '').split(' '):
 				iuse_implicit.add("multilib_abi_" + multilib_abis)
 
@@ -2003,8 +2008,6 @@ class config(object):
 
 		# Do the USE calculation last because it depends on USE_EXPAND.
 		use_expand = self.get("USE_EXPAND", "").split()
-		if 'force-multilib' in self.get("FEATURES", ""):
-			use_expand.append("MULTILIB_ABI")
 		use_expand_dict = self._use_expand_dict
 		use_expand_dict.clear()
 		for k in use_expand:
