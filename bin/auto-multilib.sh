@@ -34,12 +34,12 @@ _restore_abi_env() {
 	preprocess_ebuild_env --filter-metadata
 }
 
-# @FUNCTION: get_abi_var
+# @FUNCTION: portage-get_abi_var
 # @USAGE: <VAR> [ABI]
 # @RETURN: returns the value of ${<VAR>_<ABI>} which should be set in make.defaults
 # @DESCRIPTION:
 # ex:
-# CFLAGS=$(get_abi_var CFLAGS sparc32) # CFLAGS=-m32
+# CFLAGS=$(portage-get_abi_var CFLAGS sparc32) # CFLAGS=-m32
 #
 # Note that the prefered method is to set CC="$(tc-getCC) $(get_abi_CFLAGS)"
 # This will hopefully be added to portage soon...
@@ -47,7 +47,7 @@ _restore_abi_env() {
 # If <ABI> is not specified, ${ABI} is used.
 # If <ABI> is not specified and ${ABI} is not defined, ${DEFAULT_ABI} is used.
 # If <ABI> is not specified and ${ABI} and ${DEFAULT_ABI} are not defined, we return an empty string.
-get_abi_var() {
+portage-get_abi_var() {
 	local flag=$1
 	local abi
 	if [ $# -gt 1 ]; then
@@ -78,7 +78,7 @@ prep_ml_binaries() {
 	done
 }
 
-tc-getPROG() {
+portage-getPROG() {
         local var=$1
         local prog=$2
 
@@ -232,23 +232,23 @@ _setup_abi_env() {
 	if is_auto-multilib ; then
 		# Set the CHOST native first so that we pick up the native
 		# toolchain and not a cross-compiler by accident #202811.
-		export CHOST=$(get_abi_var CHOST ${DEFAULT_ABI})
-		export AS="$(tc-getPROG AS as)"
-		export CC="$(tc-getPROG CC gcc)"
-		export CXX="$(tc-getPROG CXX g++)"
-		export FC="$(tc-getPROG FC gfortran)"
-		export CHOST=$(get_abi_var CHOST $1)
-		export CBUILD=$(get_abi_var CHOST $1)
-		export CDEFINE="$(get_abi_var CDEFINE $1)"
-		export CCASFLAGS="${CCASFLAGS:-${CFLAGS}} $(get_abi_var CFLAGS)"
-		export CFLAGS="${CFLAGS} $(get_abi_var CFLAGS)"
-		export CPPFLAGS="${CPPFLAGS} $(get_abi_var CPPFLAGS)"
-		export CXXFLAGS="${CXXFLAGS} $(get_abi_var CFLAGS)"
-		export FCFLAGS="${FCFLAGS} $(get_abi_var CFLAGS)"
-		export FFLAGS="${FFLAGS} $(get_abi_var CFLAGS)"
-		export ASFLAGS="${ASFLAGS} $(get_abi_var ASFLAGS)"
-		export LDFLAGS="${LDFLAGS} $(get_abi_var CFLAGS)"
-		local LIBDIR=$(get_abi_var LIBDIR $1)
+		export CHOST=$(portage-get_abi_var CHOST ${DEFAULT_ABI})
+		export AS="$(portage-getPROG AS as)"
+		export CC="$(portage-getPROG CC gcc)"
+		export CXX="$(portage-getPROG CXX g++)"
+		export FC="$(portage-getPROG FC gfortran)"
+		export CHOST=$(portage-get_abi_var CHOST $1)
+		export CBUILD=$(portage-get_abi_var CHOST $1)
+		export CDEFINE="$(portage-get_abi_var CDEFINE $1)"
+		export CCASFLAGS="${CCASFLAGS:-${CFLAGS}} $(portage-get_abi_var CFLAGS)"
+		export CFLAGS="${CFLAGS} $(portage-get_abi_var CFLAGS)"
+		export CPPFLAGS="${CPPFLAGS} $(portage-get_abi_var CPPFLAGS)"
+		export CXXFLAGS="${CXXFLAGS} $(portage-get_abi_var CFLAGS)"
+		export FCFLAGS="${FCFLAGS} $(portage-get_abi_var CFLAGS)"
+		export FFLAGS="${FFLAGS} $(portage-get_abi_var CFLAGS)"
+		export ASFLAGS="${ASFLAGS} $(portage-get_abi_var ASFLAGS)"
+		export LDFLAGS="${LDFLAGS} $(portage-get_abi_var CFLAGS)"
+		local LIBDIR=$(portage-get_abi_var LIBDIR $1)
 		export PKG_CONFIG_PATH="/usr/${LIBDIR}/pkgconfig"
 		if [[ "${ABI}" != "${DEFAULT_ABI}" ]]; then
 			[[ -z ${CCACHE_DIR} ]] || export CCACHE_DIR=${CCACHE_DIR}/${ABI}
@@ -307,7 +307,7 @@ _finalize_abi_install() {
 			prep_ml_binaries "${i}"
 		done
 	fi
-	local LIBDIR=$(get_abi_var LIBDIR $1)
+	local LIBDIR=$(portage-get_abi_var LIBDIR $1)
 	if ( [[ -d "${D}${LIBDIR}" ]] || [[ -d "${D}usr/${LIBDIR}" ]] || [[ -d "${base}" ]] || \
 			(shopt -s nullglob dotglob; f=("${D}"usr/bin/*-config); ((${#f[@]}))) || \
 		( use abiwrapper && \
