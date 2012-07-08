@@ -2008,6 +2008,8 @@ class config(object):
 
 		# Do the USE calculation last because it depends on USE_EXPAND.
 		use_expand = self.get("USE_EXPAND", "").split()
+		if 'force-multilib' in self.get("FEATURES", ""):
+			use_expand.append("MULTILIB_ABI")
 		use_expand_dict = self._use_expand_dict
 		use_expand_dict.clear()
 		for k in use_expand:
