@@ -426,7 +426,6 @@ class config(object):
 			known_repos = []
 			portdir = ""
 			portdir_overlay = ""
-			features = []
 			for confs in [make_globals, make_conf, self.configdict["env"]]:
 				v = confs.get("PORTDIR")
 				if v is not None:
@@ -436,9 +435,6 @@ class config(object):
 				if v is not None:
 					portdir_overlay = v
 					known_repos.extend(shlex_split(v))
-				v = confs.get("FEATURES")
-				if v is not None:
-					features.append(v.split())
 			known_repos = frozenset(known_repos)
 			self["PORTDIR"] = portdir
 			self["PORTDIR_OVERLAY"] = portdir_overlay
@@ -477,11 +473,6 @@ class config(object):
 					mygcfg = {}
 			self.configlist.append(mygcfg)
 			self.configdict["defaults"]=self.configlist[-1]
-
-			features = stack_lists(features)
-			if 'force-multilib' in features:
-				if self.configdict["defaults"].get('DEFAULT_ABI', None) is not None:
-					self.configdict["defaults"]["USE"] = self.configdict["defaults"].get("USE", "") + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 
 			mygcfg = getconfig(
 				os.path.join(config_root, MAKE_CONF_FILE),
@@ -796,10 +787,20 @@ class config(object):
 					self[var] = default_val
 				self.backup_changes(var)
 
+			features = []
+			for x in ("globals", "defaults", "conf", "env"):
+				v = self.configdict[x].get("FEATURES")
+				if v is not None:
+					features.append(v.split())
+			features = stack_lists(features)
+
 			if 'force-multilib' in features:
 				#add multilib_abi internally to list of USE_EXPANDed vars
 				self["USE_EXPAND"] = "MULTILIB_ABI" + " " + self.get("USE_EXPAND", "")
 				self.backup_changes("USE_EXPAND")
+				default_abi = self.configdict["defaults"].get('DEFAULT_ABI', '').strip()
+				if default_abi:
+					self.configdict["defaults"]["USE"] = self.configdict["defaults"].get("USE", "") + " multilib_abi_" + default_abi
 
 			# initialize self.features
 			self.regenerate()
@@ -1354,9 +1355,6 @@ class config(object):
 				if pkg_defaults:
 					defaults.extend(pkg_defaults)
 		defaults = " ".join(defaults)
-		if 'force-multilib' in self.features:
-			if self.configdict["defaults"].get('DEFAULT_ABI', None) is not None:
-				defaults = defaults + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 		if defaults != self.configdict["defaults"].get("USE",""):
 			self.configdict["defaults"]["USE"] = defaults
 			has_changed = True
@@ -2008,8 +2006,6 @@ class config(object):
 
 		# Do the USE calculation last because it depends on USE_EXPAND.
 		use_expand = self.get("USE_EXPAND", "").split()
-		if 'force-multilib' in self.get("FEATURES", ""):
-			use_expand.append("MULTILIB_ABI")
 		use_expand_dict = self._use_expand_dict
 		use_expand_dict.clear()
 		for k in use_expand:
