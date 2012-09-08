@@ -355,6 +355,78 @@ class AgeSet(EverythingSet):
 
 	singleBuilder = classmethod(singleBuilder)
 
+class DateSet(EverythingSet):
+	_operations = ["merge", "unmerge"]
+
+	def __init__(self, vardb, date, mode="older"):
+		super(DateSet, self).__init__(vardb)
+		self._mode = mode
+		self._date = date
+
+	def _filter(self, atom):
+
+		cpv = self._db.match(atom)[0]
+		path = self._db.getpath(cpv, filename="COUNTER")
+		date = os.stat(path).st_mtime
+		# Make sure inequality is _strict_ to exclude tested package
+		if ((self._mode == "older" and date < self._date) \
+			or (self._mode == "newer" and date > self._date)):
+			return True
+		else:
+			return False
+
+	def singleBuilder(cls, options, settings, trees):
+		vardbapi = trees["vartree"].dbapi
+		mode = options.get("mode", "older")
+		if str(mode).lower() not in ["newer", "older"]:
+			raise SetConfigError(_("invalid 'mode' value %s (use either 'newer' or 'older')") % mode)
+
+		formats = []
+		if options.get("package") is not None:
+			formats.append("package")
+		if options.get("filestamp") is not None:
+			formats.append("filestamp")
+		if options.get("seconds") is not None:
+			formats.append("seconds")
+		if options.get("date") is not None:
+			formats.append("date")
+
+		if not formats:
+			raise SetConfigError(_("none of these options specified: 'package', 'filestamp', 'seconds', 'date'"))
+		elif len(formats) > 1:
+			raise SetConfigError(_("no more than one of these options is allowed: 'package', 'filestamp', 'seconds', 'date'"))
+
+		format = formats[0]
+
+		if (format == "package"):
+			package = options.get("package")
+			try:
+				cpv = vardbapi.match(package)[0]
+				path = vardbapi.getpath(cpv, filename="COUNTER")
+				date = os.stat(path).st_mtime
+			except ValueError:
+				raise SetConfigError(_("cannot determine installation date of package %s") % package)
+		elif (format == "filestamp"):
+			filestamp = options.get("filestamp")
+			try:
+				date = os.stat(filestamp).st_mtime
+			except OSError:
+				raise SetConfigError(_("cannot determine 'filestamp' of '%s'") % filestamp)
+		elif (format == "seconds"):
+			# Do *not* test for integer:
+			# Modern filesystems support fractional seconds
+			date = options.get("seconds")
+		else:
+			dateopt = options.get("date")
+			try:
+				dateformat = options.get("dateformat", "%x %X")
+				date = time.mktime(time.strptime(dateopt, dateformat))
+			except ValueError:
+				raise SetConfigError(_("'date=%s' does not match 'dateformat=%s'") % (dateopt, dateformat))
+		return DateSet(vardb=vardbapi, date=date, mode=mode)
+
+	singleBuilder = classmethod(singleBuilder)
+
 class RebuiltBinaries(EverythingSet):
 	_operations = ('merge',)
 	_aux_keys = ('BUILD_TIME',)

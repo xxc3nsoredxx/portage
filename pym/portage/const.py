@@ -79,8 +79,10 @@ OS_HEADERS_PACKAGE_ATOM  = "virtual/os-headers"
 INCREMENTALS             = ("USE", "USE_EXPAND", "USE_EXPAND_HIDDEN",
                            "FEATURES", "ACCEPT_KEYWORDS",
                            "CONFIG_PROTECT_MASK", "CONFIG_PROTECT",
+                           "IUSE_IMPLICIT",
                            "PRELINK_PATH", "PRELINK_PATH_MASK",
                            "PROFILE_ONLY_VARIABLES",
+                           "USE_EXPAND_IMPLICIT", "USE_EXPAND_UNPREFIXED",
                            "NO_AUTO_FLAG", "RESTRICT_MULTILIB_BINARIES")
 EBUILD_PHASES            = ("pretend", "setup", "unpack", "prepare", "configure",
                            "compile", "test", "install",
@@ -98,7 +100,6 @@ SUPPORTED_FEATURES       = frozenset([
                            "metadata-transfer", "mirror", "multilib-strict", "news",
                            "noauto", "noclean", "nodoc", "noinfo", "noman",
                            "nostrip", "notitles", "parallel-fetch", "parallel-install",
-                           "parse-eapi-ebuild-head",
                            "prelink-checksums",
                            "protect-owned", "python-trace", "sandbox",
                            "selinux", "sesandbox", "sfperms",
