@@ -29,6 +29,7 @@ from portage.exception import (InvalidAtom, InvalidDependString,
 from portage.output import colorize, create_color_func, \
 	darkgreen, green
 bad = create_color_func("BAD")
+from portage.package.ebuild.config import _feature_flags
 from portage.package.ebuild.getmaskingstatus import \
 	_getmaskingstatus, _MaskReason
 from portage._sets import SETPREFIX
@@ -613,11 +614,17 @@ class depgraph(object):
 				"due to non matching USE:\n\n", noiselevel=-1)
 
 		for pkg, flags in self._dynamic_config.ignored_binaries.items():
-			writemsg("    =%s" % pkg.cpv, noiselevel=-1)
+			flag_display = []
+			for flag in sorted(flags):
+				if flag not in pkg.use.enabled:
+					flag = "-" + flag
+				flag_display.append(flag)
+			flag_display = " ".join(flag_display)
+			# The user can paste this line into package.use
+			writemsg("    =%s %s" % (pkg.cpv, flag_display), noiselevel=-1)
 			if pkg.root_config.settings["ROOT"] != "/":
-				writemsg(" for %s" % (pkg.root,), noiselevel=-1)
-			writemsg("\n        use flag(s): %s\n" % ", ".join(sorted(flags)),
-				noiselevel=-1)
+				writemsg(" # for %s" % (pkg.root,), noiselevel=-1)
+			writemsg("\n", noiselevel=-1)
 
 		msg = [
 			"",
@@ -1228,12 +1235,14 @@ class depgraph(object):
 				cur_iuse).difference(forced_flags))
 			flags.update(orig_iuse.intersection(orig_use).symmetric_difference(
 				cur_iuse.intersection(cur_use)))
+			flags.difference_update(_feature_flags)
 			if flags:
 				return flags
 
 		elif changed_use or binpkg_respect_use:
-			flags = orig_iuse.intersection(orig_use).symmetric_difference(
-				cur_iuse.intersection(cur_use))
+			flags = set(orig_iuse.intersection(orig_use).symmetric_difference(
+				cur_iuse.intersection(cur_use)))
+			flags.difference_update(_feature_flags)
 			if flags:
 				return flags
 		return None

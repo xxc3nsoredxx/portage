@@ -216,11 +216,15 @@ use() {
 				"in IUSE for ${CATEGORY}/${PF}"
 	fi
 
+	local IFS=$' \t\n' prev_shopts=$- ret
+	set -f
 	if has ${u} ${USE} ; then
-		return ${found}
+		ret=${found}
 	else
-		return $((!found))
+		ret=$((!found))
 	fi
+	[[ ${prev_shopts} == *f* ]] || set +f
+	return ${ret}
 }
 
 use_with() {
@@ -631,23 +635,6 @@ _eapi4_src_install() {
 	fi
 }
 
-_eapi5_src_prepare() {
-	apply_user_patches
-}
-
-apply_user_patches() {
-	die "apply_user_patches is not supported with EAPI ${EAPI}"
-}
-
-_eapi5_apply_user_patches() {
-	[[ ${EBUILD_PHASE} == prepare ]] || \
-		die "apply_user_patches may only be called during src_prepare"
-	# This is a no-op that is just enough to fullfill the spec.
-	[[ -f ${PORTAGE_BUILDDIR}/.apply_user_patches ]] && return 1
-	> "${PORTAGE_BUILDDIR}/.apply_user_patches" || die
-	return 1
-}
-
 # @FUNCTION: has_version
 # @USAGE: [--host-root] <DEPEND ATOM>
 # @DESCRIPTION:
@@ -657,18 +644,13 @@ _eapi5_apply_user_patches() {
 has_version() {
 
 	local atom eroot host_root=false root=${ROOT}
-	while [ $# -gt 0 ] ; do
-		case "$1" in
-			--host-root)
-				host_root=true
-				;;
-			*)
-				[[ -n ${atom} ]] && die "${FUNCNAME[0]}: unused argument: $1"
-				atom=$1
-				;;
-		esac
+	if [[ $1 == --host-root ]] ; then
+		host_root=true
 		shift
-	done
+	fi
+	atom=$1
+	shift
+	[ $# -gt 0 ] && die "${FUNCNAME[0]}: unused argument(s): $*"
 
 	if ${host_root} ; then
 		case "${EAPI}" in
@@ -714,18 +696,13 @@ has_version() {
 best_version() {
 
 	local atom eroot host_root=false root=${ROOT}
-	while [ $# -gt 0 ] ; do
-		case "$1" in
-			--host-root)
-				host_root=true
-				;;
-			*)
-				[[ -n ${atom} ]] && die "${FUNCNAME[0]}: unused argument: $1"
-				atom=$1
-				;;
-		esac
+	if [[ $1 == --host-root ]] ; then
+		host_root=true
 		shift
-	done
+	fi
+	atom=$1
+	shift
+	[ $# -gt 0 ] && die "${FUNCNAME[0]}: unused argument(s): $*"
 
 	if ${host_root} ; then
 		case "${EAPI}" in

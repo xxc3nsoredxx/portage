@@ -316,8 +316,7 @@ dyn_clean() {
 			"$PORTAGE_BUILDDIR"/.abi \
 			"$PORTAGE_BUILDDIR"/.die_hooks \
 			"$PORTAGE_BUILDDIR"/.ipc_{in,out,lock} \
-			"$PORTAGE_BUILDDIR"/.exit_status \
-			"$PORTAGE_BUILDDIR"/.apply_user_patches
+			"$PORTAGE_BUILDDIR"/.exit_status
 
 		rm -rf "${PORTAGE_BUILDDIR}"/{build-info,abi-code}
 		rm -rf "${WORKDIR}"*
@@ -421,7 +420,6 @@ dyn_prepare() {
 	else
 		die "The source directory '${S}' doesn't exist"
 	fi
-	rm -f "${PORTAGE_BUILDDIR}/.apply_user_patches" || die
 
 	trap abort_prepare SIGINT SIGQUIT
 
@@ -442,14 +440,6 @@ dyn_prepare() {
 		die "Failed to create $PORTAGE_BUILDDIR/.prepared"
 	vecho ">>> Source prepared."
 	ebuild_phase post_src_prepare
-	case "${EAPI}" in
-		0|1|2|3|4|4-python|4-slot-abi)
-			;;
-		*)
-			[[ ! -f ${PORTAGE_BUILDDIR}/.apply_user_patches ]] && \
-				die "src_prepare must call apply_user_patches at least once"
-			;;
-	esac
 
 	trap - SIGINT SIGQUIT
 }
@@ -572,7 +562,7 @@ dyn_test() {
 		return
 	fi
 
-	if [ "${EBUILD_FORCE_TEST}" == "1" ] ; then
+	if [[ ${EBUILD_FORCE_TEST} == 1 && test =~ $PORTAGE_IUSE ]]; then
 		# If USE came from ${T}/environment then it might not have USE=test
 		# like it's supposed to here.
 		! has test ${USE} && export USE="${USE} test"
@@ -987,18 +977,6 @@ _ebuild_phase_funcs() {
 						eval "default_src_install() { _eapi4_src_install \"\$@\" ; }"
 						[[ $phase_func = src_install ]] && \
 							eval "default() { _eapi4_$phase_func \"\$@\" ; }"
-						case "$eapi" in
-							4|4-python|4-slot-abi)
-								;;
-							*)
-								! declare -F src_prepare >/dev/null && \
-									src_prepare() { _eapi5_src_prepare "$@" ; }
-								default_src_prepare() { _eapi5_src_prepare "$@" ; }
-								[[ $phase_func = src_prepare ]] && \
-									eval "default() { _eapi5_$phase_func \"\$@\" ; }"
-								apply_user_patches() { _eapi5_apply_user_patches "$@" ; }
-								;;
-						esac
 						;;
 				esac
 

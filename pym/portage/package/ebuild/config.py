@@ -60,6 +60,8 @@ from portage.package.ebuild._config.helper import ordered_by_atom_specificity, p
 if sys.hexversion >= 0x3000000:
 	basestring = str
 
+_feature_flags = frozenset(["test"])
+
 def autouse(myvartree, use_cache=1, mysettings=None):
 	warnings.warn("portage.autouse() is deprecated",
 		DeprecationWarning, stacklevel=2)
@@ -973,7 +975,7 @@ class config(object):
 
 		if profile_broken:
 			abs_profile_path = None
-			for x in (PROFILE_PATH, 'etc/portage/make.profile'):
+			for x in (PROFILE_PATH, 'etc/make.profile'):
 				x = os.path.join(self["PORTAGE_CONFIGROOT"], x)
 				try:
 					os.lstat(x)
@@ -1480,8 +1482,11 @@ class config(object):
 			not hasattr(self, "_ebuild_force_test_msg_shown"):
 				self._ebuild_force_test_msg_shown = True
 				writemsg(_("Forcing test.\n"), noiselevel=-1)
-		if "test" in self.features:
-			if "test" in self.usemask and not ebuild_force_test:
+
+		if "test" in explicit_iuse or iuse_implicit_match("test"):
+			if "test" not in self.features:
+				use.discard("test")
+			elif "test" in self.usemask and not ebuild_force_test:
 				# "test" is in IUSE and USE=test is masked, so execution
 				# of src_test() probably is not reliable. Therefore,
 				# temporarily disable FEATURES=test just for this package.
