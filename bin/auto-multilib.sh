@@ -18,7 +18,7 @@ _save_abi_env() {
 	[[ -n ${MULTILIB_DEBUG} ]] && \
 		einfo "MULTILIB_DEBUG: Saving Environment:" "${1}"
 	mkdir -p ${PORTAGE_BUILDDIR}/abi-code
-	save_ebuild_env --exclude-init-phases | filter_readonly_variables \
+	__save_ebuild_env --exclude-init-phases | __filter_readonly_variables \
 		--filter-path --filter-sandbox --allow-extra-vars --filter-metadata > ${PORTAGE_BUILDDIR}/abi-code/environment."${1}"
 	[[ $UID == 0 ]] && chown portage:portage ${PORTAGE_BUILDDIR}/abi-code/environment."${1}"
 }
@@ -31,7 +31,7 @@ _restore_abi_env() {
 	[[ -n ${MULTILIB_DEBUG} ]] && \
 		einfo "MULTILIB_DEBUG: Restoring Environment:" "${1}"
 	cp ${PORTAGE_BUILDDIR}/abi-code/environment."${1}" "${T}"/environment || die
-	preprocess_ebuild_env --filter-metadata
+	__preprocess_ebuild_env --filter-metadata
 }
 
 # @FUNCTION: portage-get_abi_var

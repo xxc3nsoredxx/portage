@@ -1070,7 +1070,7 @@ __ebuild_main() {
 							# install a per-ABI environment
 							if [[ -f "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 ]] ; then
 								bzcat "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 > "${T}"/environment || die
-								preprocess_ebuild_env --filter-metadata
+								__preprocess_ebuild_env --filter-metadata
 							fi
 							;;
 					esac
@@ -1105,7 +1105,7 @@ __ebuild_main() {
 							#if = backward compactibility for previous versions, which did not
 							#install a per-ABI environment
 							if [[ -f "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 ]] ; then
-								preprocess_ebuild_env --filter-metadata
+								__preprocess_ebuild_env --filter-metadata
 								bzcat "${ROOT}"var/db/pkg/${CATEGORY}/${PF}/environment.${LOOP_ABI}.bz2 > "${T}"/environment || die
 							fi
 							;;
