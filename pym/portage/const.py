@@ -27,8 +27,8 @@ import os
 # The variables in this file are grouped by config_root, target_root.
 
 # variables used with config_root (these need to be relative)
-MAKE_CONF_FILE           = "etc/make.conf"
 USER_CONFIG_PATH         = "etc/portage"
+MAKE_CONF_FILE           = USER_CONFIG_PATH + "/make.conf"
 MODULES_FILE_PATH        = USER_CONFIG_PATH + "/modules"
 CUSTOM_PROFILE_PATH      = USER_CONFIG_PATH + "/profile"
 USER_VIRTUALS_FILE       = USER_CONFIG_PATH + "/virtuals"
@@ -110,7 +110,7 @@ SUPPORTED_FEATURES       = frozenset([
                            "unmerge-logs", "unmerge-orphans", "userfetch", "userpriv",
                            "usersandbox", "usersync", "webrsync-gpg", "xattr"])
 
-EAPI                     = 4
+EAPI                     = 5
 
 HASHING_BLOCKSIZE        = 32768
 MANIFEST1_HASH_FUNCTIONS = ("MD5", "SHA256", "RMD160")

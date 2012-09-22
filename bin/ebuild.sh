@@ -24,8 +24,8 @@ else
 	for x in diropts docompress exeopts get_KV insopts \
 		keepdir KV_major KV_micro KV_minor KV_to_int \
 		libopts register_die_hook register_success_hook \
-		remove_path_entry set_unless_changed strip_duplicate_slashes \
-		unset_unless_changed use_with use_enable ; do
+		__strip_duplicate_slashes \
+		use_with use_enable ; do
 		eval "${x}() {
 			if has \"\${EAPI:-0}\" 4-python; then
 				die \"\${FUNCNAME}() calls are not allowed in global scope\"
@@ -67,7 +67,7 @@ export PORTAGE_BZIP2_COMMAND=${PORTAGE_BZIP2_COMMAND:-bzip2}
 # with shell opts (shopts).  Ebuilds/eclasses changing shopts should reset them 
 # when they are done.
 
-qa_source() {
+__qa_source() {
 	local shopts=$(shopt) OLDIFS="$IFS"
 	local retval
 	source "$@"
@@ -80,7 +80,7 @@ qa_source() {
 	return $retval
 }
 
-qa_call() {
+__qa_call() {
 	local shopts=$(shopt) OLDIFS="$IFS"
 	local retval
 	"$@"
@@ -103,7 +103,7 @@ unset GZIP BZIP BZIP2 CDPATH GREP_OPTIONS GREP_COLOR GLOBIGNORE
 [[ $PORTAGE_QUIET != "" ]] && export PORTAGE_QUIET
 
 # sandbox support functions; defined prior to profile.bashrc srcing, since the profile might need to add a default exception (/usr/lib64/conftest fex)
-_sb_append_var() {
+__sb_append_var() {
 	local _v=$1 ; shift
 	local var="SANDBOX_${_v}"
 	[[ -z $1 || -n $2 ]] && die "Usage: add$(echo ${_v} | \
@@ -112,11 +112,11 @@ _sb_append_var() {
 }
 # bash-4 version:
 # local var="SANDBOX_${1^^}"
-# addread() { _sb_append_var ${0#add} "$@" ; }
-addread()    { _sb_append_var READ    "$@" ; }
-addwrite()   { _sb_append_var WRITE   "$@" ; }
-adddeny()    { _sb_append_var DENY    "$@" ; }
-addpredict() { _sb_append_var PREDICT "$@" ; }
+# addread() { __sb_append_var ${0#add} "$@" ; }
+addread()    { __sb_append_var READ    "$@" ; }
+addwrite()   { __sb_append_var WRITE   "$@" ; }
+adddeny()    { __sb_append_var DENY    "$@" ; }
+addpredict() { __sb_append_var PREDICT "$@" ; }
 
 addwrite "${PORTAGE_TMPDIR}"
 addread "/:${PORTAGE_TMPDIR}"
@@ -136,12 +136,6 @@ fi
 
 # the sandbox is disabled by default except when overridden in the relevant stages
 export SANDBOX_ON=0
-
-esyslog() {
-	# Custom version of esyslog() to take care of the "Red Star" bug.
-	# MUST follow functions.sh to override the "" parameter problem.
-	return 0
-}
 
 # Ensure that $PWD is sane whenever possible, to protect against
 # exploitation of insecure search path for python -c in ebuilds.
@@ -281,7 +275,7 @@ inherit() {
 		#turn on glob expansion
 		set +f
 
-		qa_source "$location" || die "died sourcing $location in inherit()"
+		__qa_source "$location" || die "died sourcing $location in inherit()"
 		
 		#turn off glob expansion
 		set -f
@@ -349,7 +343,7 @@ EXPORT_FUNCTIONS() {
 
 PORTAGE_BASHRCS_SOURCED=0
 
-# @FUNCTION: source_all_bashrcs
+# @FUNCTION: __source_all_bashrcs
 # @DESCRIPTION:
 # Source a relevant bashrc files and perform other miscellaneous
 # environment initialization when appropriate.
@@ -360,7 +354,7 @@ PORTAGE_BASHRCS_SOURCED=0
 #  * A "default" function which is an alias for the default phase
 #    function for the current phase.
 #
-source_all_bashrcs() {
+__source_all_bashrcs() {
 	[[ $PORTAGE_BASHRCS_SOURCED = 1 ]] && return 0
 	PORTAGE_BASHRCS_SOURCED=1
 	local x
@@ -374,7 +368,7 @@ source_all_bashrcs() {
 		local path_array=($PROFILE_PATHS)
 		restore_IFS
 		for x in "${path_array[@]}" ; do
-			[ -f "$x/profile.bashrc" ] && qa_source "$x/profile.bashrc"
+			[ -f "$x/profile.bashrc" ] && __qa_source "$x/profile.bashrc"
 		done
 	fi
 
@@ -480,7 +474,7 @@ if ! has "$EBUILD_PHASE" clean cleanrm depend && \
 	# may have come from another version of ebuild.sh or something.
 	# In any case, preprocess it to prevent any potential interference.
 	# NOTE: export ${FOO}=... requires quoting, unlike normal exports
-	preprocess_ebuild_env || \
+	__preprocess_ebuild_env || \
 		die "error processing environment"
 	# Colon separated SANDBOX_* variables need to be cumulative.
 	for x in SANDBOX_DENY SANDBOX_READ SANDBOX_PREDICT SANDBOX_WRITE ; do
@@ -523,7 +517,7 @@ if ! has "$EBUILD_PHASE" clean cleanrm ; then
 		has noauto $FEATURES ; then
 		# The bashrcs get an opportunity here to set aliases that will be expanded
 		# during sourcing of ebuilds and eclasses.
-		source_all_bashrcs
+		__source_all_bashrcs
 
 		# When EBUILD_PHASE != depend, INHERITED comes pre-initialized
 		# from cache. In order to make INHERITED content independent of
@@ -688,7 +682,7 @@ if [[ $EBUILD_PHASE = depend ]] ; then
 	fi
 	set +f
 else
-	# Note: readonly variables interfere with preprocess_ebuild_env(), so
+	# Note: readonly variables interfere with __preprocess_ebuild_env(), so
 	# declare them only after it has already run.
 	declare -r $PORTAGE_READONLY_METADATA $PORTAGE_READONLY_VARS
 	case "$EAPI" in
@@ -706,7 +700,7 @@ else
 			# Don't allow subprocesses to inherit the pipe which
 			# emerge uses to monitor ebuild.sh.
 			exec 9>&-
-			ebuild_main ${EBUILD_SH_ARGS}
+			__ebuild_main ${EBUILD_SH_ARGS}
 			exit 0
 		)
 		exit $?
