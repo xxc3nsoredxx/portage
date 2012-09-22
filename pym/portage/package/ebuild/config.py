@@ -1372,6 +1372,8 @@ class config(object):
 				if pkg_defaults:
 					defaults.extend(pkg_defaults)
 		defaults = " ".join(defaults)
+		if self.configdict["defaults"].get("MULTILIB_ABIS", "").count(' ') != 0:
+			defaults = defaults + " multilib_abi_" + self.configdict["defaults"].get("DEFAULT_ABI", "")
 		if defaults != self.configdict["defaults"].get("USE",""):
 			self.configdict["defaults"]["USE"] = defaults
 			has_changed = True
