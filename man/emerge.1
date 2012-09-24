@@ -428,9 +428,8 @@ required.
 .TP
 .BR "\-\-depclean\-lib\-check [ y | n ]"
 Account for library link-level dependencies during
-\fB\-\-depclean\fR and \fB\-\-prune\fR actions. This
-option is enabled by default. In some cases this can
-be somewhat time\-consuming. This option is ignored
+\fB\-\-depclean\fR and \fB\-\-prune\fR actions.
+This option is enabled by default. This option is ignored
 when FEATURES="preserve\-libs" is enabled in
 \fBmake.conf\fR(5), since any libraries that have
 consumers will simply be preserved.
@@ -706,14 +705,16 @@ Set the \fBROOT\fR environment variable.
 .TP
 .BR "\-\-root\-deps[=rdeps]"
 If no argument is given then build\-time dependencies of packages for
-\fBROOT\fR are installed to
-\fBROOT\fR instead of /. If the \fBrdeps\fR argument is given then discard
-all build\-time dependencies of packages for \fBROOT\fR. This option is
-only meaningful when used together with \fBROOT\fR and it should not
-be enabled under normal circumstances. For currently supported
-\fBEAPI\fR values, the build-time dependencies are specified in the
-\fBDEPEND\fR variable. However, behavior may change for new
-\fBEAPI\fRs when related extensions are added in the future.
+\fBROOT\fR are installed to \fBROOT\fR instead of /.
+If the \fBrdeps\fR argument is given then discard all build\-time dependencies
+of packages for \fBROOT\fR.
+This option is only meaningful when used together with \fBROOT\fR and it should
+not be enabled under normal circumstances!
+
+For currently supported \fBEAPI\fR values, the build-time dependencies are
+specified in the \fBDEPEND\fR variable.
+However, behavior may change for new \fBEAPI\fRs when related extensions are
+added in the future.
 .TP
 .BR "\-\-select [ y | n ]"
 Add specified packages to the world set (inverse of
