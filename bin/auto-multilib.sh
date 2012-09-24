@@ -275,7 +275,7 @@ _finalize_abi_install() {
 	# Save header files for each ABI
 	for dir in ${dirs}; do
 		[ -d "${D}/${dir}" ] || continue
-		vecho ">>> Saving headers $(_get_abi_string)"
+		__vecho ">>> Saving headers $(_get_abi_string)"
 		base=${PORTAGE_BUILDDIR}/abi-code/gentoo-multilib/${dir}/gentoo-multilib
 		mkdir -p ${base}
 		[ -d ${base}/${ABI} ] && rm -rvf ${base}/${ABI}
@@ -288,7 +288,7 @@ _finalize_abi_install() {
 		use multilib_abi_${i} && first_installed_abi=${i} && break
 	done
 	if [ "${ABI}" != "${first_installed_abi}" ]; then
-		vecho ">>> Removing installed symlinks $(_get_abi_string)"
+		__vecho ">>> Removing installed symlinks $(_get_abi_string)"
 		for i in $(find ${D} -type l) ; do
 			[[ -e "${D%/}".${first_installed_abi}/${i/${D}} ]] && rm -f ${i}
 		done
@@ -351,7 +351,7 @@ _finalize_abi_install() {
 			fi
 		done
 	else # ABIS differ
-		vecho ">>> Creating multilib headers"
+		__vecho ">>> Creating multilib headers"
 		base=${PORTAGE_BUILDDIR}/abi-code/gentoo-multilib
 		local files_differ=
 		for dir in ${dirs}; do
