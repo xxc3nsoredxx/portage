@@ -18,7 +18,9 @@ source "${PORTAGE_BIN_PATH:-/usr/lib/portage/bin}/ebuild.sh"
 
 install_symlink_html_docs() {
 	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
-		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+	if ! ___eapi_has_prefix_variables; then
+		local ED=${D}
+	fi
 	[[ -e "${ED}" ]] || return 0
 	cd "${ED}" || die "cd failed"
 	#symlink the html documentation (if DOC_SYMLINKS_DIR is set in make.conf)
@@ -44,7 +46,20 @@ install_symlink_html_docs() {
 }
 
 # replacement for "readlink -f" or "realpath"
+READLINK_F_WORKS=""
 canonicalize() {
+	if [[ -z ${READLINK_F_WORKS} ]] ; then
+		if [[ $(readlink -f -- /../ 2>/dev/null) == "/" ]] ; then
+			READLINK_F_WORKS=true
+		else
+			READLINK_F_WORKS=false
+		fi
+	fi
+	if ${READLINK_F_WORKS} ; then
+		readlink -f -- "$@"
+		return
+	fi
+
 	local f=$1 b n=10 wd=$(pwd)
 	while (( n-- > 0 )); do
 		while [[ ${f: -1} = / && ${#f} -gt 1 ]]; do
@@ -67,8 +82,9 @@ canonicalize() {
 prepcompress() {
 	local -a include exclude incl_d incl_f
 	local f g i real_f real_d
-	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
-		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+	if ! ___eapi_has_prefix_variables; then
+		local ED=${D}
+	fi
 
 	# Canonicalize path names and check for their existence.
 	real_d=$(canonicalize "${ED}")
@@ -150,14 +166,13 @@ prepcompress() {
 
 install_qa_check() {
 	local f i qa_var x
-	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
-		case "$EAPI" in 0|1|2) local EPREFIX= ED=${D} ;; esac
+	if ! ___eapi_has_prefix_variables; then
+		local EPREFIX= ED=${D}
+	fi
 
 	[[ -d "${ED}" ]] || return 0
 	cd "${ED}" || die "cd failed"
 
-	# Merge QA_FLAGS_IGNORED and QA_DT_HASH into a single array, since
-	# QA_DT_HASH is deprecated.
 	qa_var="QA_FLAGS_IGNORED_${ARCH/-/_}"
 	eval "[[ -n \${!qa_var} ]] && QA_FLAGS_IGNORED=(\"\${${qa_var}[@]}\")"
 	if [[ ${#QA_FLAGS_IGNORED[@]} -eq 1 ]] ; then
@@ -166,29 +181,6 @@ install_qa_check() {
 		QA_FLAGS_IGNORED=(${QA_FLAGS_IGNORED})
 		set +o noglob
 		set -${shopts}
-	fi
-
-	qa_var="QA_DT_HASH_${ARCH/-/_}"
-	eval "[[ -n \${!qa_var} ]] && QA_DT_HASH=(\"\${${qa_var}[@]}\")"
-	if [[ ${#QA_DT_HASH[@]} -eq 1 ]] ; then
-		local shopts=$-
-		set -o noglob
-		QA_DT_HASH=(${QA_DT_HASH})
-		set +o noglob
-		set -${shopts}
-	fi
-
-	if [[ -n ${QA_DT_HASH} ]] ; then
-		QA_FLAGS_IGNORED=("${QA_FLAGS_IGNORED[@]}" "${QA_DT_HASH[@]}")
-		unset QA_DT_HASH
-	fi
-
-	# Merge QA_STRICT_FLAGS_IGNORED and QA_STRICT_DT_HASH, since
-	# QA_STRICT_DT_HASH is deprecated
-	if [ "${QA_STRICT_FLAGS_IGNORED-unset}" = unset ] && \
-		[ "${QA_STRICT_DT_HASH-unset}" != unset ] ; then
-		QA_STRICT_FLAGS_IGNORED=1
-		unset QA_STRICT_DT_HASH
 	fi
 
 	# Check for files built without respecting *FLAGS. Note that
@@ -242,7 +234,7 @@ install_qa_check() {
 
 	export STRIP_MASK
 	prepall
-	has "${EAPI}" 0 1 2 3 || prepcompress
+	___eapi_has_docompress && prepcompress
 	ecompressdir --dequeue
 	ecompress --dequeue
 
@@ -972,8 +964,9 @@ preinst_mask() {
 		 return 1
 	fi
 
-	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
-		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+	if ! ___eapi_has_prefix_variables; then
+		local ED=${D}
+	fi
 
 	# Make sure $PWD is not ${D} so that we don't leave gmon.out files
 	# in there in case any tools were built with -pg in CFLAGS.
@@ -1001,8 +994,9 @@ preinst_sfperms() {
 		 return 1
 	fi
 
-	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
-		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+	if ! ___eapi_has_prefix_variables; then
+		local ED=${D}
+	fi
 
 	# Smart FileSystem Permissions
 	if has sfperms $FEATURES; then
@@ -1040,8 +1034,9 @@ preinst_suid_scan() {
 		 return 1
 	fi
 
-	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
-		case "$EAPI" in 0|1|2) local ED=${D} ;; esac
+	if ! ___eapi_has_prefix_variables; then
+		local ED=${D}
+	fi
 
 	# total suid control.
 	if has suidctl $FEATURES; then
@@ -1109,8 +1104,9 @@ preinst_selinux_labels() {
 __dyn_package() {
 	local PROOT
 
-	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
-		case "$EAPI" in 0|1|2) local EPREFIX= ED=${D} ;; esac
+	if ! ___eapi_has_prefix_variables; then
+		local EPREFIX= ED=${D}
+	fi
 
 	# Make sure $PWD is not ${D} so that we don't leave gmon.out files
 	# in there in case any tools were built with -pg in CFLAGS.
@@ -1207,9 +1203,9 @@ __END1__
 }
 
 __dyn_rpm() {
-
-	[[ " ${FEATURES} " == *" force-prefix "* ]] || \
-		case "$EAPI" in 0|1|2) local EPREFIX= ;; esac
+	if ! ___eapi_has_prefix_variables; then
+		local EPREFIX=
+	fi
 
 	cd "${T}" || die "cd failed"
 	local machine_name=$(uname -m)
