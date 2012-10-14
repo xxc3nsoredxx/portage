@@ -29,6 +29,8 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.dep._slot_operator:evaluate_slot_operator_equal_deps',
 	'portage.package.ebuild._spawn_nofetch:spawn_nofetch',
 	'portage.util._desktop_entry:validate_desktop_entry',
+	'portage.util._async.SchedulerInterface:SchedulerInterface',
+	'portage.util._eventloop.EventLoop:EventLoop',
 	'portage.util.ExtractKernelVersion:ExtractKernelVersion'
 )
 
@@ -65,7 +67,6 @@ from _emerge.EbuildBuildDir import EbuildBuildDir
 from _emerge.EbuildPhase import EbuildPhase
 from _emerge.EbuildSpawnProcess import EbuildSpawnProcess
 from _emerge.Package import Package
-from _emerge.PollScheduler import PollScheduler
 from _emerge.RootConfig import RootConfig
 
 _unsandboxed_phases = frozenset([
@@ -133,7 +134,7 @@ def _spawn_phase(phase, settings, actionmap=None, **kwargs):
 		return _doebuild_spawn(phase, settings, actionmap=actionmap, **kwargs)
 
 	ebuild_phase = EbuildPhase(actionmap=actionmap, background=False,
-		phase=phase, scheduler=PollScheduler().sched_iface,
+		phase=phase, scheduler=SchedulerInterface(EventLoop(main=False)),
 		settings=settings)
 	ebuild_phase.start()
 	ebuild_phase.wait()
@@ -691,7 +692,7 @@ def doebuild(myebuild, mydo, _unused=None, settings=None, debug=0, listonly=0,
 			if not returnpid and \
 				'PORTAGE_BUILDIR_LOCKED' not in mysettings:
 				builddir_lock = EbuildBuildDir(
-					scheduler=PollScheduler().sched_iface,
+					scheduler=EventLoop(main=False),
 					settings=mysettings)
 				builddir_lock.lock()
 			try:
@@ -833,7 +834,7 @@ def doebuild(myebuild, mydo, _unused=None, settings=None, debug=0, listonly=0,
 					if builddir_lock is None and \
 						'PORTAGE_BUILDIR_LOCKED' not in mysettings:
 						builddir_lock = EbuildBuildDir(
-							scheduler=PollScheduler().sched_iface,
+							scheduler=EventLoop(main=False),
 							settings=mysettings)
 						builddir_lock.lock()
 					try:
@@ -856,7 +857,7 @@ def doebuild(myebuild, mydo, _unused=None, settings=None, debug=0, listonly=0,
 			if not returnpid and \
 				'PORTAGE_BUILDIR_LOCKED' not in mysettings:
 				builddir_lock = EbuildBuildDir(
-					scheduler=PollScheduler().sched_iface,
+					scheduler=EventLoop(main=False),
 					settings=mysettings)
 				builddir_lock.lock()
 			mystatus = prepare_build_dirs(myroot, mysettings, cleanup)
@@ -1197,7 +1198,7 @@ def _prepare_env_file(settings):
 	"""
 
 	env_extractor = BinpkgEnvExtractor(background=False,
-		scheduler=PollScheduler().sched_iface, settings=settings)
+		scheduler=EventLoop(main=False), settings=settings)
 
 	if env_extractor.dest_env_exists():
 		# There are lots of possible states when doebuild()
@@ -1457,7 +1458,8 @@ def spawn(mystring, mysettings, debug=0, free=0, droppriv=0, sesandbox=0, fakero
 
 	proc = EbuildSpawnProcess(
 		background=False, args=mystring,
-		scheduler=PollScheduler().sched_iface, spawn_func=spawn_func,
+		scheduler=SchedulerInterface(EventLoop(main=False)),
+		spawn_func=spawn_func,
 		settings=mysettings, **keywords)
 
 	proc.start()

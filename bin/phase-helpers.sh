@@ -672,8 +672,15 @@ has_version() {
 		0|1)
 			return ${retval}
 			;;
+		2)
+			die "${FUNCNAME[0]}: invalid atom: ${atom}"
+			;;
 		*)
-			die "unexpected portageq exit code: ${retval}"
+			if [[ -n ${PORTAGE_IPC_DAEMON} ]]; then
+				die "${FUNCNAME[0]}: unexpected ebuild-ipc exit code: ${retval}"
+			else
+				die "${FUNCNAME[0]}: unexpected portageq exit code: ${retval}"
+			fi
 			;;
 	esac
 }
@@ -718,8 +725,15 @@ best_version() {
 		0|1)
 			return ${retval}
 			;;
+		2)
+			die "${FUNCNAME[0]}: invalid atom: ${atom}"
+			;;
 		*)
-			die "unexpected portageq exit code: ${retval}"
+			if [[ -n ${PORTAGE_IPC_DAEMON} ]]; then
+				die "${FUNCNAME[0]}: unexpected ebuild-ipc exit code: ${retval}"
+			else
+				die "${FUNCNAME[0]}: unexpected portageq exit code: ${retval}"
+			fi
 			;;
 	esac
 }

@@ -1178,7 +1178,7 @@ Summary: ${DESCRIPTION}
 Name: ${PN}
 Version: ${PV}
 Release: ${PR}
-Copyright: GPL
+License: GPL
 Group: portage/${CATEGORY}
 Source: ${PF}.tar.gz
 Buildroot: ${D}
