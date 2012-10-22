@@ -1,4 +1,4 @@
-# Copyright 1999-2012 Gentoo Foundation
+w# Copyright 1999-2012 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import print_function
@@ -3459,6 +3459,14 @@ def run_action(settings, trees, mtimedb, myaction, myopts, myfiles,
 
 	adjust_configs(myopts, trees)
 	apply_priorities(settings)
+
+	if 'force-multilib' in settings.features:
+		if settings.get("NO_AUTO_FLAG", "") is "":
+			writemsg_level(bad("!!! Failed to find vars from extra profile") + "\n",level=logging.ERROR, noiselevel=-1)
+			writemsg_level(bad("!!! Please make sure that you did follow the instructions and included the extra profile\n"),level=logging.ERROR, noiselevel=-1)
+			writemsg_level(bad("!!! http://git.overlays.gentoo.org/gitweb/?p=proj/multilib-portage.git;a=blob;f=doc/portage-multilib-instructions\n"),level=logging.ERROR, noiselevel=-1)
+			writemsg_level(bad("!!! has some basic instructions for the setup\n"),level=logging.ERROR, noiselevel=-1)
+			return 1
 
 	if myaction == 'version':
 		writemsg_stdout(getportageversion(
