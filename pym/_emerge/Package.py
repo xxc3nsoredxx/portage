@@ -89,7 +89,6 @@ class Package(Task):
 		usealiases = self.root_config.settings._use_manager.getUseAliases(self)
 		self.iuse = self._iuse(self, iuse.split(), implicit_match,
 			usealiases, self.eapi)
->>>>>>> v2.2.0_alpha143
 
 		if (self.iuse.enabled or self.iuse.disabled) and \
 			not eapi_attrs.iuse_defaults:
