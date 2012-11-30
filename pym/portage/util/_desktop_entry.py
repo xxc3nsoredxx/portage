@@ -47,6 +47,7 @@ _ignored_errors = (
 		# Ignore error for emacs.desktop:
 		# https://bugs.freedesktop.org/show_bug.cgi?id=35844#c6
 		'error: (will be fatal in the future): value "TextEditor" in key "Categories" in group "Desktop Entry" requires another category to be present among the following categories: Utility',
+		'warning: key "Encoding" in group "Desktop Entry" is deprecated'
 )
 
 def validate_desktop_entry(path):
@@ -62,7 +63,9 @@ def validate_desktop_entry(path):
 	if output_lines:
 		filtered_output = []
 		for line in output_lines:
-			if line[len(path)+2:] in _ignored_errors:
+			msg = line[len(path)+2:]
+			# "hint:" output is new in desktop-file-utils-0.21
+			if msg.startswith('hint: ') or msg in _ignored_errors:
 				continue
 			filtered_output.append(line)
 		output_lines = filtered_output
