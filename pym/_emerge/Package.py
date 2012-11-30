@@ -79,13 +79,13 @@ class Package(Task):
 			implicit_match = self.root_config.settings._iuse_effective_match
 		else:
 			implicit_match = self.root_config.settings._iuse_implicit_match
-		iuse = self.metadata["IUSE"]
+		iuse = self._metadata["IUSE"]
 		if 'force-multilib' in self.root_config.settings.features:
 			if self.built is False:
 				for multilib_abis in self.root_config.settings.get("MULTILIB_ABIS", '').split():
 					iuse += " multilib_abi_" + multilib_abis
 				iuse += " abiwrapper"
-				self.metadata["IUSE"] = iuse
+				self._metadata["IUSE"] = iuse
 		usealiases = self.root_config.settings._use_manager.getUseAliases(self)
 		self.iuse = self._iuse(self, iuse.split(), implicit_match,
 			usealiases, self.eapi)
