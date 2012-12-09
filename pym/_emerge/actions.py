@@ -1366,14 +1366,14 @@ def action_info(settings, trees, myopts, myfiles):
 	portdb = trees[eroot]['porttree'].dbapi
 	bindb = trees[eroot]["bintree"].dbapi
 	for x in myfiles:
-		match_found = False
+		any_match = False
 		cp_exists = False
 		installed_match = vardb.match(x)
 		for installed in installed_match:
 			mypkgs.append((installed, "installed"))
-			match_found = True
+			any_match = True
 
-		if match_found:
+		if any_match:
 			continue
 
 		for db, pkg_type in ((portdb, "ebuild"), (bindb, "binary")):
@@ -1386,6 +1386,7 @@ def action_info(settings, trees, myopts, myfiles):
 			matches = db.match(x)
 			matches.reverse()
 			for match in matches:
+				any_match = True
 				if pkg_type == "binary":
 					if db.bintree.isremote(match):
 						continue
@@ -1394,10 +1395,9 @@ def action_info(settings, trees, myopts, myfiles):
 				if metadata["EAPI"] not in ("0", "1", "2", "3") and \
 					"info" in metadata["DEFINED_PHASES"].split():
 					mypkgs.append((match, pkg_type))
-					match_found = True
 					break
 
-		if not match_found:
+		if not any_match:
 			xinfo = '"%s"' % x.unevaluated_atom
 			# Discard null/ from failed cpv_expand category expansion.
 			xinfo = xinfo.replace("null/", "")
@@ -2095,7 +2095,8 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 				"control (contains %s).\n!!! Aborting rsync sync.\n") % \
 				(myportdir, vcs_dir), level=logging.ERROR, noiselevel=-1)
 			return 1
-		if not os.path.exists("/usr/bin/rsync"):
+		rsync_binary = portage.process.find_binary("rsync")
+		if rsync_binary is None:
 			print("!!! /usr/bin/rsync does not exist, so rsync support is disabled.")
 			print("!!! Type \"emerge net-misc/rsync\" to enable rsync support.")
 			sys.exit(1)
@@ -2321,7 +2322,7 @@ def action_sync(settings, trees, mtimedb, myopts, myaction):
 			if mytimestamp != 0 and "--quiet" not in myopts:
 				print(">>> Checking server timestamp ...")
 
-			rsynccommand = ["/usr/bin/rsync"] + rsync_opts + extra_rsync_opts
+			rsynccommand = [rsync_binary] + rsync_opts + extra_rsync_opts
 
 			if "--debug" in myopts:
 				print(rsynccommand)

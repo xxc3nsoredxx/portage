@@ -1800,7 +1800,6 @@ def _post_src_install_uid_fix(mysettings, out):
 
 	destdir = mysettings["D"]
 	ed_len = len(mysettings["ED"])
-	desktopfile_errors = []
 	unicode_errors = []
 	desktop_file_validate = \
 		portage.process.find_binary("desktop-file-validate") is not None
@@ -1837,6 +1836,7 @@ def _post_src_install_uid_fix(mysettings, out):
 		counted_inodes = set()
 		fixlafiles_announced = False
 		fixlafiles = "fixlafiles" in mysettings.features
+		desktopfile_errors = []
 
 		for parent, dirs, files in os.walk(destdir):
 			try:

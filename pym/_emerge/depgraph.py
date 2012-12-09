@@ -4634,6 +4634,14 @@ class depgraph(object):
 					unmasked = [pkg for pkg in matches if not pkg.masks]
 					if unmasked:
 						matches = unmasked
+						if len(matches) > 1:
+							# Now account for packages for which existing
+							# ebuilds are masked or unavailable (bug #445506).
+							unmasked = [pkg for pkg in matches if
+								self._equiv_ebuild_visible(pkg)]
+							if unmasked:
+								matches = unmasked
+
 		pkg = matches[-1] # highest match
 		in_graph = self._dynamic_config._slot_pkg_map[root].get(pkg.slot_atom)
 		return pkg, in_graph
@@ -7567,8 +7575,10 @@ def show_masked_packages(masked_packages):
 			shown_comments.add(comment)
 		portdb = root_config.trees["porttree"].dbapi
 		for l in missing_licenses:
-			l_path = portdb.findLicensePath(l)
 			if l in shown_licenses:
+				continue
+			l_path = portdb.findLicensePath(l)
+			if l_path is None:
 				continue
 			msg = ("A copy of the '%s' license" + \
 			" is located at '%s'.\n\n") % (l, l_path)
