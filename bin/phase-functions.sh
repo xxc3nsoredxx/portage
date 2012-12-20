@@ -675,9 +675,6 @@ __dyn_install() {
 			if [[ ${CATEGORY}/${PN} == sys-devel/libtool ]] ; then
 				ewarn "Preserving libltdl.la because of extensive usage"
 				ewarn "even in m4 macros of libtool"
-			elif [[ ${CATEGORY}/${PN} == media-libs/gst-plugins-* ]] ; then
-				ewarn "Preserving .la files for gst plugins"
-				ewarn "because of broken Gentoo package"
 			else
 				find "${D}" -name '*.la' ! -exec grep -q shouldnotlink=yes {} \; -exec rm {} \;
 			fi
