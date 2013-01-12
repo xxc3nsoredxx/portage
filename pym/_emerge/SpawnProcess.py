@@ -1,5 +1,11 @@
-# Copyright 2008-2012 Gentoo Foundation
+# Copyright 2008-2013 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
+
+try:
+	import fcntl
+except ImportError:
+	# http://bugs.jython.org/issue1074
+	fcntl = None
 
 from _emerge.SubProcess import SubProcess
 import sys
@@ -18,7 +24,7 @@ class SpawnProcess(SubProcess):
 
 	_spawn_kwarg_names = ("env", "opt_name", "fd_pipes",
 		"uid", "gid", "groups", "umask", "logfile",
-		"path_lookup", "pre_exec")
+		"path_lookup", "pre_exec", "close_fds")
 
 	__slots__ = ("args",) + \
 		_spawn_kwarg_names + ("_pipe_logger", "_selinux_type",)
@@ -96,7 +102,7 @@ class SpawnProcess(SubProcess):
 			# spawn failed
 			self._unregister()
 			self._set_returncode((self.pid, retval))
-			self.wait()
+			self._async_wait()
 			return
 
 		self.pid = retval[0]
@@ -105,6 +111,20 @@ class SpawnProcess(SubProcess):
 		stdout_fd = None
 		if can_log and not self.background:
 			stdout_fd = os.dup(fd_pipes_orig[1])
+			if fcntl is not None:
+				try:
+					fcntl.FD_CLOEXEC
+				except AttributeError:
+					pass
+				else:
+					try:
+						fcntl.fcntl(stdout_fd, fcntl.F_SETFL,
+							fcntl.fcntl(stdout_fd,
+							fcntl.F_GETFL) | fcntl.FD_CLOEXEC)
+					except IOError:
+						# FreeBSD may return "Inappropriate ioctl for device"
+						# error here (ENOTTY).
+						pass
 
 		self._pipe_logger = PipeLogger(background=self.background,
 			scheduler=self.scheduler, input_fd=master_fd,

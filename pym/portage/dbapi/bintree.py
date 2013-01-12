@@ -258,7 +258,7 @@ def _pkgindex_cpv_map_latest_build(pkgindex):
 
 class binarytree(object):
 	"this tree scans for a list of all packages available in PKGDIR"
-	def __init__(self, _unused=None, pkgdir=None,
+	def __init__(self, _unused=DeprecationWarning, pkgdir=None,
 		virtual=DeprecationWarning, settings=None):
 
 		if pkgdir is None:
@@ -267,11 +267,11 @@ class binarytree(object):
 		if settings is None:
 			raise TypeError("settings parameter is required")
 
-		if _unused is not None and _unused != settings['ROOT']:
-			warnings.warn("The root parameter of the "
+		if _unused is not DeprecationWarning:
+			warnings.warn("The first parameter of the "
 				"portage.dbapi.bintree.binarytree"
-				" constructor is now unused. Use "
-				"settings['ROOT'] instead.",
+				" constructor is now unused. Instead "
+				"settings['ROOT'] is used.",
 				DeprecationWarning, stacklevel=2)
 
 		if virtual is not DeprecationWarning:
@@ -1356,19 +1356,14 @@ class binarytree(object):
 				f.close()
 		return pkgindex
 
-	def digestCheck(self, pkg):
-		"""
-		Verify digests for the given package and raise DigestException
-		if verification fails.
-		@rtype: bool
-		@return: True if digests could be located, False otherwise.
-		"""
-		cpv = pkg
-		if not isinstance(cpv, basestring):
-			cpv = pkg.cpv
-			pkg = None
+	def _get_digests(self, pkg):
 
-		pkg_path = self.getname(cpv)
+		try:
+			cpv = pkg.cpv
+		except AttributeError:
+			cpv = pkg
+
+		digests = {}
 		metadata = None
 		if self._remotepkgs is None or cpv not in self._remotepkgs:
 			for d in self._load_pkgindex().packages:
@@ -1378,9 +1373,8 @@ class binarytree(object):
 		else:
 			metadata = self._remotepkgs[cpv]
 		if metadata is None:
-			return False
+			return digests
 
-		digests = {}
 		for k in hashfunc_map:
 			v = metadata.get(k)
 			if not v:
@@ -1394,9 +1388,27 @@ class binarytree(object):
 				writemsg(_("!!! Malformed SIZE attribute in remote " \
 				"metadata for '%s'\n") % cpv)
 
+		return digests
+
+	def digestCheck(self, pkg):
+		"""
+		Verify digests for the given package and raise DigestException
+		if verification fails.
+		@rtype: bool
+		@return: True if digests could be located, False otherwise.
+		"""
+
+		digests = self._get_digests(pkg)
+
 		if not digests:
 			return False
 
+		try:
+			cpv = pkg.cpv
+		except AttributeError:
+			cpv = pkg
+
+		pkg_path = self.getname(cpv)
 		hash_filter = _hash_filter(
 			self.settings.get("PORTAGE_CHECKSUM_FILTER", ""))
 		if not hash_filter.transparent:

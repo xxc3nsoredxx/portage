@@ -1,5 +1,5 @@
 #!/usr/bin/python -O
-# Copyright 1999-2012 Gentoo Foundation
+# Copyright 1999-2013 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 # Next to do: dep syntax checking in mask files
@@ -38,8 +38,8 @@ from os import path as osp
 pym_path = osp.join(osp.dirname(osp.dirname(osp.realpath(__file__))), "pym")
 sys.path.insert(0, pym_path)
 import portage
+portage._internal_caller = True
 portage._disable_legacy_globals()
-portage._internal_warnings = True
 
 try:
 	import xml.etree.ElementTree
@@ -1022,7 +1022,7 @@ def git_supports_gpg_sign():
 	if cmd_output:
 		version = re.match(r'^(\d+)\.(\d+)\.(\d+)', cmd_output[-1])
 		if version is not None:
-			version = [int(x) for x in version.groups()[1:]]
+			version = [int(x) for x in version.groups()]
 			if version[0] > 1 or \
 				(version[0] == 1 and version[1] > 7) or \
 				(version[0] == 1 and version[1] == 7 and version[2] >= 9):
@@ -1267,12 +1267,12 @@ check_ebuild_notadded = not \
 	(vcs == "svn" and repolevel < 3 and options.mode != "commit")
 
 # Build a regex from thirdpartymirrors for the SRC_URI.mirror check.
-thirdpartymirrors = []
-for v in repoman_settings.thirdpartymirrors().values():
+thirdpartymirrors = {}
+for k, v in repoman_settings.thirdpartymirrors().items():
 	for v in v:
 		if not v.endswith("/"):
 			v += "/"
-		thirdpartymirrors.append(v)
+		thirdpartymirrors[v] = k
 
 class _MetadataTreeBuilder(xml.etree.ElementTree.TreeBuilder):
 	"""
@@ -1772,17 +1772,18 @@ for x in effective_scanlist:
 			for uri in portage.dep.use_reduce( \
 				myaux["SRC_URI"], matchall=True, is_src_uri=True, eapi=eapi, flat=True):
 				contains_mirror = False
-				for mirror in thirdpartymirrors:
+				for mirror, mirror_alias in thirdpartymirrors.items():
 					if uri.startswith(mirror):
 						contains_mirror = True
 						break
 				if not contains_mirror:
 					continue
 
+				new_uri = "mirror://%s/%s" % (mirror_alias, uri[len(mirror):])
 				stats["SRC_URI.mirror"] += 1
 				fails["SRC_URI.mirror"].append(
-					"%s: '%s' found in thirdpartymirrors" % \
-					(relative_path, mirror))
+					"%s: '%s' found in thirdpartymirrors, use '%s'" % \
+					(relative_path, mirror, new_uri))
 
 		if myaux.get("PROVIDE"):
 			stats["virtual.oldstyle"]+=1
@@ -1820,7 +1821,7 @@ for x in effective_scanlist:
 				not keyword.startswith("-"):
 				stable_keywords.append(keyword)
 		if stable_keywords:
-			if ebuild_path in new_ebuilds:
+			if ebuild_path in new_ebuilds and catdir != "virtual":
 				stable_keywords.sort()
 				stats["KEYWORDS.stable"] += 1
 				fails["KEYWORDS.stable"].append(
@@ -1891,7 +1892,8 @@ for x in effective_scanlist:
 						for expanded_arch in profiles:
 							if expanded_arch == "**":
 								continue
-							arches.add((keyword, expanded_arch, (arch, keyword)))
+							arches.add((keyword, expanded_arch,
+								(expanded_arch, "~" + expanded_arch)))
 					else:
 						arches.add((keyword, arch, (arch, keyword)))
 				else:
@@ -1899,7 +1901,8 @@ for x in effective_scanlist:
 						for expanded_arch in profiles:
 							if expanded_arch == "**":
 								continue
-							arches.add((keyword, expanded_arch, (keyword,)))
+							arches.add((keyword, expanded_arch,
+								(expanded_arch,)))
 					else:
 						arches.add((keyword, keyword, (keyword,)))
 			if not arches:
