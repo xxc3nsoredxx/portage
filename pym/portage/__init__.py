@@ -2,6 +2,8 @@
 # Copyright 1998-2013 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
+from __future__ import unicode_literals
+
 VERSION="HEAD"
 
 # ===========================================================================
@@ -195,6 +197,15 @@ else:
 		return s
 
 	_native_string = _unicode_encode
+
+if sys.hexversion >= 0x20605f0:
+	def _native_kwargs(kwargs):
+		return kwargs
+else:
+	# Avoid "TypeError: keywords must be strings" issue triggered
+	# by unicode_literals: http://bugs.python.org/issue4978
+	def _native_kwargs(kwargs):
+		return dict((_native_string(k), v) for k, v in kwargs.iteritems())
 
 class _unicode_func_wrapper(object):
 	"""

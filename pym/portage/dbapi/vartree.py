@@ -1,6 +1,8 @@
 # Copyright 1998-2013 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
+from __future__ import unicode_literals
+
 __all__ = [
 	"vardbapi", "vartree", "dblink"] + \
 	["write_contents", "tar_contents"]
@@ -577,18 +579,16 @@ class vardbapi(dbapi):
 			# appears to be solved in Python >=3.2 at least).
 			open_kwargs["buffering"] = 0
 		try:
-			f = open(_unicode_encode(self._aux_cache_filename,
+			with open(_unicode_encode(self._aux_cache_filename,
 				encoding=_encodings['fs'], errors='strict'),
-				mode='rb', **open_kwargs)
-			mypickle = pickle.Unpickler(f)
-			try:
-				mypickle.find_global = None
-			except AttributeError:
-				# TODO: If py3k, override Unpickler.find_class().
-				pass
-			aux_cache = mypickle.load()
-			f.close()
-			del f
+				mode='rb', **open_kwargs) as f:
+				mypickle = pickle.Unpickler(f)
+				try:
+					mypickle.find_global = None
+				except AttributeError:
+					# TODO: If py3k, override Unpickler.find_class().
+					pass
+				aux_cache = mypickle.load()
 		except (SystemExit, KeyboardInterrupt):
 			raise
 		except Exception as e:
@@ -596,7 +596,7 @@ class vardbapi(dbapi):
 				getattr(e, 'errno', None) in (errno.ENOENT, errno.EACCES):
 				pass
 			else:
-				writemsg(_unicode_decode(_("!!! Error loading '%s': %s\n")) % \
+				writemsg(_("!!! Error loading '%s': %s\n") % \
 					(self._aux_cache_filename, e), noiselevel=-1)
 			del e
 
@@ -716,7 +716,7 @@ class vardbapi(dbapi):
 		if _get_slot_re(eapi_attrs).match(mydata['SLOT']) is None:
 			# Empty or invalid slot triggers InvalidAtom exceptions when
 			# generating slot atoms for packages, so translate it to '0' here.
-			mydata['SLOT'] = _unicode_decode('0')
+			mydata['SLOT'] = '0'
 
 		return [mydata[x] for x in wants]
 
@@ -741,21 +741,18 @@ class vardbapi(dbapi):
 				results[x] = st[stat.ST_MTIME]
 				continue
 			try:
-				myf = io.open(
+				with io.open(
 					_unicode_encode(os.path.join(mydir, x),
 					encoding=_encodings['fs'], errors='strict'),
 					mode='r', encoding=_encodings['repo.content'],
-					errors='replace')
-				try:
-					myd = myf.read()
-				finally:
-					myf.close()
+					errors='replace') as f:
+					myd = f.read()
 			except IOError:
 				if x not in self._aux_cache_keys and \
 					self._aux_cache_keys_re.match(x) is None:
 					env_keys.append(x)
 					continue
-				myd = _unicode_decode('')
+				myd = ''
 
 			# Preserve \n for metadata that is known to
 			# contain multiple lines.
@@ -769,13 +766,13 @@ class vardbapi(dbapi):
 			for k in env_keys:
 				v = env_results.get(k)
 				if v is None:
-					v = _unicode_decode('')
+					v = ''
 				if self._aux_multi_line_re.match(k) is None:
 					v = " ".join(v.split())
 				results[k] = v
 
 		if results.get("EAPI") == "":
-			results[_unicode_decode("EAPI")] = _unicode_decode('0')
+			results["EAPI"] = '0'
 
 		return results
 
@@ -895,11 +892,17 @@ class vardbapi(dbapi):
 		del myroot
 		counter = -1
 		try:
-			cfile = io.open(
+			with io.open(
 				_unicode_encode(self._counter_path,
 				encoding=_encodings['fs'], errors='strict'),
 				mode='r', encoding=_encodings['repo.content'],
-				errors='replace')
+				errors='replace') as f:
+				try:
+					counter = long(f.readline().strip())
+				except (OverflowError, ValueError) as e:
+					writemsg(_("!!! COUNTER file is corrupt: '%s'\n") %
+						self._counter_path, noiselevel=-1)
+					writemsg("!!! %s\n" % (e,), noiselevel=-1)
 		except EnvironmentError as e:
 			# Silently allow ENOENT since files under
 			# /var/cache/ are allowed to disappear.
@@ -908,17 +911,6 @@ class vardbapi(dbapi):
 					self._counter_path, noiselevel=-1)
 				writemsg("!!! %s\n" % str(e), noiselevel=-1)
 			del e
-		else:
-			try:
-				try:
-					counter = long(cfile.readline().strip())
-				finally:
-					cfile.close()
-			except (OverflowError, ValueError) as e:
-				writemsg(_("!!! COUNTER file is corrupt: '%s'\n") % \
-					self._counter_path, noiselevel=-1)
-				writemsg("!!! %s\n" % str(e), noiselevel=-1)
-				del e
 
 		if self._cached_counter == counter:
 			max_counter = counter
@@ -1591,18 +1583,18 @@ class dblink(object):
 			return self.contentscache
 		pkgfiles = {}
 		try:
-			myc = io.open(_unicode_encode(contents_file,
+			with io.open(_unicode_encode(contents_file,
 				encoding=_encodings['fs'], errors='strict'),
 				mode='r', encoding=_encodings['repo.content'],
-				errors='replace')
+				errors='replace') as f:
+				mylines = f.readlines()
 		except EnvironmentError as e:
 			if e.errno != errno.ENOENT:
 				raise
 			del e
 			self.contentscache = pkgfiles
 			return pkgfiles
-		mylines = myc.readlines()
-		myc.close()
+
 		null_byte = "\0"
 		normalize_needed = self._normalize_needed
 		contents_re = self._contents_re
@@ -1617,7 +1609,7 @@ class dblink(object):
 		if myroot == os.path.sep:
 			myroot = None
 		# used to generate parent dir entries
-		dir_entry = (_unicode_decode("dir"),)
+		dir_entry = ("dir",)
 		eroot_split_len = len(self.settings["EROOT"].split(os.sep)) - 1
 		pos = 0
 		errors = []
@@ -1906,7 +1898,7 @@ class dblink(object):
 				showMessage(_("!!! FAILED prerm: %s\n") % \
 					os.path.join(self.dbdir, "EAPI"),
 					level=logging.ERROR, noiselevel=-1)
-				showMessage(_unicode_decode("%s\n") % (eapi_unsupported,),
+				showMessage("%s\n" % (eapi_unsupported,),
 					level=logging.ERROR, noiselevel=-1)
 			elif os.path.isfile(myebuildpath):
 				phase = EbuildPhase(background=background,
@@ -3532,22 +3524,18 @@ class dblink(object):
 					pass
 				continue
 
-			f = None
 			try:
-				f = io.open(_unicode_encode(
+				with io.open(_unicode_encode(
 					os.path.join(inforoot, var_name),
 					encoding=_encodings['fs'], errors='strict'),
 					mode='r', encoding=_encodings['repo.content'],
-					errors='replace')
-				val = f.readline().strip()
+					errors='replace') as f:
+					val = f.readline().strip()
 			except EnvironmentError as e:
 				if e.errno != errno.ENOENT:
 					raise
 				del e
 				val = ''
-			finally:
-				if f is not None:
-					f.close()
 
 			if var_name == 'SLOT':
 				slot = val
@@ -3973,12 +3961,11 @@ class dblink(object):
 		# write local package counter for recording
 		if counter is None:
 			counter = self.vartree.dbapi.counter_tick(mycpv=self.mycpv)
-		f = io.open(_unicode_encode(os.path.join(self.dbtmpdir, 'COUNTER'),
+		with io.open(_unicode_encode(os.path.join(self.dbtmpdir, 'COUNTER'),
 			encoding=_encodings['fs'], errors='strict'),
 			mode='w', encoding=_encodings['repo.content'],
-			errors='backslashreplace')
-		f.write(_unicode_decode(str(counter)))
-		f.close()
+			errors='backslashreplace') as f:
+			f.write("%s" % counter)
 
 		self.updateprotect()
 
@@ -4823,11 +4810,12 @@ class dblink(object):
 		"returns contents of a file with whitespace converted to spaces"
 		if not os.path.exists(self.dbdir+"/"+name):
 			return ""
-		mydata = io.open(
+		with io.open(
 			_unicode_encode(os.path.join(self.dbdir, name),
 			encoding=_encodings['fs'], errors='strict'),
 			mode='r', encoding=_encodings['repo.content'], errors='replace'
-			).read().split()
+			) as f:
+			mydata = f.read().split()
 		return " ".join(mydata)
 
 	def copyfile(self,fname):
@@ -4836,10 +4824,11 @@ class dblink(object):
 	def getfile(self,fname):
 		if not os.path.exists(self.dbdir+"/"+fname):
 			return ""
-		return io.open(_unicode_encode(os.path.join(self.dbdir, fname),
+		with io.open(_unicode_encode(os.path.join(self.dbdir, fname),
 			encoding=_encodings['fs'], errors='strict'), 
 			mode='r', encoding=_encodings['repo.content'], errors='replace'
-			).read()
+			) as f:
+			return f.read()
 
 	def setfile(self,fname,data):
 		kwargs = {}
@@ -4848,16 +4837,18 @@ class dblink(object):
 		else:
 			kwargs['mode'] = 'w'
 			kwargs['encoding'] = _encodings['repo.content']
-		write_atomic(os.path.join(self.dbdir, fname), data, **kwargs)
+		write_atomic(os.path.join(self.dbdir, fname), data,
+			**portage._native_kwargs(kwargs))
 
 	def getelements(self,ename):
 		if not os.path.exists(self.dbdir+"/"+ename):
 			return []
-		mylines = io.open(_unicode_encode(
+		with io.open(_unicode_encode(
 			os.path.join(self.dbdir, ename),
 			encoding=_encodings['fs'], errors='strict'),
 			mode='r', encoding=_encodings['repo.content'], errors='replace'
-			).readlines()
+			) as f:
+			mylines = f.readlines()
 		myreturn = []
 		for x in mylines:
 			for y in x[:-1].split():
@@ -4865,14 +4856,13 @@ class dblink(object):
 		return myreturn
 
 	def setelements(self,mylist,ename):
-		myelement = io.open(_unicode_encode(
+		with io.open(_unicode_encode(
 			os.path.join(self.dbdir, ename),
 			encoding=_encodings['fs'], errors='strict'),
 			mode='w', encoding=_encodings['repo.content'],
-			errors='backslashreplace')
-		for x in mylist:
-			myelement.write(_unicode_decode(x+"\n"))
-		myelement.close()
+			errors='backslashreplace') as f:
+			for x in mylist:
+				f.write("%s\n" % x)
 
 	def isregular(self):
 		"Is this a regular package (does it have a CATEGORY file?  A dblink can be virtual *and* regular)"
@@ -5140,13 +5130,11 @@ def tar_contents(contents, root, tar, protect=None, onProgress=None):
 				tar.addfile(tarinfo, f)
 				f.close()
 			else:
-				f = open(_unicode_encode(path,
+				with open(_unicode_encode(path,
 					encoding=encoding,
-					errors='strict'), 'rb')
-				try:
+					errors='strict'), 'rb') as f:
 					tar.addfile(tarinfo, f)
-				finally:
-					f.close()
+
 		else:
 			tar.addfile(tarinfo)
 		if onProgress:
