@@ -847,16 +847,17 @@ class config(object):
 			if portage._internal_caller:
 				self["PORTAGE_INTERNAL_CALLER"] = "1"
 				self.backup_changes("PORTAGE_INTERNAL_CALLER")
-			if 'force-multilib' in features:
+
+			# initialize self.features
+			self.regenerate()
+
+			if 'force-multilib' in self.features:
 				#add multilib_abi internally to list of USE_EXPANDed vars
 				self["USE_EXPAND"] = "MULTILIB_ABI" + " " + self.get("USE_EXPAND", "")
 				self.backup_changes("USE_EXPAND")
 				default_abi = self.configdict["defaults"].get('DEFAULT_ABI', '').strip()
 				if default_abi:
 					self.configdict["defaults"]["USE"] = self.configdict["defaults"].get("USE", "") + " multilib_abi_" + default_abi
-
-			# initialize self.features
-			self.regenerate()
 
 			if bsd_chflags:
 				self.features.add('chflags')
