@@ -210,8 +210,11 @@ use() {
 		#fi
 		true
 
-	# Make sure we have this USE flag in IUSE
-	elif [[ -n $PORTAGE_IUSE && -n $EBUILD_PHASE ]] ; then
+	# Make sure we have this USE flag in IUSE, but exempt binary
+	# packages for API consumers like Entropy which do not require
+	# a full profile with IUSE_IMPLICIT and stuff (see bug #456830).
+	elif [[ -n $PORTAGE_IUSE && -n $EBUILD_PHASE &&
+		-n $PORTAGE_INTERNAL_CALLER ]] ; then
 		if ( [[ ! " ${FEATURES} " == *" force-multilib "* && $u == multilib ]] && \
 			[[ ! $u =~ $PORTAGE_IUSE ]] ) ; then
 			if [[ ! ${EAPI} =~ ^(0|1|2|3|4|4-python|4-slot-abi)$ ]] ; then
@@ -440,8 +443,12 @@ econf() {
 	if [ -x "${ECONF_SOURCE}/configure" ]; then
 		if [[ -n $CONFIG_SHELL && \
 			"$(head -n1 "$ECONF_SOURCE/configure")" =~ ^'#!'[[:space:]]*/bin/sh([[:space:]]|$) ]] ; then
+			# preserve timestamp, see bug #440304
+			touch -r "$ECONF_SOURCE/configure" "$ECONF_SOURCE/configure._portage_tmp_.$$" || die
 			sed -e "1s:^#![[:space:]]*/bin/sh:#!$CONFIG_SHELL:" -i "$ECONF_SOURCE/configure" || \
 				die "Substition of shebang in '$ECONF_SOURCE/configure' failed"
+			touch -r "$ECONF_SOURCE/configure._portage_tmp_.$$" "$ECONF_SOURCE/configure" || die
+			rm -f "$ECONF_SOURCE/configure._portage_tmp_.$$"
 		fi
 		if [ -e "${EPREFIX}"/usr/share/gnuconfig/ ]; then
 			find "${WORKDIR}" -type f '(' \

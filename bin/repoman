@@ -609,6 +609,17 @@ if repo_config.sign_commit:
 sign_manifests = "sign" in repoman_settings.features and \
 	repo_config.sign_manifest
 
+if repo_config.sign_manifest and repo_config.name == "gentoo" and \
+	options.mode in ("commit",) and not sign_manifests:
+	msg = ("The '%s' repository has manifest signatures enabled, "
+	"but FEATURES=sign is currently disabled. In order to avoid this "
+	"warning, enable FEATURES=sign in make.conf. Alternatively, "
+	"repositories can disable manifest signatures by setting "
+	"'sign-manifests = false' in metadata/layout.conf.") % \
+	(repo_config.name,)
+	for line in textwrap.wrap(msg, 60):
+		logging.warn(line)
+
 if sign_manifests and options.mode in ("commit",) and \
 	repoman_settings.get("PORTAGE_GPG_KEY") and \
 	re.match(r'^%s$' % GPG_KEY_ID_REGEX,
@@ -645,19 +656,6 @@ if options.mode in ("commit", "fix", "manifest"):
 		for line in textwrap.wrap(msg, 70):
 			logging.error(line)
 		sys.exit(1)
-
-if "commit" == options.mode and \
-	repo_config.name == "gentoo" and \
-	"RMD160" in manifest_hashes and \
-	"RMD160" not in portage.checksum.hashorigin_map:
-	msg = "Please install " \
-	"pycrypto or enable python's ssl USE flag in order " \
-	"to enable RMD160 hash support. See bug #198398 for " \
-	"more information."
-	prefix = bad(" * ")
-	for line in textwrap.wrap(msg, 70):
-		print(prefix + line)
-	sys.exit(1)
 
 if options.echangelog is None and repo_config.update_changelog:
 	options.echangelog = 'y'
@@ -1231,7 +1229,8 @@ elif vcs == "hg":
 	with repoman_popen("hg status --no-status --modified .") as f:
 		mychanged = f.readlines()
 	mychanged = ["./" + elem.rstrip() for elem in mychanged]
-	mynew = repoman_popen("hg status --no-status --added .").readlines()
+	with repoman_popen("hg status --no-status --added .") as f:
+		mynew = f.readlines()
 	mynew = ["./" + elem.rstrip() for elem in mynew]
 	if options.if_modified == "y":
 		with repoman_popen("hg status --no-status --removed .") as f:
@@ -2189,6 +2188,14 @@ for x in effective_scanlist:
 				dep_settings["ACCEPT_KEYWORDS"] = " ".join(groups)
 				# just in case, prevent config.reset() from nuking these.
 				dep_settings.backup_changes("ACCEPT_KEYWORDS")
+
+				# This attribute is used in dbapi._match_use() to apply
+				# use.stable.{mask,force} settings based on the stable
+				# status of the parent package. This is required in order
+				# for USE deps of unstable packages to be resolved correctly,
+				# since otherwise use.stable.{mask,force} settings of
+				# dependencies may conflict (see bug #456342).
+				dep_settings._parent_stable = dep_settings._isStable(pkg)
 
 				if not baddepsyntax:
 					ismasked = not ebuild_archs or \

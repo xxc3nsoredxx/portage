@@ -221,6 +221,7 @@ class config(object):
 		self._accept_properties = None
 		self._features_overrides = []
 		self._make_defaults = None
+		self._parent_stable = None
 
 		# _unknown_features records unknown features that
 		# have triggered warning messages, and ensures that
@@ -843,13 +844,9 @@ class config(object):
 					self[var] = default_val
 				self.backup_changes(var)
 
-			features = []
-			for x in ("globals", "defaults", "conf", "env"):
-				v = self.configdict[x].get("FEATURES")
-				if v is not None:
-					features.append(v.split())
-			features = stack_lists(features)
-
+			if portage._internal_caller:
+				self["PORTAGE_INTERNAL_CALLER"] = "1"
+				self.backup_changes("PORTAGE_INTERNAL_CALLER")
 			if 'force-multilib' in features:
 				#add multilib_abi internally to list of USE_EXPANDed vars
 				self["USE_EXPAND"] = "MULTILIB_ABI" + " " + self.get("USE_EXPAND", "")
@@ -1531,7 +1528,33 @@ class config(object):
 		self.configdict["env"].addLazySingleton(
 			"PORTAGE_IUSE", _lazy_iuse_regex, portage_iuse)
 
-		ebuild_force_test = self.get("EBUILD_FORCE_TEST") == "1"
+		if pkg is None:
+			raw_restrict = pkg_configdict.get("RESTRICT")
+		else:
+			raw_restrict = pkg._raw_metadata["RESTRICT"]
+
+		restrict_test = False
+		if raw_restrict:
+			try:
+				if built_use is not None:
+					restrict = use_reduce(raw_restrict,
+						uselist=built_use, flat=True)
+				else:
+					# Use matchnone=True to ignore USE conditional parts
+					# of RESTRICT, since we want to know whether to mask
+					# the "test" flag _before_ we know the USE values
+					# that would be needed to evaluate the USE
+					# conditionals (see bug #273272).
+					restrict = use_reduce(raw_restrict,
+						matchnone=True, flat=True)
+			except PortageException:
+				pass
+			else:
+				restrict_test = "test" in restrict
+
+		ebuild_force_test = not restrict_test and \
+			self.get("EBUILD_FORCE_TEST") == "1"
+
 		if ebuild_force_test and \
 			not hasattr(self, "_ebuild_force_test_msg_shown"):
 				self._ebuild_force_test_msg_shown = True
@@ -1540,7 +1563,8 @@ class config(object):
 		if "test" in explicit_iuse or iuse_implicit_match("test"):
 			if "test" not in self.features:
 				use.discard("test")
-			elif "test" in self.usemask and not ebuild_force_test:
+			elif restrict_test or \
+				("test" in self.usemask and not ebuild_force_test):
 				# "test" is in IUSE and USE=test is masked, so execution
 				# of src_test() probably is not reliable. Therefore,
 				# temporarily disable FEATURES=test just for this package.
@@ -1728,11 +1752,11 @@ class config(object):
 
 		return iuse_implicit
 
-	def _getUseMask(self, pkg):
-		return self._use_manager.getUseMask(pkg)
+	def _getUseMask(self, pkg, stable=None):
+		return self._use_manager.getUseMask(pkg, stable=stable)
 
-	def _getUseForce(self, pkg):
-		return self._use_manager.getUseForce(pkg)
+	def _getUseForce(self, pkg, stable=None):
+		return self._use_manager.getUseForce(pkg, stable=stable)
 
 	def _getMaskAtom(self, cpv, metadata):
 		"""

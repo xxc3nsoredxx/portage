@@ -194,8 +194,7 @@ install_qa_check() {
 		[[ "${FFLAGS}" == *-frecord-gcc-switches* ]] && \
 		[[ "${FCFLAGS}" == *-frecord-gcc-switches* ]] ; then
 		rm -f "${T}"/scanelf-ignored-CFLAGS.log
-		for x in $(scanelf -qyRF '%k %p' -k \!.GCC.command.line "${ED}" | \
-			sed -e "s:\!.GCC.command.line ::") ; do
+		for x in $(scanelf -qyRF '#k%p' -k '!.GCC.command.line' "${ED}") ; do
 			# Separate out file types that are known to support
 			# .GCC.command.line sections, using the `file` command
 			# similar to how prepstrip uses it.
@@ -252,16 +251,17 @@ install_qa_check() {
 		eqawarn "$f"
 	fi
 
-	if [[ -d ${ED}/etc/udev/rules.d ]] ; then
-		f=
-		for x in $(ls "${ED}/etc/udev/rules.d") ; do
-			f+="  etc/udev/rules.d/$x\n"
-		done
-		if [[ -n $f ]] ; then
-			eqawarn "QA Notice: udev rules should be installed in /lib/udev/rules.d:"
-			eqawarn
-			eqawarn "$f"
-		fi
+	set +f
+	f=
+	for x in "${ED}etc/udev/rules.d/"* "${ED}lib"*"/udev/rules.d/"* ; do
+		[[ -e ${x} ]] || continue
+		[[ ${x} == ${ED}lib/udev/rules.d/* ]] && continue
+		f+="  ${x#${ED}}\n"
+	done
+	if [[ -n $f ]] ; then
+		eqawarn "QA Notice: udev rules should be installed in /lib/udev/rules.d:"
+		eqawarn
+		eqawarn "$f"
 	fi
 
 	# Now we look for all world writable files.
@@ -401,7 +401,7 @@ install_qa_check() {
 		# Check for files built without respecting LDFLAGS
 		if [[ "${LDFLAGS}" == *,--hash-style=gnu* ]] && \
 			! has binchecks ${RESTRICT} ; then
-			f=$(scanelf -qyRF '%k %p' -k .hash "${ED}" | sed -e "s:\.hash ::")
+			f=$(scanelf -qyRF '#k%p' -k .hash "${ED}")
 			if [[ -n ${f} ]] ; then
 				echo "${f}" > "${T}"/scanelf-ignored-LDFLAGS.log
 				if [ "${QA_STRICT_FLAGS_IGNORED-unset}" = unset ] ; then
@@ -436,7 +436,7 @@ install_qa_check() {
 		# Check for shared libraries lacking SONAMEs
 		qa_var="QA_SONAME_${ARCH/-/_}"
 		eval "[[ -n \${!qa_var} ]] && QA_SONAME=(\"\${${qa_var}[@]}\")"
-		f=$(scanelf -ByF '%S %p' "${ED}"{,usr/}lib*/lib*.so* | gawk '$2 == "" { print }' | sed -e "s:^[[:space:]]${ED}:/:")
+		f=$(scanelf -ByF '%S %p' "${ED}"{,usr/}lib*/lib*.so* | awk '$2 == "" { print }' | sed -e "s:^[[:space:]]${ED}:/:")
 		if [[ -n ${f} ]] ; then
 			echo "${f}" > "${T}"/scanelf-missing-SONAME.log
 			if [[ "${QA_STRICT_SONAME-unset}" == unset ]] ; then
@@ -470,7 +470,7 @@ install_qa_check() {
 		# Check for shared libraries lacking NEEDED entries
 		qa_var="QA_DT_NEEDED_${ARCH/-/_}"
 		eval "[[ -n \${!qa_var} ]] && QA_DT_NEEDED=(\"\${${qa_var}[@]}\")"
-		f=$(scanelf -ByF '%n %p' "${ED}"{,usr/}lib*/lib*.so* | gawk '$2 == "" { print }' | sed -e "s:^[[:space:]]${ED}:/:")
+		f=$(scanelf -ByF '%n %p' "${ED}"{,usr/}lib*/lib*.so* | awk '$2 == "" { print }' | sed -e "s:^[[:space:]]${ED}:/:")
 		if [[ -n ${f} ]] ; then
 			echo "${f}" > "${T}"/scanelf-missing-NEEDED.log
 			if [[ "${QA_STRICT_DT_NEEDED-unset}" == unset ]] ; then
