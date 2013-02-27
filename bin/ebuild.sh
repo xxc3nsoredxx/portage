@@ -198,6 +198,8 @@ debug-print-section() {
 # Sources all eclasses in parameters
 declare -ix ECLASS_DEPTH=0
 inherit() {
+	XORG_MULTILIB=no
+	MULTILIB_USEDEP="${ARCH}"
 	ECLASS_DEPTH=$(($ECLASS_DEPTH + 1))
 	if [[ ${ECLASS_DEPTH} > 1 ]]; then
 		debug-print "*** Multiple Inheritence (Level: ${ECLASS_DEPTH})"
