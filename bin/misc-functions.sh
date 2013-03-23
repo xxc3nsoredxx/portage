@@ -653,7 +653,7 @@ install_qa_check() {
 		eqawarn "QA Notice: Excessive files found in the / partition"
 		eqawarn "${f}"
 		__vecho -ne '\n'
-		die "static archives (*.a) and libtool library files (*.la) do not belong in /"
+		die "static archives (*.a) and libtool library files (*.la) belong in /usr/lib*, not /lib*"
 	fi
 
 	# Verify that the libtool files don't contain bogus $D entries.
@@ -884,16 +884,6 @@ install_qa_check_prefix() {
 
 	# all further checks rely on ${ED} existing
 	[[ -d ${ED} ]] || return
-
-	# this does not really belong here, but it's closely tied to
-	# the code below; many runscripts generate positives here, and we
-	# know they don't work (bug #196294) so as long as that one
-	# remains an issue, simply remove them as they won't work
-	# anyway, avoid etc/init.d/functions.sh from being thrown away
-	if [[ ( -d "${ED}"/etc/conf.d || -d "${ED}"/etc/init.d ) && ! -f "${ED}"/etc/init.d/functions.sh ]] ; then
-		ewarn "removed /etc/init.d and /etc/conf.d directories until bug #196294 has been resolved"
-		rm -Rf "${ED}"/etc/{conf,init}.d
-	fi
 
 	# check shebangs, bug #282539
 	rm -f "${T}"/non-prefix-shebangs-errs
