@@ -69,20 +69,23 @@ def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 			x = x._eval_qa_conditionals(use_mask, use_force)
 
 		if 'force-multilib' in mysettings.features:
-			if not repoman :
+			if not repoman and x.cp not in mysettings.get("NO_AUTO_FLAG", "").split():
+				multilib_flags = []
 				for multilib_abis in mysettings.get("MULTILIB_ABIS", '').split():
-					if multilib_abis not in ("multilib_abi_" + x) and portage.dep_getkey(x) not in mysettings.get("NO_AUTO_FLAG", None):
-						if ']' in x:
-							x = str(x).replace(']',',multilib_abi_' + multilib_abis + '?]')
-						else:
-							x = str(x) + '[multilib_abi_' + multilib_abis + '?]'
-						try:
-							x = portage.dep.Atom(x)
-							x = x.evaluate_conditionals(myuse)
-						except portage.exception.InvalidAtom:
-							if portage.dep._dep_check_strict:
-								raise portage.exception.ParseError(
-									"invalid atom: '%s'" % x)
+					multilib_flag = 'multilib_abi_' + multilib_abis
+					if x.unevaluated_atom.use is None or \
+						x.unevaluated_atom.use.conditional is None or \
+						multilib_flag not in x.unevaluated_atom.use.conditional.enabled:
+						multilib_flags.append(multilib_flag + '?')
+				if multilib_flags:
+					if x.unevaluated_atom.use is None:
+						use_tokens = []
+					else:
+						use_tokens = list(x.unevaluated_atom.use.tokens)
+					use_tokens.extend(multilib_flags)
+					x = Atom(x.unevaluated_atom.without_use +
+						"[%s]" % (",".join(use_tokens)))
+					x = x.evaluate_conditionals(myuse)
 
 		mykey = x.cp
 		if not mykey.startswith("virtual/"):

@@ -258,6 +258,32 @@ class Package(Task):
 								(atom.unevaluated_atom,))
 							self._metadata_exception(k, e)
 
+		if self.root_config.settings.local_config and \
+			'force-multilib' in self.root_config.settings.features:
+			mysettings = self.root_config.settings
+			no_auto_flag = frozenset(mysettings.get("NO_AUTO_FLAG", "").split())
+			for i, x in enumerate(validated_atoms):
+				if not isinstance(x, Atom):
+					continue
+				if x.cp in no_auto_flag:
+					continue
+				multilib_flags = []
+				for multilib_abis in mysettings.get("MULTILIB_ABIS", '').split():
+					multilib_flag = 'multilib_abi_' + multilib_abis
+					if x.unevaluated_atom.use is None or \
+						x.unevaluated_atom.use.conditional is None or \
+						multilib_flag not in x.unevaluated_atom.use.conditional.enabled:
+						multilib_flags.append(multilib_flag + '?')
+				if multilib_flags:
+					if x.unevaluated_atom.use is None:
+						use_tokens = []
+					else:
+						use_tokens = list(x.unevaluated_atom.use.tokens)
+					use_tokens.extend(multilib_flags)
+					validated_atoms[i] = Atom(
+						x.unevaluated_atom.without_use + \
+						"[%s]" % (",".join(use_tokens)))
+
 		self._validated_atoms = tuple(set(atom for atom in
 			validated_atoms if isinstance(atom, Atom)))
 
