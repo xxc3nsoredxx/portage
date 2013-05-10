@@ -539,14 +539,13 @@ install_qa_check() {
 		die "Unsafe files found in \${D}.  Portage will not install them."
 	fi
 
-	if [[ -d ${D}/${D} ]] ; then
-		declare -i INSTALLTOD=0
-		for i in $(find "${D}/${D}/"); do
-			eqawarn "QA Notice: /${i##${D}/${D}} installed in \${D}/\${D}"
+	if [[ -d ${D%/}${D} ]] ; then
+		local -i INSTALLTOD=0
+		while read -r -d $'\0' i ; do
+			eqawarn "QA Notice: /${i##${D%/}${D}} installed in \${D}/\${D}"
 			((INSTALLTOD++))
-		done
-		die "Aborting due to QA concerns: ${INSTALLTOD} files installed in ${D}/${D}"
-		unset INSTALLTOD
+		done < <(find "${D%/}${D}" -print0)
+		die "Aborting due to QA concerns: ${INSTALLTOD} files installed in ${D%/}${D}"
 	fi
 
 	# Sanity check syntax errors in init.d scripts
