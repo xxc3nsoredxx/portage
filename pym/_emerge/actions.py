@@ -3620,8 +3620,8 @@ def run_action(emerge_config):
 	adjust_configs(emerge_config.opts, emerge_config.trees)
 	apply_priorities(emerge_config.target_config.settings)
 
-	if 'force-multilib' in settings.features:
-		if settings.get("NO_AUTO_FLAG", "") is "":
+	if 'force-multilib' in emerge_config.target_config.settings.features:
+		if emerge_config.target_config.settings.get("NO_AUTO_FLAG", "") is "":
 			writemsg_level(bad("!!! Failed to find vars from extra profile") + "\n",level=logging.ERROR, noiselevel=-1)
 			writemsg_level(bad("!!! Please make sure that you did follow the instructions and included the extra profile\n"),level=logging.ERROR, noiselevel=-1)
 			writemsg_level(bad("!!! http://git.overlays.gentoo.org/gitweb/?p=proj/multilib-portage.git;a=blob;f=doc/portage-multilib-instructions\n"),level=logging.ERROR, noiselevel=-1)
