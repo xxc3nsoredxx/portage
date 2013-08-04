@@ -3019,7 +3019,7 @@ def getportageversion(portdir, _unused, profile, chost, vardb):
 	unameout=platform.release()+" "+platform.machine()
 
 	return "Portage %s (%s, %s, %s, %s)" % \
-		(portage.VERSION, profilever, gccver, ",".join(libcver), unameout)
+		(portage.VERSION + "-multilib", profilever, gccver, ",".join(libcver), unameout)
 
 def git_sync_timestamps(portdb, portdir):
 	"""
