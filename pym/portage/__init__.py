@@ -174,6 +174,15 @@ _encodings = {
 }
 
 if sys.hexversion >= 0x3000000:
+
+	def _decode_argv(argv):
+		# With Python 3, the surrogateescape encoding error handler makes it
+		# possible to access the original argv bytes, which can be useful
+		# if their actual encoding does no match the filesystem encoding.
+		fs_encoding = sys.getfilesystemencoding()
+		return [_unicode_decode(x.encode(fs_encoding, 'surrogateescape'))
+			for x in argv]
+
 	def _unicode_encode(s, encoding=_encodings['content'], errors='backslashreplace'):
 		if isinstance(s, str):
 			s = s.encode(encoding, errors)
@@ -186,6 +195,10 @@ if sys.hexversion >= 0x3000000:
 
 	_native_string = _unicode_decode
 else:
+
+	def _decode_argv(argv):
+		return [_unicode_decode(x) for x in argv]
+
 	def _unicode_encode(s, encoding=_encodings['content'], errors='backslashreplace'):
 		if isinstance(s, unicode):
 			s = s.encode(encoding, errors)
@@ -373,6 +386,7 @@ except (ImportError, OSError) as e:
 _python_interpreter = os.path.realpath(sys.executable)
 _bin_path = PORTAGE_BIN_PATH
 _pym_path = PORTAGE_PYM_PATH
+_working_copy = VERSION == "HEAD"
 
 # Api consumers included in portage should set this to True.
 _internal_caller = False
@@ -390,12 +404,16 @@ def _get_stdin():
 		return sys.__stdin__
 	return sys.stdin
 
+_shell_quote_re = re.compile(r"[\s><=*\\\"'$`]")
+
 def _shell_quote(s):
 	"""
 	Quote a string in double-quotes and use backslashes to
 	escape any backslashes, double-quotes, dollar signs, or
 	backquotes in the string.
 	"""
+	if _shell_quote_re.search(s) is None:
+		return s
 	for letter in "\\\"$`":
 		if letter in s:
 			s = s.replace(letter, "\\" + letter)
@@ -414,11 +432,18 @@ if platform.system() in ('FreeBSD',):
 				cmd.append(opts)
 			cmd.append('%o' % (flags,))
 			cmd.append(path)
+
+			if sys.hexversion < 0x3020000 and sys.hexversion >= 0x3000000:
+				# Python 3.1 _execvp throws TypeError for non-absolute executable
+				# path passed as bytes (see http://bugs.python.org/issue8513).
+				fullname = process.find_binary(cmd[0])
+				if fullname is None:
+					raise exception.CommandNotFound(cmd[0])
+				cmd[0] = fullname
+
 			encoding = _encodings['fs']
-			if sys.hexversion < 0x3000000 or sys.hexversion >= 0x3020000:
-				# Python 3.1 does not support bytes in Popen args.
-				cmd = [_unicode_encode(x, encoding=encoding, errors='strict')
-					for x in cmd]
+			cmd = [_unicode_encode(x, encoding=encoding, errors='strict')
+				for x in cmd]
 			proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
 				stderr=subprocess.STDOUT)
 			output = proc.communicate()[0]
@@ -549,7 +574,7 @@ auxdbkeys = (
 auxdbkeylen=len(auxdbkeys)
 
 def portageexit():
-	close_portdbapi_caches()
+	pass
 
 class _trees_dict(dict):
 	__slots__ = ('_running_eroot', '_target_eroot',)
@@ -560,13 +585,6 @@ class _trees_dict(dict):
 
 def create_trees(config_root=None, target_root=None, trees=None, env=None,
 	eprefix=None):
-	if trees is not None:
-		# clean up any existing portdbapi instances
-		for myroot in trees:
-			portdb = trees[myroot]["porttree"].dbapi
-			portdb.close_caches()
-			portdbapi.portdbapi_instances.remove(portdb)
-			del trees[myroot]["porttree"], myroot, portdb
 
 	if trees is None:
 		trees = _trees_dict()
@@ -584,7 +602,7 @@ def create_trees(config_root=None, target_root=None, trees=None, env=None,
 
 	trees._target_eroot = settings['EROOT']
 	myroots = [(settings['EROOT'], settings)]
-	if settings["ROOT"] == "/":
+	if settings["ROOT"] == "/" and settings["EPREFIX"] == const.EPREFIX:
 		trees._running_eroot = trees._target_eroot
 	else:
 
@@ -592,15 +610,15 @@ def create_trees(config_root=None, target_root=None, trees=None, env=None,
 		# environment to apply to the config that's associated
 		# with ROOT != "/", so pass a nearly empty dict for the env parameter.
 		clean_env = {}
-		for k in ('PATH', 'PORTAGE_GRPNAME', 'PORTAGE_USERNAME',
-			'SSH_AGENT_PID', 'SSH_AUTH_SOCK', 'TERM',
+		for k in ('PATH', 'PORTAGE_GRPNAME', 'PORTAGE_REPOSITORIES', 'PORTAGE_USERNAME',
+			'PYTHONPATH', 'SSH_AGENT_PID', 'SSH_AUTH_SOCK', 'TERM',
 			'ftp_proxy', 'http_proxy', 'no_proxy',
 			'__PORTAGE_TEST_HARDLINK_LOCKS'):
 			v = settings.get(k)
 			if v is not None:
 				clean_env[k] = v
 		settings = config(config_root=None, target_root="/",
-			env=clean_env, eprefix=eprefix)
+			env=clean_env, eprefix=None)
 		settings.lock()
 		trees._running_eroot = settings['EROOT']
 		myroots.append((settings['EROOT'], settings))
@@ -629,10 +647,8 @@ if VERSION == 'HEAD':
 					"if [ -n \"`git diff-index --name-only --diff-filter=M HEAD`\" ] ; " + \
 					"then echo modified ; git rev-list --format=%%ct -n 1 HEAD ; fi ; " + \
 					"exit 0") % _shell_quote(PORTAGE_BASE_PATH)]
-				if sys.hexversion < 0x3000000 or sys.hexversion >= 0x3020000:
-					# Python 3.1 does not support bytes in Popen args.
-					cmd = [_unicode_encode(x, encoding=encoding, errors='strict')
-						for x in cmd]
+				cmd = [_unicode_encode(x, encoding=encoding, errors='strict')
+					for x in cmd]
 				proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
 					stderr=subprocess.STDOUT)
 				output = _unicode_decode(proc.communicate()[0], encoding=encoding)
@@ -673,33 +689,6 @@ _legacy_global_var_names = ("archlist", "db", "features",
 def _reset_legacy_globals():
 
 	global _legacy_globals_constructed
-
-	if "_legacy_globals_constructed" in globals() and \
-		"db" in _legacy_globals_constructed:
-		try:
-			db
-		except NameError:
-			pass
-		else:
-			if isinstance(db, dict) and db:
-				for _x in db.values():
-					try:
-						if "porttree" in _x.lazy_items:
-							continue
-					except (AttributeError, TypeError):
-						continue
-					try:
-						_x = _x["porttree"].dbapi
-					except (AttributeError, KeyError):
-						continue
-					if not isinstance(_x, portdbapi):
-						continue
-					_x.close_caches()
-					try:
-						portdbapi.portdbapi_instances.remove(_x)
-					except ValueError:
-						pass
-
 	_legacy_globals_constructed = set()
 	for k in _legacy_global_var_names:
 		globals()[k] = _LegacyGlobalProxy(k)

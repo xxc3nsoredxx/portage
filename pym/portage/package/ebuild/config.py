@@ -146,7 +146,7 @@ class config(object):
 	"""
 
 	_constant_keys = frozenset(['PORTAGE_BIN_PATH', 'PORTAGE_GID',
-		'PORTAGE_PYM_PATH'])
+		'PORTAGE_PYM_PATH', 'PORTAGE_PYTHONPATH'])
 
 	_setcpv_aux_keys = ('DEFINED_PHASES', 'DEPEND', 'EAPI', 'HDEPEND',
 		'INHERITED', 'IUSE', 'REQUIRED_USE', 'KEYWORDS', 'LICENSE', 'PDEPEND',
@@ -169,7 +169,7 @@ class config(object):
 	def __init__(self, clone=None, mycpv=None, config_profile_path=None,
 		config_incrementals=None, config_root=None, target_root=None,
 		eprefix=None, local_config=True, env=None,
-		_unmatched_removal=False):
+		_unmatched_removal=False, repositories=None):
 		"""
 		@param clone: If provided, init will use deepcopy to copy by value the instance.
 		@type clone: Instance of config class.
@@ -197,6 +197,9 @@ class config(object):
 		@param _unmatched_removal: Enabled by repoman when the
 			--unmatched-removal option is given.
 		@type _unmatched_removal: Boolean
+		@param repositories: Configuration of repositories.
+			Defaults to portage.repository.config.load_repository_config().
+		@type repositories: Instance of portage.repository.config.RepoConfigLoader class.
 		"""
 
 		# This is important when config is reloaded after emerge --sync.
@@ -488,6 +491,7 @@ class config(object):
 			known_repos = []
 			portdir = ""
 			portdir_overlay = ""
+			portdir_sync = None
 			for confs in [make_globals, make_conf, self.configdict["env"]]:
 				v = confs.get("PORTDIR")
 				if v is not None:
@@ -497,12 +501,52 @@ class config(object):
 				if v is not None:
 					portdir_overlay = v
 					known_repos.extend(shlex_split(v))
+				v = confs.get("SYNC")
+				if v is not None:
+					portdir_sync = v
+
 			known_repos = frozenset(known_repos)
 			self["PORTDIR"] = portdir
 			self["PORTDIR_OVERLAY"] = portdir_overlay
+			if portdir_sync:
+				self["SYNC"] = portdir_sync
 			self.lookuplist = [self.configdict["env"]]
-			self.repositories = load_repository_config(self)
+			if repositories is None:
+				self.repositories = load_repository_config(self)
+			else:
+				self.repositories = repositories
 
+			self['PORTAGE_REPOSITORIES'] = self.repositories.config_string()
+			self.backup_changes('PORTAGE_REPOSITORIES')
+
+			#filling PORTDIR and PORTDIR_OVERLAY variable for compatibility
+			main_repo = self.repositories.mainRepo()
+			if main_repo is not None:
+				self["PORTDIR"] = main_repo.user_location
+				self.backup_changes("PORTDIR")
+				expand_map["PORTDIR"] = self["PORTDIR"]
+
+			# repoman controls PORTDIR_OVERLAY via the environment, so no
+			# special cases are needed here.
+			portdir_overlay = list(self.repositories.repoUserLocationList())
+			if portdir_overlay and portdir_overlay[0] == self["PORTDIR"]:
+				portdir_overlay = portdir_overlay[1:]
+
+			new_ov = []
+			if portdir_overlay:
+				for ov in portdir_overlay:
+					ov = normalize_path(ov)
+					if isdir_raise_eaccess(ov) or portage._sync_disabled_warnings:
+						new_ov.append(portage._shell_quote(ov))
+					else:
+						writemsg(_("!!! Invalid PORTDIR_OVERLAY"
+							" (not a dir): '%s'\n") % ov, noiselevel=-1)
+
+			self["PORTDIR_OVERLAY"] = " ".join(new_ov)
+			self.backup_changes("PORTDIR_OVERLAY")
+			expand_map["PORTDIR_OVERLAY"] = self["PORTDIR_OVERLAY"]
+
+			locations_manager.set_port_dirs(self["PORTDIR"], self["PORTDIR_OVERLAY"])
 			locations_manager.load_profiles(self.repositories, known_repos)
 
 			profiles_complex = locations_manager.profiles_complex
@@ -594,50 +638,20 @@ class config(object):
 			self.backup_changes("PORTAGE_CONFIGROOT")
 			self["ROOT"] = target_root
 			self.backup_changes("ROOT")
-
-			# The PORTAGE_OVERRIDE_EPREFIX variable propagates the EPREFIX
-			# of this config instance to any portage commands or API
-			# consumers running in subprocesses.
 			self["EPREFIX"] = eprefix
 			self.backup_changes("EPREFIX")
-			self["PORTAGE_OVERRIDE_EPREFIX"] = eprefix
-			self.backup_changes("PORTAGE_OVERRIDE_EPREFIX")
 			self["EROOT"] = eroot
 			self.backup_changes("EROOT")
+
+			# The prefix of the running portage instance is used in the
+			# ebuild environment to implement the --host-root option for
+			# best_version and has_version.
+			self["PORTAGE_OVERRIDE_EPREFIX"] = portage.const.EPREFIX
+			self.backup_changes("PORTAGE_OVERRIDE_EPREFIX")
 
 			self._ppropertiesdict = portage.dep.ExtendedAtomDict(dict)
 			self._paccept_restrict = portage.dep.ExtendedAtomDict(dict)
 			self._penvdict = portage.dep.ExtendedAtomDict(dict)
-
-			#filling PORTDIR and PORTDIR_OVERLAY variable for compatibility
-			main_repo = self.repositories.mainRepo()
-			if main_repo is not None:
-				self["PORTDIR"] = main_repo.user_location
-				self.backup_changes("PORTDIR")
-
-			# repoman controls PORTDIR_OVERLAY via the environment, so no
-			# special cases are needed here.
-			portdir_overlay = list(self.repositories.repoUserLocationList())
-			if portdir_overlay and portdir_overlay[0] == self["PORTDIR"]:
-				portdir_overlay = portdir_overlay[1:]
-
-			new_ov = []
-			if portdir_overlay:
-				shell_quote_re = re.compile(r"[\s\\\"'$`]")
-				for ov in portdir_overlay:
-					ov = normalize_path(ov)
-					if isdir_raise_eaccess(ov):
-						if shell_quote_re.search(ov) is not None:
-							ov = portage._shell_quote(ov)
-						new_ov.append(ov)
-					else:
-						writemsg(_("!!! Invalid PORTDIR_OVERLAY"
-							" (not a dir): '%s'\n") % ov, noiselevel=-1)
-
-			self["PORTDIR_OVERLAY"] = " ".join(new_ov)
-			self.backup_changes("PORTDIR_OVERLAY")
-
-			locations_manager.set_port_dirs(self["PORTDIR"], self["PORTDIR_OVERLAY"])
 
 			self._repo_make_defaults = {}
 			for repo in self.repositories.repos_with_profiles():
@@ -781,21 +795,9 @@ class config(object):
 				self.backupenv["USE_ORDER"] = "env:pkg:conf:defaults:pkginternal:repo:env.d"
 
 			self.depcachedir = DEPCACHE_PATH
-			if eprefix:
-				# See comments about make.globals and EPREFIX
-				# above. DEPCACHE_PATH is similar.
-				if target_root == "/":
-					# case (1) above
-					self.depcachedir = os.path.join(eprefix,
-						DEPCACHE_PATH.lstrip(os.sep))
-				else:
-					# case (2) above
-					# For now, just assume DEPCACHE_PATH is relative
-					# to EPREFIX.
-					# TODO: Pass in more info to the constructor,
-					# so we know the host system configuration.
-					self.depcachedir = os.path.join(eprefix,
-						DEPCACHE_PATH.lstrip(os.sep))
+			if portage.const.EPREFIX:
+				self.depcachedir = os.path.join(portage.const.EPREFIX,
+					DEPCACHE_PATH.lstrip(os.sep))
 
 			if self.get("PORTAGE_DEPCACHEDIR", None):
 				self.depcachedir = self["PORTAGE_DEPCACHEDIR"]
@@ -889,11 +891,6 @@ class config(object):
 				if k in self:
 					self[k] = self[k].lower()
 					self.backup_changes(k)
-
-			if main_repo is not None and not main_repo.sync:
-				main_repo_sync = self.get("SYNC")
-				if main_repo_sync:
-					main_repo.sync = main_repo_sync
 
 			# The first constructed config object initializes these modules,
 			# and subsequent calls to the _init() functions have no effect.
@@ -2507,6 +2504,20 @@ class config(object):
 				return portage._bin_path
 			elif mykey == "PORTAGE_PYM_PATH":
 				return portage._pym_path
+
+			elif mykey == "PORTAGE_PYTHONPATH":
+				value = [x for x in \
+					self.backupenv.get("PYTHONPATH", "").split(":") if x]
+				need_pym_path = True
+				if value:
+					try:
+						need_pym_path = not os.path.samefile(value[0],
+							portage._pym_path)
+					except OSError:
+						pass
+				if need_pym_path:
+					value.insert(0, portage._pym_path)
+				return ":".join(value)
 
 			elif mykey == "PORTAGE_GID":
 				return "%s" % portage_gid

@@ -3555,6 +3555,7 @@ class dblink(object):
 				level=logging.ERROR, noiselevel=-1)
 			return 1
 
+		is_binpkg = self.settings.get("EMERGE_FROM") == "binary"
 		slot = ''
 		for var_name in ('CHOST', 'SLOT'):
 			if var_name == 'CHOST' and self.cat == 'virtual':
@@ -3588,7 +3589,9 @@ class dblink(object):
 						return 1
 					write_atomic(os.path.join(inforoot, var_name), slot + '\n')
 
-			if val != self.settings.get(var_name, ''):
+			# This check only applies when built from source, since
+			# inforoot values are written just after src_install.
+			if not is_binpkg and val != self.settings.get(var_name, ''):
 				self._eqawarn('preinst',
 					[_("QA Notice: Expected %(var_name)s='%(expected_value)s', got '%(actual_value)s'\n") % \
 					{"var_name":var_name, "expected_value":self.settings.get(var_name, ''), "actual_value":val}])
@@ -3801,7 +3804,7 @@ class dblink(object):
 					_("Manually run `emerge --unmerge =%s` if you "
 					"really want to remove the above files. Set "
 					"PORTAGE_PACKAGE_EMPTY_ABORT=\"0\" in "
-					"/etc/make.conf if you do not want to "
+					"/etc/portage/make.conf if you do not want to "
 					"abort in cases like this.") % other_dblink.mycpv,
 					wrap_width))
 				eerror(msg)
@@ -4992,7 +4995,7 @@ class dblink(object):
 def merge(mycat, mypkg, pkgloc, infloc,
 	myroot=None, settings=None, myebuild=None,
 	mytree=None, mydbapi=None, vartree=None, prev_mtimes=None, blockers=None,
-	scheduler=None):
+	scheduler=None, fd_pipes=None):
 	"""
 	@param myroot: ignored, settings['EROOT'] is used instead
 	"""
@@ -5011,7 +5014,8 @@ def merge(mycat, mypkg, pkgloc, infloc,
 			global_event_loop() or EventLoop(main=False)),
 		background=background, blockers=blockers, pkgloc=pkgloc,
 		infloc=infloc, myebuild=myebuild, mydbapi=mydbapi,
-		prev_mtimes=prev_mtimes, logfile=settings.get('PORTAGE_LOG_FILE'))
+		prev_mtimes=prev_mtimes, logfile=settings.get('PORTAGE_LOG_FILE'),
+		fd_pipes=fd_pipes)
 	merge_task.start()
 	retcode = merge_task.wait()
 	return retcode

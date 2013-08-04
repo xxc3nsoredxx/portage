@@ -9,6 +9,7 @@ import platform
 import signal
 import sys
 import traceback
+import os as _os
 
 from portage import os
 from portage import _encodings
@@ -30,11 +31,17 @@ except ImportError:
 if sys.hexversion >= 0x3000000:
 	basestring = str
 
-for _fd_dir in ("/dev/fd", "/proc/self/fd"):
+# Prefer /proc/self/fd if available (/dev/fd
+# doesn't work on solaris, see bug #474536).
+for _fd_dir in ("/proc/self/fd", "/dev/fd"):
 	if os.path.isdir(_fd_dir):
 		break
 	else:
 		_fd_dir = None
+
+# /dev/fd does not work on FreeBSD, see bug #478446
+if platform.system() in ('FreeBSD',) and _fd_dir == '/dev/fd':
+	_fd_dir = None
 
 if _fd_dir is not None:
 	def get_open_fds():
@@ -50,6 +57,13 @@ if _fd_dir is not None:
 				if e.errno != errno.EAGAIN:
 					raise
 				return range(max_fd_limit)
+
+elif os.path.isdir("/proc/%s/fd" % os.getpid()):
+	# In order for this function to work in forked subprocesses,
+	# os.getpid() must be called from inside the function.
+	def get_open_fds():
+		return (int(fd) for fd in os.listdir("/proc/%s/fd" % os.getpid())
+			if fd.isdigit())
 
 else:
 	def get_open_fds():
@@ -146,26 +160,23 @@ def run_exitfuncs():
 
 atexit.register(run_exitfuncs)
 
-# We need to make sure that any processes spawned are killed off when
-# we exit. spawn() takes care of adding and removing pids to this list
-# as it creates and cleans up processes.
-spawned_pids = []
-def cleanup():
-	while spawned_pids:
-		pid = spawned_pids.pop()
+# It used to be necessary for API consumers to remove pids from spawned_pids,
+# since otherwise it would accumulate a pids endlessly. Now, spawned_pids is
+# just an empty dummy list, so for backward compatibility, ignore ValueError
+# for removal on non-existent items.
+class _dummy_list(list):
+	def remove(self, item):
+		# TODO: Trigger a DeprecationWarning here, after stable portage
+		# has dummy spawned_pids.
 		try:
-			# With waitpid and WNOHANG, only check the
-			# first element of the tuple since the second
-			# element may vary (bug #337465).
-			if os.waitpid(pid, os.WNOHANG)[0] == 0:
-				os.kill(pid, signal.SIGTERM)
-				os.waitpid(pid, 0)
-		except OSError:
-			# This pid has been cleaned up outside
-			# of spawn().
+			list.remove(self, item)
+		except ValueError:
 			pass
 
-atexit_register(cleanup)
+spawned_pids = _dummy_list()
+
+def cleanup():
+	pass
 
 def spawn(mycommand, env={}, opt_name=None, fd_pipes=None, returnpid=False,
           uid=None, gid=None, groups=None, umask=None, logfile=None,
@@ -299,7 +310,6 @@ def spawn(mycommand, env={}, opt_name=None, fd_pipes=None, returnpid=False,
 
 	# Add the pid to our local and the global pid lists.
 	mypids.append(pid)
-	spawned_pids.append(pid)
 
 	# If we started a tee process the write side of the pipe is no
 	# longer needed, so close it.
@@ -322,10 +332,6 @@ def spawn(mycommand, env={}, opt_name=None, fd_pipes=None, returnpid=False,
 		# and wait for it.
 		retval = os.waitpid(pid, 0)[1]
 
-		# When it's done, we can remove it from the
-		# global pid list as well.
-		spawned_pids.remove(pid)
-
 		if retval:
 			# If it failed, kill off anything else that
 			# isn't dead yet.
@@ -336,7 +342,6 @@ def spawn(mycommand, env={}, opt_name=None, fd_pipes=None, returnpid=False,
 				if os.waitpid(pid, os.WNOHANG)[0] == 0:
 					os.kill(pid, signal.SIGTERM)
 					os.waitpid(pid, 0)
-				spawned_pids.remove(pid)
 
 			# If it got a signal, return the signal that was sent.
 			if (retval & 0xff):
@@ -520,8 +525,16 @@ def find_binary(binary):
 	@rtype: None or string
 	@return: full path to binary or None if the binary could not be located.
 	"""
-	for path in os.environ.get("PATH", "").split(":"):
-		filename = "%s/%s" % (path, binary)
-		if os.access(filename, os.X_OK) and os.path.isfile(filename):
+	paths = os.environ.get("PATH", "")
+	if sys.hexversion >= 0x3000000 and isinstance(binary, bytes):
+		# return bytes when input is bytes
+		paths = paths.encode(sys.getfilesystemencoding(), 'surrogateescape')
+		paths = paths.split(b':')
+	else:
+		paths = paths.split(':')
+
+	for path in paths:
+		filename = _os.path.join(path, binary)
+		if _os.access(filename, os.X_OK) and _os.path.isfile(filename):
 			return filename
 	return None

@@ -20,7 +20,6 @@ try:
 except KeyboardInterrupt:
 	sys.exit(128 + signal.SIGINT)
 
-import optparse
 import os
 import types
 
@@ -41,6 +40,7 @@ portage._internal_caller = True
 from portage import os
 from portage.eapi import eapi_has_repo_deps
 from portage.util import writemsg, writemsg_stdout
+from portage.util._argparse import ArgumentParser
 portage.proxy.lazyimport.lazyimport(globals(),
 	're',
 	'subprocess',
@@ -57,6 +57,10 @@ def eval_atom_use(atom):
 		use = frozenset(os.environ['USE'].split())
 		atom = atom.evaluate_conditionals(use)
 	return atom
+
+def uses_eroot(function):
+	function.uses_eroot = True
+	return function
 
 #-----------------------------------------------------------------------------
 #
@@ -79,6 +83,7 @@ def eval_atom_use(atom):
 # and will automaticly add a command by the same name as the function!
 #
 
+@uses_eroot
 def has_version(argv):
 	"""<eroot> <category/package>
 	Return code 0 if it's available, 1 otherwise.
@@ -122,9 +127,9 @@ def has_version(argv):
 		portage.writemsg("ERROR: Invalid atom: '%s'\n" % argv[1],
 			noiselevel=-1)
 		return 2
-has_version.uses_eroot = True
 
 
+@uses_eroot
 def best_version(argv):
 	"""<eroot> <category/package>
 	Returns category/package-version (without .ebuild).
@@ -161,9 +166,9 @@ def best_version(argv):
 		print(portage.best(mylist))
 	except KeyError:
 		return 1
-best_version.uses_eroot = True
 
 
+@uses_eroot
 def mass_best_version(argv):
 	"""<eroot> [<category/package>]+
 	Returns category/package-version (without .ebuild).
@@ -177,8 +182,9 @@ def mass_best_version(argv):
 			print(pack+":"+portage.best(mylist))
 	except KeyError:
 		return 1
-mass_best_version.uses_eroot = True
 
+
+@uses_eroot
 def metadata(argv):
 	if (len(argv) < 4):
 		print("ERROR: insufficient parameters!", file=sys.stderr)
@@ -211,8 +217,8 @@ Available keys: %s
 """  % ','.join(sorted(x for x in portage.auxdbkeys \
 if not x.startswith('UNUSED_')))
 
-metadata.uses_eroot = True
 
+@uses_eroot
 def contents(argv):
 	"""<eroot> <category/package>
 	List the files that are installed for a given package, with
@@ -233,8 +239,9 @@ def contents(argv):
 		treetype="vartree", vartree=vartree)
 	writemsg_stdout(''.join('%s\n' % x for x in sorted(db.getcontents())),
 		noiselevel=-1)
-contents.uses_eroot = True
 
+
+@uses_eroot
 def owners(argv):
 	"""<eroot> [<filename>]+
 	Given a list of files, print the packages that own the files and which
@@ -313,8 +320,8 @@ def owners(argv):
 		return 0
 	return 1
 
-owners.uses_eroot = True
 
+@uses_eroot
 def is_protected(argv):
 	"""<eroot> <filename>
 	Given a single filename, return code 0 if it's protected, 1 otherwise.
@@ -360,8 +367,8 @@ def is_protected(argv):
 		return 0
 	return 1
 
-is_protected.uses_eroot = True
 
+@uses_eroot
 def filter_protected(argv):
 	"""<eroot>
 	Read filenames from stdin and write them to stdout if they are protected.
@@ -420,8 +427,8 @@ def filter_protected(argv):
 
 	return 0
 
-filter_protected.uses_eroot = True
 
+@uses_eroot
 def best_visible(argv):
 	"""<eroot> [pkgtype] <atom>
 	Returns category/package-version (without .ebuild).
@@ -502,9 +509,9 @@ def best_visible(argv):
 	writemsg_stdout("\n", noiselevel=-1)
 
 	return 1
-best_visible.uses_eroot = True
 
 
+@uses_eroot
 def mass_best_visible(argv):
 	"""<eroot> [<type>] [<category/package>]+
 	Returns category/package-version (without .ebuild).
@@ -529,9 +536,9 @@ def mass_best_visible(argv):
 			best_visible([root, pkgtype, pack])
 	except KeyError:
 		return 1
-mass_best_visible.uses_eroot = True
 
 
+@uses_eroot
 def all_best_visible(argv):
 	"""<eroot>
 	Returns all best_visible packages (without .ebuild).
@@ -546,9 +553,9 @@ def all_best_visible(argv):
 		mybest=portage.best(portage.db[argv[0]]["porttree"].dbapi.match(pkg))
 		if mybest:
 			print(mybest)
-all_best_visible.uses_eroot = True
 
 
+@uses_eroot
 def match(argv):
 	"""<eroot> <atom>
 	Returns a \\n separated list of category/package-version.
@@ -595,8 +602,9 @@ def match(argv):
 		results = vardb.match(atom)
 	for cpv in results:
 		print(cpv)
-match.uses_eroot = True
 
+
+@uses_eroot
 def expand_virtual(argv):
 	"""<eroot> <atom>
 	Returns a \\n separated list of atoms expanded from a
@@ -631,7 +639,6 @@ def expand_virtual(argv):
 
 	return os.EX_OK
 
-expand_virtual.uses_eroot = True
 
 def vdb_path(argv):
 	"""
@@ -649,6 +656,25 @@ def gentoo_mirrors(argv):
 	"""
 	print(portage.settings["GENTOO_MIRRORS"])
 
+
+@uses_eroot
+def repositories_configuration(argv):
+	"""<eroot>
+	Returns the configuration of repositories.
+	"""
+	if len(argv) < 1:
+		print("ERROR: insufficient parameters!", file=sys.stderr)
+		return 3
+	sys.stdout.write(portage.db[argv[0]]["vartree"].settings.repositories.config_string())
+	sys.stdout.flush()
+
+@uses_eroot
+def repos_config(argv):
+	"""
+	<eroot>
+	This is an alias for the repositories_configuration command.
+	"""
+	return repositories_configuration(argv)
 
 def portdir(argv):
 	"""
@@ -718,6 +744,8 @@ def envvar(argv):
 		else:
 			print(portage.settings[arg])
 
+
+@uses_eroot
 def get_repos(argv):
 	"""<eroot>
 	Returns all repos with names (repo_name file) argv[0] = $EROOT
@@ -725,10 +753,10 @@ def get_repos(argv):
 	if len(argv) < 1:
 		print("ERROR: insufficient parameters!")
 		return 2
-	print(" ".join(portage.db[argv[0]]["porttree"].dbapi.getRepositories()))
+	print(" ".join(reversed(portage.db[argv[0]]["vartree"].settings.repositories.prepos_order)))
 
-get_repos.uses_eroot = True
 
+@uses_eroot
 def master_repositories(argv):
 	"""<eroot> <repo_id>+
 	Returns space-separated list of master repositories for specified repository.
@@ -741,15 +769,21 @@ def master_repositories(argv):
 			print("ERROR: invalid repository: %s" % arg, file=sys.stderr)
 			return 2
 		try:
-			repo = portage.db[argv[0]]["porttree"].dbapi.repositories[arg]
+			repo = portage.db[argv[0]]["vartree"].settings.repositories[arg]
 		except KeyError:
 			print("")
 			return 1
 		else:
 			print(" ".join(x.name for x in repo.masters))
 
-master_repositories.uses_eroot = True
+@uses_eroot
+def master_repos(argv):
+	"""<eroot> <repo_id>+
+	This is an alias for the master_repositories command.
+	"""
+	return master_repositories(argv)
 
+@uses_eroot
 def get_repo_path(argv):
 	"""<eroot> <repo_id>+
 	Returns the path to the repo named argv[1], argv[0] = $EROOT
@@ -761,14 +795,14 @@ def get_repo_path(argv):
 		if portage.dep._repo_name_re.match(arg) is None:
 			print("ERROR: invalid repository: %s" % arg, file=sys.stderr)
 			return 2
-		path = portage.db[argv[0]]["porttree"].dbapi.getRepositoryPath(arg)
+		path = portage.db[argv[0]]["vartree"].settings.repositories.treemap.get(arg)
 		if path is None:
 			print("")
 			return 1
 		print(path)
 
-get_repo_path.uses_eroot = True
 
+@uses_eroot
 def available_eclasses(argv):
 	"""<eroot> <repo_id>+
 	Returns space-separated list of available eclasses for specified repository.
@@ -781,15 +815,15 @@ def available_eclasses(argv):
 			print("ERROR: invalid repository: %s" % arg, file=sys.stderr)
 			return 2
 		try:
-			repo = portage.db[argv[0]]["porttree"].dbapi.repositories[arg]
+			repo = portage.db[argv[0]]["vartree"].settings.repositories[arg]
 		except KeyError:
 			print("")
 			return 1
 		else:
 			print(" ".join(sorted(repo.eclass_db.eclasses)))
 
-available_eclasses.uses_eroot = True
 
+@uses_eroot
 def eclass_path(argv):
 	"""<eroot> <repo_id> <eclass>+
 	Returns the path to specified eclass for specified repository.
@@ -801,7 +835,7 @@ def eclass_path(argv):
 		print("ERROR: invalid repository: %s" % argv[1], file=sys.stderr)
 		return 2
 	try:
-		repo = portage.db[argv[0]]["porttree"].dbapi.repositories[argv[1]]
+		repo = portage.db[argv[0]]["vartree"].settings.repositories[argv[1]]
 	except KeyError:
 		print("")
 		return 1
@@ -817,8 +851,8 @@ def eclass_path(argv):
 				print(eclass.location)
 		return retval
 
-eclass_path.uses_eroot = True
 
+@uses_eroot
 def license_path(argv):
 	"""<eroot> <repo_id> <license>+
 	Returns the path to specified license for specified repository.
@@ -830,7 +864,7 @@ def license_path(argv):
 		print("ERROR: invalid repository: %s" % argv[1], file=sys.stderr)
 		return 2
 	try:
-		repo = portage.db[argv[0]]["porttree"].dbapi.repositories[argv[1]]
+		repo = portage.db[argv[0]]["vartree"].settings.repositories[argv[1]]
 	except KeyError:
 		print("")
 		return 1
@@ -848,8 +882,8 @@ def license_path(argv):
 			print(eclass_path)
 		return retval
 
-license_path.uses_eroot = True
 
+@uses_eroot
 def list_preserved_libs(argv):
 	"""<eroot>
 	Print a list of libraries preserved during a package update in the form
@@ -871,7 +905,7 @@ def list_preserved_libs(argv):
 		msg.append('\n')
 	writemsg_stdout(''.join(msg), noiselevel=-1)
 	return rValue
-list_preserved_libs.uses_eroot = True
+
 
 class MaintainerEmailMatcher(object):
 	def __init__(self, maintainer_emails):
@@ -894,7 +928,8 @@ class HerdMatcher(object):
 		herds = self._herds
 		return any(x in herds for x in metadata_xml.herds())
 
-def pquery(parser, pquery_option_groups, opts, args):
+
+def pquery(parser, opts, args):
 	"""[options] [atom]+
 	Emulates a subset of Pkgcore's pquery tool.
 	"""
@@ -1077,18 +1112,91 @@ def pquery(parser, pquery_option_groups, opts, args):
 
 	return os.EX_OK
 
-pquery.uses_eroot = False
 
 #-----------------------------------------------------------------------------
 #
 # DO NOT CHANGE CODE BEYOND THIS POINT - IT'S NOT NEEDED!
 #
 
-non_commands = frozenset(['elog', 'eval_atom_use', 'exithandler', 'main', 'usage'])
+non_commands = frozenset(['elog', 'eval_atom_use', 'exithandler', 'main', 'usage', 'uses_eroot'])
 commands = sorted(k for k, v in globals().items() \
 	if k not in non_commands and isinstance(v, types.FunctionType) and v.__module__ == "__main__")
 
-def usage(argv, parser=None, pquery_option_groups=None):
+
+def add_pquery_arguments(parser):
+	pquery_option_groups = (
+		(
+			'Repository matching options',
+			(
+				{
+					"longopt": "--no-filters",
+					"action": "store_true",
+					"help": "no visibility filters (ACCEPT_KEYWORDS, package masking, etc)"
+				},
+				{
+					"longopt": "--repo",
+					"help": "repo to use (default is PORTDIR if omitted)"
+				},
+				{
+					"longopt": "--all-repos",
+					"help": "search all repos"
+				}
+			)
+		),
+		(
+			'Package matching options',
+			(
+				{
+					"longopt": "--herd",
+					"action": "append",
+					"help": "exact match on a herd"
+				},
+				{
+					"longopt": "--maintainer-email",
+					"action": "append",
+					"help": "comma-separated list of maintainer email regexes to search for"
+				}
+			)
+		),
+		(
+			'Output formatting',
+			(
+				{
+					"shortopt": "-n",
+					"longopt": "--no-version",
+					"action": "store_true",
+					"help": "collapse multiple matching versions together"
+				},
+			)
+		),
+	)
+
+	for group_title, opt_data in pquery_option_groups:
+		arg_group = parser.add_argument_group(group_title)
+		for opt_info in opt_data:
+			pargs = []
+			try:
+				pargs.append(opt_info["shortopt"])
+			except KeyError:
+				pass
+			try:
+				pargs.append(opt_info["longopt"])
+			except KeyError:
+				pass
+
+			kwargs = {}
+			try:
+				kwargs["action"] = opt_info["action"]
+			except KeyError:
+				pass
+			try:
+				kwargs["help"] = opt_info["help"]
+			except KeyError:
+				pass
+			arg_group.add_argument(*pargs, **kwargs)
+
+
+def usage(argv):
 	print(">>> Portage information query tool")
 	print(">>> %s" % portage.VERSION)
 	print(">>> Usage: portageq <command> [<option> ...]")
@@ -1119,13 +1227,13 @@ def usage(argv, parser=None, pquery_option_groups=None):
 			for line in lines[1:]:
 				print("      " + line.strip())
 
-	if pquery_option_groups is not None:
-		parser.formatter.store_option_strings(parser)
-		print()
-		print('Pkgcore pquery compatible options:')
-		print()
-		for optgroup in pquery_option_groups:
-			print(optgroup.format_help(parser.formatter))
+	print()
+	print('Pkgcore pquery compatible options:')
+	print()
+	parser = ArgumentParser(add_help=False,
+		usage='portageq pquery [options] [atom ...]')
+	add_pquery_arguments(parser)
+	parser.print_help()
 
 	if len(argv) == 1:
 		print("\nRun portageq with --help for info")
@@ -1148,56 +1256,27 @@ else:
 
 def main(argv):
 
-	if argv and isinstance(argv[0], bytes):
-		argv = [portage._unicode_decode(x) for x in argv]
+	argv = portage._decode_argv(argv)
 
 	nocolor = os.environ.get('NOCOLOR')
 	if nocolor in ('yes', 'true'):
 		portage.output.nocolor()
 
-	parser = optparse.OptionParser(add_help_option=False)
+	parser = ArgumentParser(add_help=False)
 
 	# used by envvar
-	parser.add_option("-v", dest="verbose", action="store_true")
+	parser.add_argument("-v", dest="verbose", action="store_true")
 
-	actions = optparse.OptionGroup(parser, 'Actions')
-	actions.add_option("-h", "--help", action="store_true")
-	actions.add_option("--version", action="store_true")
-	parser.add_option_group(actions)
+	actions = parser.add_argument_group('Actions')
+	actions.add_argument("-h", "--help", action="store_true")
+	actions.add_argument("--version", action="store_true")
 
-	pquery_option_groups = []
+	add_pquery_arguments(parser)
 
-	repo_optgroup = optparse.OptionGroup(parser,
-		'Repository matching options')
-	repo_optgroup.add_option("--no-filters", action="store_true",
-		help="no visibility filters (ACCEPT_KEYWORDS, package masking, etc)")
-	repo_optgroup.add_option("--repo", action="store",
-		help="repo to use (default is PORTDIR if omitted)")
-	repo_optgroup.add_option("--all-repos", action="store_true",
-		help="search all repos")
-	parser.add_option_group(repo_optgroup)
-	pquery_option_groups.append(repo_optgroup)
-
-	matching_optgroup = optparse.OptionGroup(parser,
-		'Package matching options')
-	matching_optgroup.add_option("--herd", action="append",
-		help="exact match on a herd")
-	matching_optgroup.add_option("--maintainer-email", action="append",
-		help="comma-separated list of maintainer email regexes to search for")
-	parser.add_option_group(matching_optgroup)
-	pquery_option_groups.append(matching_optgroup)
-
-	formatting_optgroup = optparse.OptionGroup(parser,
-		'Output formatting')
-	formatting_optgroup.add_option("-n", "--no-version", action="store_true",
-		help="collapse multiple matching versions together")
-	parser.add_option_group(formatting_optgroup)
-	pquery_option_groups.append(formatting_optgroup)
-
-	opts, args = parser.parse_args(argv[1:])
+	opts, args = parser.parse_known_args(argv[1:])
 
 	if opts.help:
-		usage(argv, parser=parser, pquery_option_groups=pquery_option_groups)
+		usage(argv)
 		return os.EX_OK
 	elif opts.version:
 		print("Portage", portage.VERSION)
@@ -1212,7 +1291,7 @@ def main(argv):
 		args = args[1:]
 
 	if cmd is None:
-		return pquery(parser, pquery_option_groups, opts, args)
+		return pquery(parser, opts, args)
 
 	if opts.verbose:
 		# used by envvar
@@ -1232,7 +1311,7 @@ def main(argv):
 			sys.stderr.write("Run portageq with --help for info\n")
 			sys.stderr.flush()
 			sys.exit(os.EX_USAGE)
-		eprefix = portage.const.EPREFIX
+		eprefix = portage.settings["EPREFIX"]
 		eroot = portage.util.normalize_path(argv[2])
 
 		if eprefix:

@@ -9,13 +9,16 @@ import sys
 import portage
 portage.proxy.lazyimport.lazyimport(globals(),
 	'logging',
+	'portage.dep:Atom',
 	'portage.util:writemsg_level',
 	'textwrap',
 	'_emerge.actions:load_emerge_config,run_action,' + \
 		'validate_ebuild_environment',
 	'_emerge.help:help@emerge_help',
+	'_emerge.is_valid_package_atom:insert_category_into_atom'
 )
 from portage import os
+from portage.util._argparse import ArgumentParser
 
 if sys.hexversion >= 0x3000000:
 	long = int
@@ -258,14 +261,17 @@ def _find_bad_atoms(atoms, less_strict=False):
 	"""
 	bad_atoms = []
 	for x in ' '.join(atoms).split():
+		atom = x
+		if "/" not in x.split(":")[0]:
+			x_cat = insert_category_into_atom(x, 'dummy-category')
+			if x_cat is not None:
+				atom = x_cat
+
 		bad_atom = False
 		try:
-			atom = portage.dep.Atom(x, allow_wildcard=True, allow_repo=less_strict)
+			atom = Atom(atom, allow_wildcard=True, allow_repo=less_strict)
 		except portage.exception.InvalidAtom:
-			try:
-				atom = portage.dep.Atom("*/"+x, allow_wildcard=True, allow_repo=less_strict)
-			except portage.exception.InvalidAtom:
-				bad_atom = True
+			bad_atom = True
 
 		if bad_atom or (atom.operator and not less_strict) or atom.blocker or atom.use:
 			bad_atoms.append(x)
@@ -293,31 +299,26 @@ def parse_opts(tmpcmdline, silent=False):
 		"--ask": {
 			"shortopt" : "-a",
 			"help"    : "prompt before performing any actions",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
 		"--autounmask": {
 			"help"    : "automatically unmask packages",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
 		"--autounmask-unrestricted-atoms": {
 			"help"    : "write autounmask changes with >= atoms if possible",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
 		"--autounmask-keep-masks": {
 			"help"    : "don't add package.unmask entries",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
 		"--autounmask-write": {
 			"help"    : "write changes made by --autounmask to disk",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
@@ -342,7 +343,6 @@ def parse_opts(tmpcmdline, silent=False):
 		"--buildpkg": {
 			"shortopt" : "-b",
 			"help"     : "build binary packages",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 
@@ -360,25 +360,21 @@ def parse_opts(tmpcmdline, silent=False):
 		},
 		"--color": {
 			"help":"enable or disable color output",
-			"type":"choice",
 			"choices":("y", "n")
 		},
 
 		"--complete-graph": {
 			"help"    : "completely account for all known dependencies",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
 		"--complete-graph-if-new-use": {
 			"help"    : "trigger --complete-graph behavior if USE or IUSE will change for an installed package",
-			"type"    : "choice",
 			"choices" : y_or_n
 		},
 
 		"--complete-graph-if-new-ver": {
 			"help"    : "trigger --complete-graph behavior if an installed package version will change (upgrade or downgrade)",
-			"type"    : "choice",
 			"choices" : y_or_n
 		},
 
@@ -396,19 +392,16 @@ def parse_opts(tmpcmdline, silent=False):
 
 		"--depclean-lib-check": {
 			"help"    : "check for consumers of libraries before removing them",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
 		"--deselect": {
 			"help"    : "remove atoms/sets from the world file",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
 		"--dynamic-deps": {
 			"help": "substitute the dependencies of installed packages with the dependencies of unbuilt ebuilds",
-			"type": "choice",
 			"choices": y_or_n
 		},
 
@@ -422,7 +415,6 @@ def parse_opts(tmpcmdline, silent=False):
 
 		"--fail-clean": {
 			"help"    : "clean temp files after build failure",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
@@ -432,7 +424,6 @@ def parse_opts(tmpcmdline, silent=False):
 				"only for debugging purposes, and it only affects built packages "
 				"that specify slot/sub-slot := operator dependencies using the "
 				"experimental \"4-slot-abi\" EAPI.",
-			"type": "choice",
 			"choices": y_or_n
 		},
 
@@ -448,7 +439,6 @@ def parse_opts(tmpcmdline, silent=False):
 
 		"--keep-going": {
 			"help"    : "continue as much as possible after an error",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
@@ -463,18 +453,15 @@ def parse_opts(tmpcmdline, silent=False):
 
 		"--misspell-suggestions": {
 			"help"    : "enable package name misspell suggestions",
-			"type"    : "choice",
 			"choices" : ("y", "n")
 		},
 
 		"--with-bdeps": {
 			"help":"include unnecessary build time dependencies",
-			"type":"choice",
 			"choices":("y", "n")
 		},
 		"--reinstall": {
 			"help":"specify conditions to trigger package reinstallation",
-			"type":"choice",
 			"choices":["changed-use"]
 		},
 
@@ -489,21 +476,18 @@ def parse_opts(tmpcmdline, silent=False):
 		"--binpkg-respect-use": {
 			"help"    : "discard binary packages if their use flags \
 				don't match the current configuration",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
 		"--getbinpkg": {
 			"shortopt" : "-g",
 			"help"     : "fetch binary packages",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 
 		"--getbinpkgonly": {
 			"shortopt" : "-G",
 			"help"     : "fetch binary packages only",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 
@@ -532,26 +516,32 @@ def parse_opts(tmpcmdline, silent=False):
 
 		"--package-moves": {
 			"help"     : "perform package moves when necessary",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
+		},
+
+		"--prefix": {
+			"help"     : "specify the installation prefix",
+			"action"   : "store"
+		},
+
+		"--pkg-format": {
+			"help"     : "format of result binary package",
+			"action"   : "store",
 		},
 
 		"--quiet": {
 			"shortopt" : "-q",
 			"help"     : "reduced or condensed output",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 
 		"--quiet-build": {
 			"help"     : "redirect build output to logs",
-			"type"     : "choice",
 			"choices"  : true_y_or_n,
 		},
 
 		"--quiet-fail": {
 			"help"     : "suppresses display of the build log on stdout",
-			"type"     : "choice",
 			"choices"  : true_y_or_n,
 		},
 
@@ -560,7 +550,6 @@ def parse_opts(tmpcmdline, silent=False):
 				"operator dependencies can be satisfied by a newer slot, so that "
 				"older packages slots will become eligible for removal by the "
 				"--depclean action as soon as possible."),
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 
@@ -569,7 +558,6 @@ def parse_opts(tmpcmdline, silent=False):
 				"used at both build-time and run-time are built, " + \
 				"if the dependency is not already installed with the " + \
 				"same version and revision.",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 
@@ -578,21 +566,18 @@ def parse_opts(tmpcmdline, silent=False):
 				"used at both build-time and run-time are built, " + \
 				"if the dependency is not already installed with the " + \
 				"same version. Revision numbers are ignored.",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 
 		"--rebuild-if-unbuilt": {
 			"help"     : "Rebuild packages when dependencies that are " + \
 				"used at both build-time and run-time are built.",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 
 		"--rebuilt-binaries": {
 			"help"     : "replace installed packages with binary " + \
 			             "packages that have been rebuilt",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 		
@@ -609,7 +594,6 @@ def parse_opts(tmpcmdline, silent=False):
 
 		"--root-deps": {
 			"help"    : "modify interpretation of depedencies",
-			"type"    : "choice",
 			"choices" :("True", "rdeps")
 		},
 
@@ -617,19 +601,16 @@ def parse_opts(tmpcmdline, silent=False):
 			"shortopt" : "-w",
 			"help"    : "add specified packages to the world set " + \
 			            "(inverse of --oneshot)",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
 		"--selective": {
 			"help"    : "identical to --noreplace",
-			"type"    : "choice",
 			"choices" : true_y_or_n
 		},
 
 		"--use-ebuild-visibility": {
 			"help"     : "use unbuilt ebuild metadata for visibility checks on built packages",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 
@@ -643,41 +624,35 @@ def parse_opts(tmpcmdline, silent=False):
 		"--usepkg": {
 			"shortopt" : "-k",
 			"help"     : "use binary packages",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 
 		"--usepkgonly": {
 			"shortopt" : "-K",
 			"help"     : "use only binary packages",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 
 		"--verbose": {
 			"shortopt" : "-v",
 			"help"     : "verbose output",
-			"type"     : "choice",
 			"choices"  : true_y_or_n
 		},
 	}
 
-	from optparse import OptionParser
-	parser = OptionParser()
-	if parser.has_option("--help"):
-		parser.remove_option("--help")
+	parser = ArgumentParser(add_help=False)
 
 	for action_opt in actions:
-		parser.add_option("--" + action_opt, action="store_true",
+		parser.add_argument("--" + action_opt, action="store_true",
 			dest=action_opt.replace("-", "_"), default=False)
 	for myopt in options:
-		parser.add_option(myopt, action="store_true",
+		parser.add_argument(myopt, action="store_true",
 			dest=myopt.lstrip("--").replace("-", "_"), default=False)
 	for shortopt, longopt in shortmapping.items():
-		parser.add_option("-" + shortopt, action="store_true",
+		parser.add_argument("-" + shortopt, action="store_true",
 			dest=longopt.lstrip("--").replace("-", "_"), default=False)
 	for myalias, myopt in longopt_aliases.items():
-		parser.add_option(myalias, action="store_true",
+		parser.add_argument(myalias, action="store_true",
 			dest=myopt.lstrip("--").replace("-", "_"), default=False)
 
 	for myopt, kwargs in argument_options.items():
@@ -685,12 +660,12 @@ def parse_opts(tmpcmdline, silent=False):
 		args = [myopt]
 		if shortopt is not None:
 			args.append(shortopt)
-		parser.add_option(dest=myopt.lstrip("--").replace("-", "_"),
+		parser.add_argument(dest=myopt.lstrip("--").replace("-", "_"),
 			*args, **kwargs)
 
 	tmpcmdline = insert_optional_args(tmpcmdline)
 
-	myoptions, myargs = parser.parse_args(args=tmpcmdline)
+	myoptions, myargs = parser.parse_known_args(args=tmpcmdline)
 
 	if myoptions.ask in true_y:
 		myoptions.ask = True
@@ -971,10 +946,6 @@ def parse_opts(tmpcmdline, silent=False):
 	if myaction is None and myoptions.deselect is True:
 		myaction = 'deselect'
 
-	if myargs and isinstance(myargs[0], bytes):
-		for i in range(len(myargs)):
-			myargs[i] = portage._unicode_decode(myargs[i])
-
 	myfiles += myargs
 
 	return myaction, myopts, myfiles
@@ -1004,6 +975,8 @@ def emerge_main(args=None):
 	if args is None:
 		args = sys.argv[1:]
 
+	args = portage._decode_argv(args)
+
 	# Disable color until we're sure that it should be enabled (after
 	# EMERGE_DEFAULT_OPTS has been parsed).
 	portage.output.havecolor = 0
@@ -1019,6 +992,8 @@ def emerge_main(args=None):
 		os.environ["PORTAGE_CONFIGROOT"] = myopts["--config-root"]
 	if "--root" in myopts:
 		os.environ["ROOT"] = myopts["--root"]
+	if "--prefix" in myopts:
+		os.environ["EPREFIX"] = myopts["--prefix"]
 	if "--accept-properties" in myopts:
 		os.environ["ACCEPT_PROPERTIES"] = myopts["--accept-properties"]
 	if "--accept-restrict" in myopts:
@@ -1036,17 +1011,26 @@ def emerge_main(args=None):
 	os.umask(0o22)
 	if myaction == "sync":
 		portage._sync_disabled_warnings = True
-	settings, trees, mtimedb = load_emerge_config()
-	rval = profile_check(trees, myaction)
+	emerge_config = load_emerge_config(
+		action=myaction, args=myfiles, opts=myopts)
+	rval = profile_check(emerge_config.trees, emerge_config.action)
 	if rval != os.EX_OK:
 		return rval
 
 	tmpcmdline = []
 	if "--ignore-default-opts" not in myopts:
 		tmpcmdline.extend(portage.util.shlex_split(
-			settings.get("EMERGE_DEFAULT_OPTS", "")))
+			emerge_config.target_config.settings.get(
+			"EMERGE_DEFAULT_OPTS", "")))
 	tmpcmdline.extend(args)
-	myaction, myopts, myfiles = parse_opts(tmpcmdline)
+	emerge_config.action, emerge_config.opts, emerge_config.args = \
+		parse_opts(tmpcmdline)
 
-	return run_action(settings, trees, mtimedb, myaction, myopts, myfiles,
-		gc_locals=locals().clear)
+	try:
+		return run_action(emerge_config)
+	finally:
+		# Call destructors for our portdbapi instances.
+		for x in emerge_config.trees.values():
+			if "porttree" in x.lazy_items:
+				continue
+			x["porttree"].dbapi.close_caches()

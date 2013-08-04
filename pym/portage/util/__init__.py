@@ -1,6 +1,8 @@
 # Copyright 2004-2013 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
+from __future__ import unicode_literals
+
 __all__ = ['apply_permissions', 'apply_recursive_permissions',
 	'apply_secpass_permissions', 'apply_stat_permissions', 'atomic_ofstream',
 	'cmp_sort_key', 'ConfigProtect', 'dump_traceback', 'ensure_dirs',
@@ -486,25 +488,51 @@ def grabfile_package(myfilename, compatlevel=0, recursive=0, allow_wildcard=Fals
 def _recursive_basename_filter(f):
 	return not f.startswith(".") and not f.endswith("~")
 
+def _recursive_file_list(path):
+	# path may be a regular file or a directory
+
+	def onerror(e):
+		if e.errno == PermissionDenied.errno:
+			raise PermissionDenied(path)
+
+	stack = [os.path.split(path)]
+
+	while stack:
+		parent, fname = stack.pop()
+		fullpath = os.path.join(parent, fname)
+
+		try:
+			st = os.stat(fullpath)
+		except OSError as e:
+			onerror(e)
+			continue
+
+		if stat.S_ISDIR(st.st_mode):
+			if fname in VCS_DIRS or not _recursive_basename_filter(fname):
+				continue
+			try:
+				children = os.listdir(fullpath)
+			except OSError as e:
+				onerror(e)
+				continue
+
+			# Sort in reverse, since we pop from the end of the stack.
+			# Include regular files in the stack, so files are sorted
+			# together with directories.
+			children.sort(reverse=True)
+			stack.extend((fullpath, x) for x in children)
+
+		elif stat.S_ISREG(st.st_mode):
+			if _recursive_basename_filter(fname):
+				yield fullpath
+
 def grablines(myfilename, recursive=0, remember_source_file=False):
 	mylines=[]
-	if recursive and os.path.isdir(myfilename):
-		if os.path.basename(myfilename) in VCS_DIRS:
-			return mylines
-		try:
-			dirlist = os.listdir(myfilename)
-		except OSError as e:
-			if e.errno == PermissionDenied.errno:
-				raise PermissionDenied(myfilename)
-			elif e.errno in (errno.ENOENT, errno.ESTALE):
-				return mylines
-			else:
-				raise
-		dirlist.sort()
-		for f in dirlist:
-			if _recursive_basename_filter(f):
-				mylines.extend(grablines(
-					os.path.join(myfilename, f), recursive, remember_source_file))
+	if recursive:
+		for f in _recursive_file_list(myfilename):
+			mylines.extend(grablines(f, recursive=False,
+				remember_source_file=remember_source_file))
+
 	else:
 		try:
 			myfile = io.open(_unicode_encode(myfilename,
@@ -550,31 +578,38 @@ def shlex_split(s):
 		rval = [_unicode_decode(x) for x in rval]
 	return rval
 
-class _tolerant_shlex(shlex.shlex):
+class _getconfig_shlex(shlex.shlex):
+
+	def __init__(self, portage_tolerant=False, **kwargs):
+		shlex.shlex.__init__(self, **kwargs)
+		self.__portage_tolerant = portage_tolerant
+
 	def sourcehook(self, newfile):
 		try:
 			return shlex.shlex.sourcehook(self, newfile)
 		except EnvironmentError as e:
-			writemsg(_("!!! Parse error in '%s': source command failed: %s\n") % \
-				(self.infile, str(e)), noiselevel=-1)
+			if e.errno == PermissionDenied.errno:
+				raise PermissionDenied(newfile)
+			if e.errno not in (errno.ENOENT, errno.ENOTDIR):
+				writemsg("open('%s', 'r'): %s\n" % (newfile, e), noiselevel=-1)
+				raise
+
+			msg = self.error_leader()
+			if e.errno == errno.ENOTDIR:
+				msg += _("%s: Not a directory") % newfile
+			else:
+				msg += _("%s: No such file or directory") % newfile
+
+			if self.__portage_tolerant:
+				writemsg("%s\n" % msg, noiselevel=-1)
+			else:
+				raise ParseError(msg)
 			return (newfile, io.StringIO())
 
 _invalid_var_name_re = re.compile(r'^\d|\W')
 
 def getconfig(mycfg, tolerant=False, allow_sourcing=False, expand=True,
 	recursive=False):
-
-	is_dir = False
-	if recursive:
-		try:
-			is_dir = stat.S_ISDIR(os.stat(mycfg).st_mode)
-		except OSError as e:
-			if e.errno == PermissionDenied.errno:
-				raise PermissionDenied(mycfg)
-			elif e.errno in (errno.ENOENT, errno.ESTALE, errno.EISDIR):
-				return None
-			else:
-				raise
 
 	if isinstance(expand, dict):
 		# Some existing variable definitions have been
@@ -585,47 +620,18 @@ def getconfig(mycfg, tolerant=False, allow_sourcing=False, expand=True,
 		expand_map = {}
 	mykeys = {}
 
-	if recursive and is_dir:
+	if recursive:
 		# Emulate source commands so that syntax error messages
 		# can display real file names and line numbers.
-		def onerror(e):
-			if e.errno == PermissionDenied.errno:
-				raise PermissionDenied(mycfg)
-
-		recursive_files = []
-		for parent, dirs, files in os.walk(mycfg, onerror=onerror):
-			try:
-				parent = _unicode_decode(parent,
-					encoding=_encodings['fs'], errors='strict')
-			except UnicodeDecodeError:
-				continue
-			for fname_enc in dirs[:]:
-				try:
-					fname = _unicode_decode(fname_enc,
-						encoding=_encodings['fs'], errors='strict')
-				except UnicodeDecodeError:
-					dirs.remove(fname_enc)
-					continue
-				if fname in VCS_DIRS or not _recursive_basename_filter(fname):
-					dirs.remove(fname_enc)
-			for fname in files:
-				try:
-					fname = _unicode_decode(fname,
-						encoding=_encodings['fs'], errors='strict')
-				except UnicodeDecodeError:
-					pass
-				else:
-					if _recursive_basename_filter(fname):
-						fname = os.path.join(parent, fname)
-						if os.path.isfile(fname):
-							recursive_files.append(fname)
-		recursive_files.sort()
 		if not expand:
 			expand_map = False
-		for fname in recursive_files:
+		fname = None
+		for fname in _recursive_file_list(mycfg):
 			mykeys.update(getconfig(fname, tolerant=tolerant,
 				allow_sourcing=allow_sourcing, expand=expand_map,
 				recursive=False) or {})
+		if fname is None:
+			return None
 		return mykeys
 
 	f = None
@@ -652,49 +658,53 @@ def getconfig(mycfg, tolerant=False, allow_sourcing=False, expand=True,
 		if f is not None:
 			f.close()
 
+	# Since this file has unicode_literals enabled, and Python 2's
+	# shlex implementation does not support unicode, the following code
+	# uses _native_string() to encode unicode literals when necessary.
+
 	# Workaround for avoiding a silent error in shlex that is
 	# triggered by a source statement at the end of the file
 	# without a trailing newline after the source statement.
-	if content and content[-1] != '\n':
-		content += '\n'
+	if content and content[-1] != portage._native_string('\n'):
+		content += portage._native_string('\n')
 
 	# Warn about dos-style line endings since that prevents
 	# people from being able to source them with bash.
-	if '\r' in content:
+	if portage._native_string('\r') in content:
 		writemsg(("!!! " + _("Please use dos2unix to convert line endings " + \
 			"in config file: '%s'") + "\n") % mycfg, noiselevel=-1)
 
 	lex = None
 	try:
-		if tolerant:
-			shlex_class = _tolerant_shlex
-		else:
-			shlex_class = shlex.shlex
 		# The default shlex.sourcehook() implementation
 		# only joins relative paths when the infile
 		# attribute is properly set.
-		lex = shlex_class(content, infile=mycfg, posix=True)
-		lex.wordchars = string.digits + string.ascii_letters + \
-			"~!@#$%*_\:;?,./-+{}"
-		lex.quotes="\"'"
+		lex = _getconfig_shlex(instream=content, infile=mycfg, posix=True,
+			portage_tolerant=tolerant)
+		lex.wordchars = portage._native_string(string.digits +
+			string.ascii_letters + "~!@#$%*_\:;?,./-+{}")
+		lex.quotes = portage._native_string("\"'")
 		if allow_sourcing:
-			lex.source="source"
-		while 1:
-			key=lex.get_token()
+			lex.source = portage._native_string("source")
+
+		while True:
+			key = _unicode_decode(lex.get_token())
 			if key == "export":
-				key = lex.get_token()
+				key = _unicode_decode(lex.get_token())
 			if key is None:
 				#normal end of file
-				break;
-			equ=lex.get_token()
-			if (equ==''):
+				break
+
+			equ = _unicode_decode(lex.get_token())
+			if not equ:
 				msg = lex.error_leader() + _("Unexpected EOF")
 				if not tolerant:
 					raise ParseError(msg)
 				else:
 					writemsg("%s\n" % msg, noiselevel=-1)
 					return mykeys
-			elif (equ!='='):
+
+			elif equ != "=":
 				msg = lex.error_leader() + \
 					_("Invalid token '%s' (not '=')") % (equ,)
 				if not tolerant:
@@ -702,7 +712,8 @@ def getconfig(mycfg, tolerant=False, allow_sourcing=False, expand=True,
 				else:
 					writemsg("%s\n" % msg, noiselevel=-1)
 					return mykeys
-			val=lex.get_token()
+
+			val = _unicode_decode(lex.get_token())
 			if val is None:
 				msg = lex.error_leader() + \
 					_("Unexpected end of config file: variable '%s'") % (key,)
@@ -711,8 +722,6 @@ def getconfig(mycfg, tolerant=False, allow_sourcing=False, expand=True,
 				else:
 					writemsg("%s\n" % msg, noiselevel=-1)
 					return mykeys
-			key = _unicode_decode(key)
-			val = _unicode_decode(val)
 
 			if _invalid_var_name_re.search(key) is not None:
 				msg = lex.error_leader() + \
@@ -733,7 +742,7 @@ def getconfig(mycfg, tolerant=False, allow_sourcing=False, expand=True,
 	except Exception as e:
 		if isinstance(e, ParseError) or lex is None:
 			raise
-		msg = _unicode_decode("%s%s") % (lex.error_leader(), e)
+		msg = "%s%s" % (lex.error_leader(), e)
 		writemsg("%s\n" % msg, noiselevel=-1)
 		raise
 
@@ -1485,9 +1494,9 @@ class LazyItemsDict(UserDict):
 			lazy_item = self.lazy_items.get(k)
 			if lazy_item is not None:
 				if not lazy_item.singleton:
-					raise TypeError(_unicode_decode("LazyItemsDict " + \
+					raise TypeError("LazyItemsDict " + \
 						"deepcopy is unsafe with lazy items that are " + \
-						"not singletons: key=%s value=%s") % (k, lazy_item,))
+						"not singletons: key=%s value=%s" % (k, lazy_item,))
 			UserDict.__setitem__(result, k_copy, deepcopy(self[k], memo))
 		return result
 
@@ -1698,10 +1707,17 @@ def find_updated_config_files(target_root, config_protect):
 						os.path.split(x.rstrip(os.path.sep))
 			mycommand += " ! -name '.*~' ! -iname '.*.bak' -print0"
 			cmd = shlex_split(mycommand)
-			if sys.hexversion < 0x3000000 or sys.hexversion >= 0x3020000:
-				# Python 3.1 does not support bytes in Popen args.
-				cmd = [_unicode_encode(arg, encoding=encoding, errors='strict')
-					for arg in cmd]
+
+			if sys.hexversion < 0x3020000 and sys.hexversion >= 0x3000000:
+				# Python 3.1 _execvp throws TypeError for non-absolute executable
+				# path passed as bytes (see http://bugs.python.org/issue8513).
+				fullname = portage.process.find_binary(cmd[0])
+				if fullname is None:
+					raise portage.exception.CommandNotFound(cmd[0])
+				cmd[0] = fullname
+
+			cmd = [_unicode_encode(arg, encoding=encoding, errors='strict')
+				for arg in cmd]
 			proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
 				stderr=subprocess.STDOUT)
 			output = _unicode_decode(proc.communicate()[0], encoding=encoding)

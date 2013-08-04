@@ -9,6 +9,7 @@ import logging
 import stat
 import sys
 import textwrap
+import warnings
 from collections import deque
 from itertools import chain
 
@@ -49,6 +50,7 @@ from _emerge.AtomArg import AtomArg
 from _emerge.Blocker import Blocker
 from _emerge.BlockerCache import BlockerCache
 from _emerge.BlockerDepPriority import BlockerDepPriority
+from .chk_updated_cfg_files import chk_updated_cfg_files
 from _emerge.countdown import countdown
 from _emerge.create_world_atom import create_world_atom
 from _emerge.Dependency import Dependency
@@ -424,6 +426,7 @@ class _dynamic_depgraph_config(object):
 		self._skip_restart = False
 		self._backtrack_infos = {}
 
+		self._buildpkgonly_deps_unsatisfied = False
 		self._autounmask = depgraph._frozen_config.myopts.get('--autounmask') != 'n'
 		self._success_without_autounmask = False
 		self._traverse_ignored_deps = False
@@ -451,6 +454,7 @@ class _dynamic_depgraph_config(object):
 			self._graph_trees[myroot]["vartree"]    = graph_tree
 			self._graph_trees[myroot]["graph_db"]   = graph_tree.dbapi
 			self._graph_trees[myroot]["graph"]      = self.digraph
+			self._graph_trees[myroot]["want_update_pkg"] = depgraph._want_update_pkg
 			def filtered_tree():
 				pass
 			filtered_tree.dbapi = _dep_check_composite_db(depgraph, myroot)
@@ -477,6 +481,7 @@ class _dynamic_depgraph_config(object):
 			self._filtered_trees[myroot]["graph"]    = self.digraph
 			self._filtered_trees[myroot]["vartree"] = \
 				depgraph._frozen_config.trees[myroot]["vartree"]
+			self._filtered_trees[myroot]["want_update_pkg"] = depgraph._want_update_pkg
 
 			dbs = []
 			#               (db, pkg_type, built, installed, db_keys)
@@ -953,20 +958,11 @@ class depgraph(object):
 
 		debug = "--debug" in self._frozen_config.myopts
 		existing_node = self._dynamic_config._slot_pkg_map[root][slot_atom]
+		# In order to avoid a missed update, first mask lower versions
+		# that conflict with higher versions (the backtracker visits
+		# these in reverse order).
+		conflict_pkgs.sort(reverse=True)
 		backtrack_data = []
-		# The ordering of backtrack_data can make
-		# a difference here, because both mask actions may lead
-		# to valid, but different, solutions and the one with
-		# 'existing_node' masked is usually the better one. Because
-		# of that, we choose an order such that
-		# the backtracker will first explore the choice with
-		# existing_node masked. The backtracker reverses the
-		# order, so the order it uses is the reverse of the
-		# order shown here. See bug #339606.
-		if existing_node in conflict_pkgs and \
-			existing_node is not conflict_pkgs[-1]:
-			conflict_pkgs.remove(existing_node)
-			conflict_pkgs.append(existing_node)
 		for to_be_masked in conflict_pkgs:
 			# For missed update messages, find out which
 			# atoms matched to_be_selected that did not
@@ -976,19 +972,6 @@ class depgraph(object):
 			conflict_atoms = set(parent_atom for parent_atom in all_parents \
 				if parent_atom not in parent_atoms)
 			backtrack_data.append((to_be_masked, conflict_atoms))
-
-		if len(backtrack_data) > 1:
-			# NOTE: Generally, we prefer to mask the higher
-			# version since this solves common cases in which a
-			# lower version is needed so that all dependencies
-			# will be satisfied (bug #337178). However, if
-			# existing_node happens to be installed then we
-			# mask that since this is a common case that is
-			# triggered when --update is not enabled.
-			if existing_node.installed:
-				pass
-			elif any(pkg > existing_node for pkg in conflict_pkgs):
-				backtrack_data.reverse()
 
 		to_be_masked = backtrack_data[-1][0]
 
@@ -2251,6 +2234,13 @@ class depgraph(object):
 
 			mypriority = dep_priority.copy()
 			if not atom.blocker:
+
+				if atom.slot_operator == "=":
+					if mypriority.buildtime:
+						mypriority.buildtime_slot_op = True
+					if mypriority.runtime:
+						mypriority.runtime_slot_op = True
+
 				inst_pkgs = [inst_pkg for inst_pkg in
 					reversed(vardb.match_pkgs(atom))
 					if not reinstall_atoms.findAtomForPackage(inst_pkg,
@@ -3174,6 +3164,21 @@ class depgraph(object):
 		if self.need_restart():
 			# want_restart_for_use_change triggers this
 			return False, myfavorites
+
+		if "--fetchonly" not in self._frozen_config.myopts and \
+			"--buildpkgonly" in self._frozen_config.myopts:
+			graph_copy = self._dynamic_config.digraph.copy()
+			removed_nodes = set()
+			for node in graph_copy:
+				if not isinstance(node, Package) or \
+					node.operation == "nomerge":
+					removed_nodes.add(node)
+			graph_copy.difference_update(removed_nodes)
+			if not graph_copy.hasallzeros(ignore_priority = \
+				DepPrioritySatisfiedRange.ignore_medium):
+				self._dynamic_config._buildpkgonly_deps_unsatisfied = True
+				self._dynamic_config._skip_restart = True
+				return False, myfavorites
 
 		# Any failures except those due to autounmask *alone* should return
 		# before this point, since the success_without_autounmask flag that's
@@ -4289,6 +4294,36 @@ class depgraph(object):
 
 		return not arg
 
+	def _want_update_pkg(self, parent, pkg):
+
+		if self._frozen_config.excluded_pkgs.findAtomForPackage(pkg,
+			modified_use=self._pkg_use_enabled(pkg)):
+			return False
+
+		arg_atoms = None
+		try:
+			arg_atoms = list(self._iter_atoms_for_pkg(pkg))
+		except InvalidDependString:
+			if not pkg.installed:
+				# should have been masked before it was selected
+				raise
+
+		depth = parent.depth or 0
+		depth += 1
+
+		if arg_atoms:
+			for arg, atom in arg_atoms:
+				if arg.reset_depth:
+					depth = 0
+					break
+
+		deep = self._dynamic_config.myparams.get("deep", 0)
+		update = "--update" in self._frozen_config.myopts
+
+		return (not self._dynamic_config._complete_mode and
+			(arg_atoms or update) and
+			not (deep is not True and depth > deep))
+
 	def _equiv_ebuild_visible(self, pkg, autounmask_level=None):
 		try:
 			pkg_eb = self._pkg(
@@ -4624,7 +4659,6 @@ class depgraph(object):
 		vardb = self._frozen_config.roots[root].trees["vartree"].dbapi
 		# List of acceptable packages, ordered by type preference.
 		matched_packages = []
-		matched_pkgs_ignore_use = []
 		highest_version = None
 		if not isinstance(atom, portage.dep.Atom):
 			atom = portage.dep.Atom(atom)
@@ -4806,7 +4840,6 @@ class depgraph(object):
 
 					if atom.use:
 
-						matched_pkgs_ignore_use.append(pkg)
 						if autounmask_level and autounmask_level.allow_use_changes and not pkg.built:
 							target_use = {}
 							for flag in atom.use.enabled:
@@ -4897,7 +4930,11 @@ class depgraph(object):
 						break
 					# Compare built package to current config and
 					# reject the built package if necessary.
-					if built and not useoldpkg and (not installed or matched_pkgs_ignore_use) and \
+					if built and not useoldpkg and \
+						(not installed or matched_packages) and \
+						not (installed and
+						self._frozen_config.excluded_pkgs.findAtomForPackage(pkg,
+						modified_use=self._pkg_use_enabled(pkg))) and \
 						("--newuse" in self._frozen_config.myopts or \
 						"--reinstall" in self._frozen_config.myopts or \
 						(not installed and self._dynamic_config.myparams.get(
@@ -5057,9 +5094,16 @@ class depgraph(object):
 		matches = graph_db.match_pkgs(atom)
 		if not matches:
 			return None, None
-		pkg = matches[-1] # highest match
-		in_graph = self._dynamic_config._slot_pkg_map[root].get(pkg.slot_atom)
-		return pkg, in_graph
+
+		# There may be multiple matches, and they may
+		# conflict with eachother, so choose the highest
+		# version that has already been added to the graph.
+		for pkg in reversed(matches):
+			if pkg in self._dynamic_config.digraph:
+				return pkg, pkg
+
+		# Fall back to installed packages
+		return self._select_pkg_from_installed(root, atom, onlydeps=onlydeps)
 
 	def _select_pkg_from_installed(self, root, atom, onlydeps=False):
 		"""
@@ -5678,7 +5722,12 @@ class depgraph(object):
 
 		mygraph.order.sort(key=cmp_sort_key(cmp_merge_preference))
 
-	def altlist(self, reversed=False):
+	def altlist(self, reversed=DeprecationWarning):
+
+		if reversed is not DeprecationWarning:
+			warnings.warn("The reversed parameter of "
+				"_emerge.depgraph.depgraph.altlist() is deprecated",
+				DeprecationWarning, stacklevel=2)
 
 		while self._dynamic_config._serialized_tasks_cache is None:
 			self._resolve_conflicts()
@@ -5688,9 +5737,13 @@ class depgraph(object):
 			except self._serialize_tasks_retry:
 				pass
 
-		retlist = self._dynamic_config._serialized_tasks_cache[:]
-		if reversed:
+		retlist = self._dynamic_config._serialized_tasks_cache
+		if reversed is not DeprecationWarning and reversed:
+			# TODO: remove the "reversed" parameter (builtin name collision)
+			retlist = list(retlist)
 			retlist.reverse()
+			retlist = tuple(retlist)
+
 		return retlist
 
 	def _implicit_libc_deps(self, mergelist, graph):
@@ -6559,10 +6612,12 @@ class depgraph(object):
 		for blocker in unsolvable_blockers:
 			retlist.append(blocker)
 
+		retlist = tuple(retlist)
+
 		if unsolvable_blockers and \
 			not self._accept_blocker_conflicts():
 			self._dynamic_config._unsatisfied_blockers_for_display = unsolvable_blockers
-			self._dynamic_config._serialized_tasks_cache = retlist[:]
+			self._dynamic_config._serialized_tasks_cache = retlist
 			self._dynamic_config._scheduler_graph = scheduler_graph
 			# Blockers don't trigger the _skip_restart flag, since
 			# backtracking may solve blockers when it solves slot
@@ -6571,7 +6626,7 @@ class depgraph(object):
 
 		if self._dynamic_config._slot_collision_info and \
 			not self._accept_blocker_conflicts():
-			self._dynamic_config._serialized_tasks_cache = retlist[:]
+			self._dynamic_config._serialized_tasks_cache = retlist
 			self._dynamic_config._scheduler_graph = scheduler_graph
 			raise self._unknown_internal_error()
 
@@ -6625,13 +6680,8 @@ class depgraph(object):
 	def _show_merge_list(self):
 		if self._dynamic_config._serialized_tasks_cache is not None and \
 			not (self._dynamic_config._displayed_list is not None and \
-			(self._dynamic_config._displayed_list == self._dynamic_config._serialized_tasks_cache or \
-			self._dynamic_config._displayed_list == \
-				list(reversed(self._dynamic_config._serialized_tasks_cache)))):
-			display_list = self._dynamic_config._serialized_tasks_cache[:]
-			if "--tree" in self._frozen_config.myopts:
-				display_list.reverse()
-			self.display(display_list)
+			self._dynamic_config._displayed_list is self._dynamic_config._serialized_tasks_cache):
+			self.display(self._dynamic_config._serialized_tasks_cache)
 
 	def _show_unsatisfied_blockers(self, blockers):
 		self._show_merge_list()
@@ -6649,10 +6699,18 @@ class depgraph(object):
 		# the reasons are not apparent from the normal merge list
 		# display.
 
+		slot_collision_info = self._dynamic_config._slot_collision_info
+
 		conflict_pkgs = {}
 		for blocker in blockers:
 			for pkg in chain(self._dynamic_config._blocked_pkgs.child_nodes(blocker), \
 				self._dynamic_config._blocker_parents.parent_nodes(blocker)):
+				if (pkg.slot_atom, pkg.root) in slot_collision_info:
+					# The slot conflict display has better noise reduction
+					# than the unsatisfied blockers display, so skip
+					# unsatisfied blockers display for packages involved
+					# directly in slot conflicts (see bug #385391).
+					continue
 				parent_atoms = self._dynamic_config._parent_atoms.get(pkg)
 				if not parent_atoms:
 					atom = self._dynamic_config._blocked_world_pkgs.get(pkg)
@@ -6710,7 +6768,14 @@ class depgraph(object):
 					else:
 						# Display the specific atom from SetArg or
 						# Package types.
-						msg.append("%s required by %s" % (atom, parent))
+						if atom != atom.unevaluated_atom:
+							# Show the unevaluated atom, since it can reveal
+							# issues with conditional use-flags missing
+							# from IUSE.
+							msg.append("%s (%s) required by %s" %
+								(atom.unevaluated_atom, atom, parent))
+						else:
+							msg.append("%s required by %s" % (atom, parent))
 					msg.append("\n")
 
 				msg.append("\n")
@@ -6726,6 +6791,10 @@ class depgraph(object):
 		# redundantly displaying this exact same merge list
 		# again via _show_merge_list().
 		self._dynamic_config._displayed_list = mylist
+
+		if "--tree" in self._frozen_config.myopts:
+			mylist = tuple(reversed(mylist))
+
 		display = Display()
 
 		return display(self, mylist, favorites, verbosity)
@@ -7092,8 +7161,11 @@ class depgraph(object):
 				noiselevel=-1)
 			writemsg("".join(problems), noiselevel=-1)
 		elif write_to_file and roots:
-			writemsg("\nAutounmask changes successfully written. Remember to run dispatch-conf.\n", \
+			writemsg("\nAutounmask changes successfully written.\n",
 				noiselevel=-1)
+			for root in roots:
+				chk_updated_cfg_files(root,
+					[os.path.join(os.sep, USER_CONFIG_PATH)])
 		elif not pretend and not autounmask_write and roots:
 			writemsg("\nUse --autounmask-write to write changes to config files (honoring\n"
 				"CONFIG_PROTECT). Carefully examine the list of proposed changes,\n"
@@ -7115,15 +7187,18 @@ class depgraph(object):
 			self._show_circular_deps(
 				self._dynamic_config._circular_deps_for_display)
 
-		# The slot conflict display has better noise reduction than
-		# the unsatisfied blockers display, so skip unsatisfied blockers
-		# display if there are slot conflicts (see bug #385391).
+		unresolved_conflicts = False
 		if self._dynamic_config._slot_collision_info:
+			unresolved_conflicts = True
 			self._show_slot_collision_notice()
-		elif self._dynamic_config._unsatisfied_blockers_for_display is not None:
+		if self._dynamic_config._unsatisfied_blockers_for_display is not None:
+			unresolved_conflicts = True
 			self._show_unsatisfied_blockers(
 				self._dynamic_config._unsatisfied_blockers_for_display)
-		else:
+
+		# Only show missed updates if there are no unresolved conflicts,
+		# since they may be irrelevant after the conflicts are solved.
+		if not unresolved_conflicts:
 			self._show_missed_update()
 
 		self._show_ignored_binaries()
@@ -7238,6 +7313,13 @@ class depgraph(object):
 		for pargs, kwargs in self._dynamic_config._unsatisfied_deps_for_display:
 			self._show_unsatisfied_dep(*pargs,
 				**portage._native_kwargs(kwargs))
+
+		if self._dynamic_config._buildpkgonly_deps_unsatisfied:
+			self._show_merge_list()
+			writemsg("\n!!! --buildpkgonly requires all "
+				"dependencies to be merged.\n", noiselevel=-1)
+			writemsg("!!! Cannot merge requested packages. "
+				"Merge deps and try again.\n\n", noiselevel=-1)
 
 	def saveNomergeFavorites(self):
 		"""Find atoms in favorites that are not in the mergelist and add them
