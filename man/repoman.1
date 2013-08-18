@@ -65,6 +65,10 @@ can be enabled by default for a particular repository by setting
 "update\-changelog = true" in metadata/layout.conf (see
 \fBportage(5)\fR).
 .TP
+\fB\-\-experimental\-inherit=<y|n>\fR
+Enable experimental inherit.missing checks which may misbehave when the
+internal eclass database becomes outdated.
+.TP
 \fB\-\-if\-modified=<y|n>\fR
 Only check packages that have uncommitted modifications
 .TP
@@ -346,6 +350,9 @@ metadata/layout.conf settings.
 .B repo.eapi.deprecated
 The ebuild uses an EAPI which is deprecated by the repository's
 metadata/layout.conf settings.
+.TP
+.B IUSE.rubydeprecated
+The ebuild has set a ruby interpreter in USE_RUBY, that is not available as a ruby target anymore
 .TP
 .B portage.internal
 The ebuild uses an internal Portage function or variable
