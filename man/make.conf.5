@@ -276,6 +276,10 @@ like "File not recognized: File truncated"), try recompiling the application
 with ccache disabled before reporting a bug. Unless you are doing development
 work, do not enable ccache.
 .TP
+.B cgroup
+Use Linux control group to control processes spawned by ebuilds. This allows
+emerge to safely kill all subprocesses when ebuild phase exits.
+.TP
 .B clean\-logs
 Enable automatic execution of the command specified by the
 PORT_LOGDIR_CLEAN variable. The default PORT_LOGDIR_CLEAN setting will
@@ -385,6 +389,10 @@ would otherwise be useless with prefix configurations. This brings
 compatibility with the prefix branch of portage, which also supports EPREFIX
 for all EAPIs (for obvious reasons).
 .TP
+.B ipc\-sandbox
+Isolate the ebuild phase functions from host IPC namespace. Supported
+only on Linux. Requires network namespace support in kernel.
+.TP
 .B lmirror
 When \fImirror\fR is enabled in \fBFEATURES\fR, fetch files even
 when \fImirror\fR is also in the \fBebuild\fR(5) \fBRESTRICT\fR variable.
@@ -414,6 +422,10 @@ $(prefix)/lib. This assumption can cause a serious mess if /usr/lib
 isn't a symlink to /usr/lib64. To find the bad packages, we have a
 portage feature called \fImultilib\-strict\fR. It will prevent emerge
 from putting 64bit libraries into anything other than (/usr)/lib64.
+.TP
+.B network\-sandbox
+Isolate the ebuild phase functions from host network interfaces.
+Supported only on Linux. Requires network namespace support in kernel.
 .TP
 .B news
 Enable GLEP 42 news support. See
