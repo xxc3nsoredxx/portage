@@ -8,6 +8,7 @@ except ImportError:
 	fcntl = None
 
 import errno
+import logging
 import platform
 import signal
 import sys
@@ -16,9 +17,12 @@ from _emerge.SubProcess import SubProcess
 import portage
 from portage import os
 from portage.const import BASH_BINARY
+from portage.util import writemsg_level
 from portage.util._async.PipeLogger import PipeLogger
 
 # On Darwin, FD_CLOEXEC triggers errno 35 for stdout (bug #456296)
+# TODO: Test this again now that it's been fixed to use
+# F_GETFD/F_SETFD instead of F_GETFL/F_SETFL.
 _disable_cloexec_stdout = platform.system() in ("Darwin",)
 
 class SpawnProcess(SubProcess):
@@ -123,20 +127,16 @@ class SpawnProcess(SubProcess):
 		stdout_fd = None
 		if can_log and not self.background:
 			stdout_fd = os.dup(fd_pipes_orig[1])
-			if fcntl is not None and not _disable_cloexec_stdout:
+			# FD_CLOEXEC is enabled by default in Python >=3.4.
+			if sys.hexversion < 0x3040000 and fcntl is not None and not _disable_cloexec_stdout:
 				try:
 					fcntl.FD_CLOEXEC
 				except AttributeError:
 					pass
 				else:
-					try:
-						fcntl.fcntl(stdout_fd, fcntl.F_SETFL,
-							fcntl.fcntl(stdout_fd,
-							fcntl.F_GETFL) | fcntl.FD_CLOEXEC)
-					except IOError:
-						# FreeBSD may return "Inappropriate ioctl for device"
-						# error here (ENOTTY).
-						pass
+					fcntl.fcntl(stdout_fd, fcntl.F_SETFD,
+						fcntl.fcntl(stdout_fd,
+						fcntl.F_GETFD) | fcntl.FD_CLOEXEC)
 
 		self._pipe_logger = PipeLogger(background=self.background,
 			scheduler=self.scheduler, input_fd=master_fd,
@@ -190,7 +190,7 @@ class SpawnProcess(SubProcess):
 			def get_pids(cgroup):
 				try:
 					with open(os.path.join(cgroup, 'cgroup.procs'), 'r') as f:
-						return f.read().split()
+						return [int(p) for p in f.read().split()]
 				except OSError:
 					# cgroup removed already?
 					return []
@@ -198,9 +198,15 @@ class SpawnProcess(SubProcess):
 			def kill_all(pids, sig):
 				for p in pids:
 					try:
-						os.kill(int(p), sig)
+						os.kill(p, sig)
 					except OSError as e:
-						if e.errno != errno.ESRCH:
+						if e.errno == errno.EPERM:
+							# Reported with hardened kernel (bug #358211).
+							writemsg_level(
+								"!!! kill: (%i) - Operation not permitted\n" %
+								(p,), level=logging.ERROR,
+								noiselevel=-1)
+						elif e.errno != errno.ESRCH:
 							raise
 
 			# step 1: kill all orphans

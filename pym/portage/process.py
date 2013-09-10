@@ -35,6 +35,17 @@ except ImportError:
 if sys.hexversion >= 0x3000000:
 	basestring = str
 
+# Support PEP 446 for Python >=3.4
+try:
+	_set_inheritable = _os.set_inheritable
+except AttributeError:
+	_set_inheritable = None
+
+try:
+	_FD_CLOEXEC = fcntl.FD_CLOEXEC
+except AttributeError:
+	_FD_CLOEXEC = None
+
 # Prefer /proc/self/fd if available (/dev/fd
 # doesn't work on solaris, see bug #474536).
 for _fd_dir in ("/proc/self/fd", "/dev/fd"):
@@ -437,7 +448,7 @@ def _exec(binary, mycommand, opt_name, fd_pipes, env, gid, groups, uid, umask,
 	# the parent process (see bug #289486).
 	signal.signal(signal.SIGQUIT, signal.SIG_DFL)
 
-	_setup_pipes(fd_pipes, close_fds=close_fds)
+	_setup_pipes(fd_pipes, close_fds=close_fds, inheritable=True)
 
 	# Add to cgroup
 	# it's better to do it from the child since we can guarantee
@@ -502,7 +513,7 @@ def _exec(binary, mycommand, opt_name, fd_pipes, env, gid, groups, uid, umask,
 	# And switch to the new process.
 	os.execve(binary, myargs, env)
 
-def _setup_pipes(fd_pipes, close_fds=True):
+def _setup_pipes(fd_pipes, close_fds=True, inheritable=None):
 	"""Setup pipes for a forked process.
 
 	Even when close_fds is False, file descriptors referenced as
@@ -538,6 +549,7 @@ def _setup_pipes(fd_pipes, close_fds=True):
 	actually does nothing in this case), which avoids possible
 	interference.
 	"""
+
 	reverse_map = {}
 	# To protect from cases where direct assignment could
 	# clobber needed fds ({1:2, 2:1}) we create a reverse map
@@ -557,6 +569,7 @@ def _setup_pipes(fd_pipes, close_fds=True):
 	while reverse_map:
 
 		oldfd, newfds = reverse_map.popitem()
+		old_fdflags = None
 
 		for newfd in newfds:
 			if newfd in reverse_map:
@@ -567,8 +580,31 @@ def _setup_pipes(fd_pipes, close_fds=True):
 				# unused file discriptors).
 				backup_fd = os.dup(newfd)
 				reverse_map[backup_fd] = reverse_map.pop(newfd)
+
 			if oldfd != newfd:
 				os.dup2(oldfd, newfd)
+				if _set_inheritable is not None:
+					# Don't do this unless _set_inheritable is available,
+					# since it's used below to ensure correct state, and
+					# otherwise /dev/null stdin fails to inherit (at least
+					# with Python versions from 3.1 to 3.3).
+					if old_fdflags is None:
+						old_fdflags = fcntl.fcntl(oldfd, fcntl.F_GETFD)
+					fcntl.fcntl(newfd, fcntl.F_SETFD, old_fdflags)
+
+			if _set_inheritable is not None:
+
+				inheritable_state = None
+				if not (old_fdflags is None or _FD_CLOEXEC is None):
+					inheritable_state = not bool(old_fdflags & _FD_CLOEXEC)
+
+				if inheritable is not None:
+					if inheritable_state is not inheritable:
+						_set_inheritable(newfd, inheritable)
+
+				elif newfd in (0, 1, 2):
+					if inheritable_state is not True:
+						_set_inheritable(newfd, True)
 
 		if oldfd not in fd_pipes:
 			# If oldfd is not a key in fd_pipes, then it's safe
