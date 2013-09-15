@@ -72,7 +72,12 @@ if hasattr(_os, "getxattr"):
 	# Python >=3.3 and GNU/Linux
 	def _copyxattr(src, dest, exclude=None):
 
-		attrs = _os.listxattr(src)
+		try:
+			attrs = _os.listxattr(src)
+		except OSError as e:
+			if e.errno != OperationNotSupported.errno:
+				raise
+			attrs = ()
 		if attrs:
 			if exclude is not None and isinstance(attrs[0], bytes):
 				exclude = exclude.encode(_encodings['fs'])
@@ -100,16 +105,10 @@ else:
 
 			try:
 				attrs = xattr.list(src)
-				raise_exception = False
 			except IOError as e:
-				raise_exception = True
 				if e.errno != OperationNotSupported.errno:
 					raise
-			if raise_exception:
-				raise OperationNotSupported(
-					_("Filesystem containing file '%s' "
-					"does not support listing of extended attributes") %
-					(_unicode_decode(src),))
+				attrs = ()
 
 			if attrs:
 				if exclude is not None and isinstance(attrs[0], bytes):
