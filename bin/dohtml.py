@@ -77,7 +77,7 @@ def install(basename, dirname, options, prefix=""):
 		desttree = "html"
 
 	destdir = os.path.join(options.ED, "usr", "share", "doc",
-		options.PF.lstrip(os.sep), desttree,
+		options.PF.lstrip(os.sep), desttree.lstrip(os.sep),
 		options.doc_prefix.lstrip(os.sep), prefix).rstrip(os.sep)
 
 	if not os.path.exists(fullpath):
@@ -204,9 +204,10 @@ def main():
 		print("Allowed files :", options.allowed_files)
 
 	success = False
+	endswith_slash = (os.sep, os.sep + ".")
 
 	for x in args:
-		trailing_slash = x[-1:] == os.sep
+		trailing_slash = x.endswith(endswith_slash)
 		x = normalize_path(x)
 		if trailing_slash:
 			# Modify behavior of basename and dirname
