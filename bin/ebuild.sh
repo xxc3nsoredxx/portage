@@ -10,7 +10,10 @@ PORTAGE_PYM_PATH="${PORTAGE_PYM_PATH:-/usr/lib/portage/pym}"
 unalias -a
 
 source "${PORTAGE_BIN_PATH}/isolated-functions.sh" || exit 1
-source "${PORTAGE_BIN_PATH}/auto-multilib.sh" || exit 1
+
+if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+	source "${PORTAGE_BIN_PATH}/auto-multilib.sh" || exit 1
+fi
 
 if [[ $EBUILD_PHASE != depend ]] ; then
 	source "${PORTAGE_BIN_PATH}/phase-functions.sh" || die
