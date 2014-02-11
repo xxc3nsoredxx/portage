@@ -325,8 +325,14 @@ def format_qa_output(formatter, stats, fails, dofull, dofail, options, qawarning
 			fails_list = fails[category]
 			if not full and len(fails_list) > 12:
 				fails_list = fails_list[:12]
-			for failure in fails_list:
-				formatter.add_literal_data("   " + failure)
+			for entry in fails_list:
+				# If the tuple has two entries, then the error should be filename: error
+				if len(entry) == 2:
+					error = "%s: %s" % (entry[0], entry[1])
+				# Otherwise, just output the filename
+				else:
+					error = entry[0]
+				formatter.add_literal_data("   " + error)
 				formatter.add_line_break()
 
 
@@ -370,8 +376,12 @@ def format_qa_output_column(formatter, stats, fails, dofull, dofail, options, qa
 			fails_list = fails[category]
 			if not full and len(fails_list) > 12:
 				fails_list = fails_list[:12]
-			for failure in fails_list:
-				formatter.add_literal_data(category + " " + failure)
+			for entry in fails_list:
+				if len(entry) == 2:
+					error = "%s %s" % (entry[0], entry[1])
+				else:
+					error = entry[0]
+				formatter.add_literal_data(category + " " + error)
 				formatter.add_line_break()
 
 def editor_is_executable(editor):

@@ -1402,7 +1402,7 @@ for x in effective_scanlist:
 		repoman_settings['PORTAGE_QUIET'] = '1'
 		if not portage.digestcheck([], repoman_settings, strict=1):
 			stats["manifest.bad"] += 1
-			fails["manifest.bad"].append(os.path.join(x, 'Manifest'))
+			fails["manifest.bad"].append([os.path.join(x, 'Manifest')])
 		repoman_settings.pop('PORTAGE_QUIET', None)
 
 	if options.mode == 'manifest-check':
@@ -1416,7 +1416,7 @@ for x in effective_scanlist:
 		if (y in no_exec or y.endswith(".ebuild")) and \
 				stat.S_IMODE(os.stat(os.path.join(checkdir, y)).st_mode) & 0o111:
 			stats["file.executable"] += 1
-			fails["file.executable"].append(os.path.join(checkdir, y))
+			fails["file.executable"].append([os.path.join(checkdir, y)])
 		if y.endswith(".ebuild"):
 			pf = y[:-7]
 			ebuildlist.append(pf)
@@ -1426,17 +1426,17 @@ for x in effective_scanlist:
 			except KeyError:
 				allvalid = False
 				stats["ebuild.syntax"] += 1
-				fails["ebuild.syntax"].append(os.path.join(x, y))
+				fails["ebuild.syntax"].append([os.path.join(x, y)])
 				continue
 			except IOError:
 				allvalid = False
 				stats["ebuild.output"] += 1
-				fails["ebuild.output"].append(os.path.join(x, y))
+				fails["ebuild.output"].append([os.path.join(x, y)])
 				continue
 			if not portage.eapi_is_supported(myaux["EAPI"]):
 				allvalid = False
 				stats["EAPI.unsupported"] += 1
-				fails["EAPI.unsupported"].append(os.path.join(x, y))
+				fails["EAPI.unsupported"].append([os.path.join(x, y)])
 				continue
 			pkgs[pf] = Package(cpv=cpv, metadata=myaux,
 				root_config=root_config, type_name="ebuild")
@@ -1468,8 +1468,8 @@ for x in effective_scanlist:
 				index = -1
 		if index != -1:
 			stats["file.name"] += 1
-			fails["file.name"].append("%s/%s: char '%s'" % \
-				(checkdir, y, y[index]))
+			fails["file.name"].append(["%s/%s" % (checkdir, y), 
+				"char '%s'" %  y[index]])
 
 		if not (y in ("ChangeLog", "metadata.xml") or y.endswith(".ebuild")):
 			continue
@@ -1488,7 +1488,8 @@ for x in effective_scanlist:
 			line += l2
 			if l2 != 0:
 				s = s[s.rfind("\n") + 1:]
-			fails["file.UTF8"].append("%s/%s: line %i, just after: '%s'" % (checkdir, y, line, s))
+			fails["file.UTF8"].append(["%s/%s" % (checkdir, y), 
+				"line %i, just after: '%s'" % (line, s)])
 		finally:
 			if f is not None:
 				f.close()
@@ -1503,8 +1504,8 @@ for x in effective_scanlist:
 		for l in myf:
 			if l[:-1][-7:] == ".ebuild":
 				stats["ebuild.notadded"] += 1
-				fails["ebuild.notadded"].append(
-					os.path.join(x, os.path.basename(l[:-1])))
+				fails["ebuild.notadded"].append([
+					os.path.join(x, os.path.basename(l[:-1]))])
 		myf.close()
 
 	if vcs in ("cvs", "svn", "bzr") and check_ebuild_notadded:
@@ -1556,7 +1557,7 @@ for x in effective_scanlist:
 		except IOError:
 			if vcs == "cvs":
 				stats["CVS/Entries.IO_error"] += 1
-				fails["CVS/Entries.IO_error"].append(checkdir + "/CVS/Entries")
+				fails["CVS/Entries.IO_error"].append([checkdir + "/CVS/Entries"])
 			else:
 				raise
 			continue
@@ -1581,8 +1582,8 @@ for x in effective_scanlist:
 				pass
 			else:
 				stats["SRC_URI.syntax"] += 1
-				fails["SRC_URI.syntax"].append(
-					"%s.ebuild SRC_URI: %s" % (mykey, e))
+				fails["SRC_URI.syntax"].append([
+					"%s.ebuild" % mykey, "SRC_URI: %s" % e])
 	del fetchlist_dict
 	if not src_uri_error:
 		# This test can produce false positives if SRC_URI could not
@@ -1594,11 +1595,11 @@ for x in effective_scanlist:
 		for entry in mydigests:
 			if entry not in myfiles_all:
 				stats["digest.unused"] += 1
-				fails["digest.unused"].append(checkdir + "::" + entry)
+				fails["digest.unused"].append([checkdir + "::" + entry])
 		for entry in myfiles_all:
 			if entry not in mydigests:
 				stats["digest.missing"] += 1
-				fails["digest.missing"].append(checkdir + "::" + entry)
+				fails["digest.missing"].append([checkdir + "::" + entry])
 	del myfiles_all
 
 	if os.path.exists(checkdir + "/files"):
@@ -1630,10 +1631,12 @@ for x in effective_scanlist:
 			# 20 KiB and 60 KiB causes a warning, while file size over 60 KiB causes an error.
 			elif mystat.st_size > 61440:
 				stats["file.size.fatal"] += 1
-				fails["file.size.fatal"].append("(" + str(mystat.st_size//1024) + " KiB) " + x + "/files/" + y)
+				fails["file.size.fatal"].append([x + "/files/" + y,
+					"(" + str(mystat.st_size//1024) + " KiB)"])
 			elif mystat.st_size > 20480:
 				stats["file.size"] += 1
-				fails["file.size"].append("(" + str(mystat.st_size//1024) + " KiB) " + x + "/files/" + y)
+				fails["file.size"].append([x + "/files/" + y,
+					"(" + str(mystat.st_size//1024) + " KiB)"])
 
 			index = repo_config.find_invalid_path_char(y)
 			if index != -1:
@@ -1646,19 +1649,19 @@ for x in effective_scanlist:
 					index = -1
 			if index != -1:
 				stats["file.name"] += 1
-				fails["file.name"].append("%s/files/%s: char '%s'" % \
-					(checkdir, y, y[index]))
+				fails["file.name"].append(["%s/files/%s" % (checkdir, y),
+					"char '%s'" % y[index]])
 	del mydigests
 
 	if check_changelog and "ChangeLog" not in checkdirlist:
 		stats["changelog.missing"] += 1
-		fails["changelog.missing"].append(x + "/ChangeLog")
+		fails["changelog.missing"].append([x + "/ChangeLog"])
 
 	musedict = {}
 	# metadata.xml file check
 	if "metadata.xml" not in checkdirlist:
 		stats["metadata.missing"] += 1
-		fails["metadata.missing"].append(x + "/metadata.xml")
+		fails["metadata.missing"].append([x + "/metadata.xml"])
 	# metadata.xml parse check
 	else:
 		metadata_bad = False
@@ -1674,7 +1677,7 @@ for x in effective_scanlist:
 		except (ExpatError, SyntaxError, EnvironmentError) as e:
 			metadata_bad = True
 			stats["metadata.bad"] += 1
-			fails["metadata.bad"].append("%s/metadata.xml: %s" % (x, e))
+			fails["metadata.bad"].append(["%s/metadata.xml" % x, e])
 			del e
 		else:
 			if not hasattr(xml_parser, 'parser') or \
@@ -1685,9 +1688,9 @@ for x in effective_scanlist:
 			else:
 				if "XML_DECLARATION" not in xml_info:
 					stats["metadata.bad"] += 1
-					fails["metadata.bad"].append("%s/metadata.xml: "
+					fails["metadata.bad"].append(["%s/metadata.xml" % x,
 						"xml declaration is missing on first line, "
-						"should be '%s'" % (x, metadata_xml_declaration))
+						"should be '%s'" % metadata_xml_declaration])
 				else:
 					xml_version, xml_encoding, xml_standalone = \
 						xml_info["XML_DECLARATION"]
@@ -1698,15 +1701,15 @@ for x in effective_scanlist:
 							encoding_problem = "but it is undefined"
 						else:
 							encoding_problem = "not '%s'" % xml_encoding
-						fails["metadata.bad"].append("%s/metadata.xml: "
+						fails["metadata.bad"].append(["%s/metadata.xml" % x,
 							"xml declaration encoding should be '%s', %s" %
-							(x, metadata_xml_encoding, encoding_problem))
+							(metadata_xml_encoding, encoding_problem)])
 
 				if "DOCTYPE" not in xml_info:
 					metadata_bad = True
 					stats["metadata.bad"] += 1
-					fails["metadata.bad"].append("%s/metadata.xml: %s" % (x,
-						"DOCTYPE is missing"))
+					fails["metadata.bad"].append(["%s/metadata.xml" % x,
+						"DOCTYPE is missing"])
 				else:
 					doctype_name, doctype_system, doctype_pubid = \
 						xml_info["DOCTYPE"]
@@ -1716,15 +1719,15 @@ for x in effective_scanlist:
 							system_problem = "but it is undefined"
 						else:
 							system_problem = "not '%s'" % doctype_system
-						fails["metadata.bad"].append("%s/metadata.xml: "
+						fails["metadata.bad"].append(["%s/metadata.xml" % x,
 							"DOCTYPE: SYSTEM should refer to '%s', %s" %
-							(x, metadata_dtd_uri, system_problem))
+							(metadata_dtd_uri, system_problem)])
 
 					if doctype_name != metadata_doctype_name:
 						stats["metadata.bad"] += 1
-						fails["metadata.bad"].append("%s/metadata.xml: "
+						fails["metadata.bad"].append(["%s/metadata.xml" % x,
 							"DOCTYPE: name should be '%s', not '%s'" %
-							(x, metadata_doctype_name, doctype_name))
+							(metadata_doctype_name, doctype_name)])
 
 			# load USE flags from metadata.xml
 			try:
@@ -1732,7 +1735,7 @@ for x in effective_scanlist:
 			except portage.exception.ParseError as e:
 				metadata_bad = True
 				stats["metadata.bad"] += 1
-				fails["metadata.bad"].append("%s/metadata.xml: %s" % (x, e))
+				fails["metadata.bad"].append(["%s/metadata.xml" % x, e])
 			else:
 				for atom in chain(*musedict.values()):
 					if atom is None:
@@ -1741,14 +1744,14 @@ for x in effective_scanlist:
 						atom = Atom(atom)
 					except InvalidAtom as e:
 						stats["metadata.bad"] += 1
-						fails["metadata.bad"].append(
-							"%s/metadata.xml: Invalid atom: %s" % (x, e))
+						fails["metadata.bad"].append([
+							"%s/metadata.xml" % x, "Invalid atom: %s" % e])
 					else:
 						if atom.cp != x:
 							stats["metadata.bad"] += 1
-							fails["metadata.bad"].append(
-								("%s/metadata.xml: Atom contains "
-								"unexpected cat/pn: %s") % (x, atom))
+							fails["metadata.bad"].append([
+								"%s/metadata.xml" % x, "Atom contains "
+								"unexpected cat/pn: %s" % atom])
 
 			# Run other metadata.xml checkers
 			try:
@@ -1756,7 +1759,7 @@ for x in effective_scanlist:
 			except (utilities.UnknownHerdsError, ) as e:
 				metadata_bad = True
 				stats["metadata.bad"] += 1
-				fails["metadata.bad"].append("%s/metadata.xml: %s" % (x, e))
+				fails["metadata.bad"].append(["%s/metadata.xml" %x, e])
 				del e
 
 		# Only carry out if in package directory or check forced
@@ -1772,7 +1775,7 @@ for x in effective_scanlist:
 				for z in out.splitlines():
 					print(red("!!! ") + z)
 				stats["metadata.bad"] += 1
-				fails["metadata.bad"].append(x + "/metadata.xml")
+				fails["metadata.bad"].append([x + "/metadata.xml"])
 
 		del metadata_bad
 	muselist = frozenset(musedict)
@@ -1795,23 +1798,23 @@ for x in effective_scanlist:
 		if check_changelog and not changelog_modified \
 			and ebuild_path in new_ebuilds:
 			stats['changelog.ebuildadded'] += 1
-			fails['changelog.ebuildadded'].append(relative_path)
+			fails['changelog.ebuildadded'].append([relative_path])
 
 		if vcs in ("cvs", "svn", "bzr") and check_ebuild_notadded and y not in eadded:
 			# ebuild not added to vcs
 			stats["ebuild.notadded"] += 1
-			fails["ebuild.notadded"].append(x + "/" + y + ".ebuild")
+			fails["ebuild.notadded"].append([x + "/" + y + ".ebuild"])
 		myesplit = portage.pkgsplit(y)
 		if myesplit is None or myesplit[0] != x.split("/")[-1] \
 			    or pv_toolong_re.search(myesplit[1]) \
 			    or pv_toolong_re.search(myesplit[2]):
 			stats["ebuild.invalidname"] += 1
-			fails["ebuild.invalidname"].append(x + "/" + y + ".ebuild")
+			fails["ebuild.invalidname"].append([x + "/" + y + ".ebuild"])
 			continue
 		elif myesplit[0] != pkgdir:
 			print(pkgdir, myesplit[0])
 			stats["ebuild.namenomatch"] += 1
-			fails["ebuild.namenomatch"].append(x + "/" + y + ".ebuild")
+			fails["ebuild.namenomatch"].append([x + "/" + y + ".ebuild"])
 			continue
 
 		pkg = pkgs[y]
@@ -1821,7 +1824,7 @@ for x in effective_scanlist:
 			for k, msgs in pkg.invalid.items():
 				for msg in msgs:
 					stats[k] += 1
-					fails[k].append("%s: %s" % (relative_path, msg))
+					fails[k].append([relative_path, msg])
 			continue
 
 		myaux = pkg._metadata
@@ -1831,13 +1834,11 @@ for x in effective_scanlist:
 
 		if repo_config.eapi_is_banned(eapi):
 			stats["repo.eapi.banned"] += 1
-			fails["repo.eapi.banned"].append(
-				"%s: %s" % (relative_path, eapi))
+			fails["repo.eapi.banned"].append([relative_path, eapi])
 
 		elif repo_config.eapi_is_deprecated(eapi):
 			stats["repo.eapi.deprecated"] += 1
-			fails["repo.eapi.deprecated"].append(
-				"%s: %s" % (relative_path, eapi))
+			fails["repo.eapi.deprecated"].append([relative_path, eapi])
 
 		for k, v in myaux.items():
 			if not isinstance(v, basestring):
@@ -1845,10 +1846,9 @@ for x in effective_scanlist:
 			m = non_ascii_re.search(v)
 			if m is not None:
 				stats["variable.invalidchar"] += 1
-				fails["variable.invalidchar"].append(
-					("%s: %s variable contains non-ASCII " + \
-					"character at position %s") % \
-					(relative_path, k, m.start() + 1))
+				fails["variable.invalidchar"].append([
+					relative_path, "%s variable contains non-ASCII " +
+					"character at position %s" % (k, m.start() + 1)])
 
 		if not src_uri_error:
 			# Check that URIs don't reference a server from thirdpartymirrors.
@@ -1864,13 +1864,13 @@ for x in effective_scanlist:
 
 				new_uri = "mirror://%s/%s" % (mirror_alias, uri[len(mirror):])
 				stats["SRC_URI.mirror"] += 1
-				fails["SRC_URI.mirror"].append(
-					"%s: '%s' found in thirdpartymirrors, use '%s'" % \
-					(relative_path, mirror, new_uri))
+				fails["SRC_URI.mirror"].append([
+					relative_path, "'%s' found in thirdpartymirrors, use '%s'" % \
+					(mirror, new_uri)])
 
 		if myaux.get("PROVIDE"):
 			stats["virtual.oldstyle"] += 1
-			fails["virtual.oldstyle"].append(relative_path)
+			fails["virtual.oldstyle"].append([relative_path])
 
 		for pos, missing_var in enumerate(missingvars):
 			if not myaux.get(missing_var):
@@ -1881,21 +1881,21 @@ for x in effective_scanlist:
 					continue
 				myqakey = missingvars[pos] + ".missing"
 				stats[myqakey] += 1
-				fails[myqakey].append(x + "/" + y + ".ebuild")
+				fails[myqakey].append([x + "/" + y + ".ebuild"])
 
 		if catdir == "virtual":
 			for var in ("HOMEPAGE", "LICENSE"):
 				if myaux.get(var):
 					myqakey = var + ".virtual"
 					stats[myqakey] += 1
-					fails[myqakey].append(relative_path)
+					fails[myqakey].append([relative_path])
 
 		# 14 is the length of DESCRIPTION=""
 		if len(myaux['DESCRIPTION']) > max_desc_len:
 			stats['DESCRIPTION.toolong'] += 1
-			fails['DESCRIPTION.toolong'].append(
-				"%s: DESCRIPTION is %d characters (max %d)" % \
-				(relative_path, len(myaux['DESCRIPTION']), max_desc_len))
+			fails['DESCRIPTION.toolong'].append([
+				relative_path, "DESCRIPTION is %d characters (max %d)" % \
+				(len(myaux['DESCRIPTION']), max_desc_len)])
 
 		keywords = myaux["KEYWORDS"].split()
 		stable_keywords = []
@@ -1908,8 +1908,8 @@ for x in effective_scanlist:
 				stable_keywords.sort()
 				stats["KEYWORDS.stable"] += 1
 				fails["KEYWORDS.stable"].append(
-					x + "/" + y + ".ebuild added with stable keywords: %s" % \
-						" ".join(stable_keywords))
+					[x + "/" + y + ".ebuild", "added with stable keywords: %s" % \
+						" ".join(stable_keywords)])
 
 		ebuild_archs = set(kw.lstrip("~") for kw in keywords \
 			if not kw.startswith("-"))
@@ -1921,9 +1921,8 @@ for x in effective_scanlist:
 			dropped_keywords = previous_keywords.difference(ebuild_archs)
 			if dropped_keywords:
 				stats["KEYWORDS.dropped"] += 1
-				fails["KEYWORDS.dropped"].append(
-					relative_path + ": %s" % \
-					" ".join(sorted(dropped_keywords)))
+				fails["KEYWORDS.dropped"].append([
+					relative_path, "".join(sorted(dropped_keywords))])
 
 		slot_keywords[pkg.slot].update(ebuild_archs)
 
@@ -1937,7 +1936,7 @@ for x in effective_scanlist:
 					haskeyword = True
 			if not haskeyword:
 				stats["KEYWORDS.stupid"] += 1
-				fails["KEYWORDS.stupid"].append(x + "/" + y + ".ebuild")
+				fails["KEYWORDS.stupid"].append([x + "/" + y + ".ebuild"])
 
 		"""
 		Ebuilds that inherit a "Live" eclass (darcs,subversion,git,cvs,etc..) should
@@ -1952,14 +1951,14 @@ for x in effective_scanlist:
 				del keyword
 			if bad_stable_keywords:
 				stats["LIVEVCS.stable"] += 1
-				fails["LIVEVCS.stable"].append(
-					x + "/" + y + ".ebuild with stable keywords:%s " % \
-						bad_stable_keywords)
+				fails["LIVEVCS.stable"].append([
+					x + "/" + y + ".ebuild", "with stable keywords:%s " % \
+						bad_stable_keywords])
 			del bad_stable_keywords
 
 			if keywords and not has_global_mask(pkg):
 				stats["LIVEVCS.unmasked"] += 1
-				fails["LIVEVCS.unmasked"].append(relative_path)
+				fails["LIVEVCS.unmasked"].append([relative_path])
 
 		if options.ignore_arches:
 			arches = [[repoman_settings["ARCH"], repoman_settings["ARCH"],
@@ -2024,8 +2023,8 @@ for x in effective_scanlist:
 				if runtime and \
 					"test?" in mydepstr.split():
 					stats[mytype + '.suspect'] += 1
-					fails[mytype + '.suspect'].append(relative_path + \
-						": 'test?' USE conditional in %s" % mytype)
+					fails[mytype + '.suspect'].append([relative_path,
+						"'test?' USE conditional in %s" % mytype])
 
 				for atom in atoms:
 					if atom == "||":
@@ -2045,40 +2044,40 @@ for x in effective_scanlist:
 						if not is_blocker and \
 							atom.cp in suspect_virtual:
 							stats['virtual.suspect'] += 1
-							fails['virtual.suspect'].append(
-								relative_path +
-								": %s: consider using '%s' instead of '%s'" %
-								(mytype, suspect_virtual[atom.cp], atom))
+							fails['virtual.suspect'].append([
+								relative_path,
+								"consider using '%s' instead of '%s'" %
+								(suspect_virtual[atom.cp], atom)])
 
 					if buildtime and \
 						not is_blocker and \
 						not inherited_java_eclass and \
 						atom.cp == "virtual/jdk":
 						stats['java.eclassesnotused'] += 1
-						fails['java.eclassesnotused'].append(relative_path)
+						fails['java.eclassesnotused'].append([relative_path])
 					elif buildtime and \
 						not is_blocker and \
 						not inherited_wxwidgets_eclass and \
 						atom.cp == "x11-libs/wxGTK":
 						stats['wxwidgets.eclassnotused'] += 1
-						fails['wxwidgets.eclassnotused'].append(
-							(relative_path + ": %ss on x11-libs/wxGTK"
-							" without inheriting wxwidgets.eclass") % mytype)
+						fails['wxwidgets.eclassnotused'].append([
+							relative_path, "%ss on x11-libs/wxGTK"
+							" without inheriting wxwidgets.eclass" % mytype])
 					elif runtime:
 						if not is_blocker and \
 							atom.cp in suspect_rdepend:
 							stats[mytype + '.suspect'] += 1
-							fails[mytype + '.suspect'].append(
-								relative_path + ": '%s'" % atom)
+							fails[mytype + '.suspect'].append([
+								relative_path, "'%s'" % atom])
 
 					if atom.operator == "~" and \
 						portage.versions.catpkgsplit(atom.cpv)[3] != "r0":
 						qacat = 'dependency.badtilde'
 						stats[qacat] += 1
-						fails[qacat].append(
-							(relative_path + ": %s uses the ~ operator"
+						fails[qacat].append([
+							relative_path, "%s uses the ~ operator"
 							 " with a non-zero revision:" + \
-							 " '%s'") % (mytype, atom))
+							 " '%s'" % (mytype, atom)])
 
 			type_list.extend([mytype] * (len(badsyntax) - len(type_list)))
 
@@ -2088,7 +2087,7 @@ for x in effective_scanlist:
 			else:
 				qacat = m + ".syntax"
 			stats[qacat] += 1
-			fails[qacat].append("%s: %s: %s" % (relative_path, m, b))
+			fails[qacat].append([relative_path, "%s: %s" % (m, b)])
 
 		badlicsyntax = len([z for z in type_list if z == "LICENSE"])
 		badprovsyntax = len([z for z in type_list if z == "PROVIDE"])
@@ -2115,14 +2114,14 @@ for x in effective_scanlist:
 		if default_use and not eapi_has_iuse_defaults(eapi):
 			for myflag in default_use:
 				stats['EAPI.incompatible'] += 1
-				fails['EAPI.incompatible'].append(
-					(relative_path + ": IUSE defaults" + \
+				fails['EAPI.incompatible'].append([
+					relative_path, "IUSE defaults" + \
 					" not supported with EAPI='%s':" + \
-					" '%s'") % (eapi, myflag))
+					" '%s'" % (eapi, myflag)])
 
 		for mypos in range(len(myuse)):
 			stats["IUSE.invalid"] += 1
-			fails["IUSE.invalid"].append(x + "/" + y + ".ebuild: %s" % myuse[mypos])
+			fails["IUSE.invalid"].append([x + "/" + y + ".ebuild", myuse[mypos]])
 
 		# Check for outdated RUBY targets
 		if "ruby-ng" in inherited or "ruby-fakegem" in inherited or "ruby" in inherited:
@@ -2130,8 +2129,8 @@ for x in effective_scanlist:
 			if ruby_intersection:
 				for myruby in ruby_intersection:
 					stats["IUSE.rubydeprecated"] += 1
-					fails["IUSE.rubydeprecated"].append(
-						(relative_path + ": Deprecated ruby target: %s") % myruby)
+					fails["IUSE.rubydeprecated"].append([
+						relative_path, "Deprecated ruby target: %s" % myruby])
 
 		# license checks
 		if not badlicsyntax:
@@ -2145,10 +2144,10 @@ for x in effective_scanlist:
 				# function will remove it without removing values.
 				if lic not in liclist and lic != "||":
 					stats["LICENSE.invalid"] += 1
-					fails["LICENSE.invalid"].append(x + "/" + y + ".ebuild: %s" % lic)
+					fails["LICENSE.invalid"].append([x + "/" + y + ".ebuild", lic])
 				elif lic in liclist_deprecated:
 					stats["LICENSE.deprecated"] += 1
-					fails["LICENSE.deprecated"].append("%s: %s" % (relative_path, lic))
+					fails["LICENSE.deprecated"].append([relative_path, lic])
 
 		# keyword checks
 		myuse = myaux["KEYWORDS"].split()
@@ -2161,10 +2160,10 @@ for x in effective_scanlist:
 					myskey = myskey[1:]
 				if myskey not in kwlist:
 					stats["KEYWORDS.invalid"] += 1
-					fails["KEYWORDS.invalid"].append(x + "/" + y + ".ebuild: %s" % mykey)
+					fails["KEYWORDS.invalid"].append([x + "/" + y + ".ebuild", mykey])
 				elif myskey not in profiles:
 					stats["KEYWORDS.invalid"] += 1
-					fails["KEYWORDS.invalid"].append(x + "/" + y + ".ebuild: %s (profile invalid)" % mykey)
+					fails["KEYWORDS.invalid"].append([x + "/" + y + ".ebuild", "%s (profile invalid)" % mykey])
 
 		# restrict checks
 		myrestrict = None
@@ -2172,8 +2171,8 @@ for x in effective_scanlist:
 			myrestrict = portage.dep.use_reduce(myaux["RESTRICT"], matchall=1, flat=True)
 		except portage.exception.InvalidDependString as e:
 			stats["RESTRICT.syntax"] += 1
-			fails["RESTRICT.syntax"].append(
-				"%s: RESTRICT: %s" % (relative_path, e))
+			fails["RESTRICT.syntax"].append([
+				relative_path, "RESTRICT: %s" % e])
 			del e
 		if myrestrict:
 			myrestrict = set(myrestrict)
@@ -2181,22 +2180,22 @@ for x in effective_scanlist:
 			if mybadrestrict:
 				stats["RESTRICT.invalid"] += len(mybadrestrict)
 				for mybad in mybadrestrict:
-					fails["RESTRICT.invalid"].append(x + "/" + y + ".ebuild: %s" % mybad)
+					fails["RESTRICT.invalid"].append([x + "/" + y + ".ebuild", mybad])
 		# REQUIRED_USE check
 		required_use = myaux["REQUIRED_USE"]
 		if required_use:
 			if not eapi_has_required_use(eapi):
 				stats['EAPI.incompatible'] += 1
-				fails['EAPI.incompatible'].append(
-					relative_path + ": REQUIRED_USE" + \
-					" not supported with EAPI='%s'" % (eapi,))
+				fails['EAPI.incompatible'].append([
+					relative_path, "REQUIRED_USE" + \
+					" not supported with EAPI='%s'" % eapi])
 			try:
 				portage.dep.check_required_use(required_use, (),
 					pkg.iuse.is_valid_flag, eapi=eapi)
 			except portage.exception.InvalidDependString as e:
 				stats["REQUIRED_USE.syntax"] += 1
-				fails["REQUIRED_USE.syntax"].append(
-					"%s: REQUIRED_USE: %s" % (relative_path, e))
+				fails["REQUIRED_USE.syntax"].append([
+					relative_path, "REQUIRED_USE: %s" % e])
 				del e
 
 		# Syntax Checks
@@ -2214,7 +2213,7 @@ for x in effective_scanlist:
 			try:
 				for check_name, e in run_checks(f, pkg):
 					stats[check_name] += 1
-					fails[check_name].append(relative_path + ': %s' % e)
+					fails[check_name].append([relative_path, e])
 			finally:
 				f.close()
 		except UnicodeDecodeError:
@@ -2367,14 +2366,12 @@ for x in effective_scanlist:
 							if not atoms:
 								continue
 							stats[mykey] += 1
-							fails[mykey].append("%s: %s: %s(%s) %s" % \
-								(relative_path, mytype, keyword,
-								prof, repr(atoms)))
+							fails[mykey].append([relative_path, "%s: %s(%s) %s" % \
+								(mytype, keyword, prof, repr(atoms))])
 					else:
 						stats[mykey] += 1
-						fails[mykey].append("%s: %s: %s(%s) %s" % \
-							(relative_path, mytype, keyword,
-							prof, repr(atoms)))
+						fails[mykey].append([relative_path, "%s: %s(%s) %s" % \
+							(mytype, keyword, prof, repr(atoms))])
 
 		if not baddepsyntax and unknown_pkgs:
 			type_map = {}
@@ -2382,17 +2379,16 @@ for x in effective_scanlist:
 				type_map.setdefault(mytype, set()).add(atom)
 			for mytype, atoms in type_map.items():
 				stats["dependency.unknown"] += 1
-				fails["dependency.unknown"].append("%s: %s: %s" %
-					(relative_path, mytype, ", ".join(sorted(atoms))))
+				fails["dependency.unknown"].append([relative_path, "%s: %s" %
+					(mytype, ", ".join(sorted(atoms)))])
 
 	# check if there are unused local USE-descriptions in metadata.xml
 	# (unless there are any invalids, to avoid noise)
 	if allvalid:
 		for myflag in muselist.difference(used_useflags):
 			stats["metadata.warning"] += 1
-			fails["metadata.warning"].append(
-				"%s/metadata.xml: unused local USE-description: '%s'" % \
-				(x, myflag))
+			fails["metadata.warning"].append(["%s/metadata.xml" % x,
+				"unused local USE-description: '%s'" % myflag])
 
 if options.if_modified == "y" and len(effective_scanlist) < 1:
 	logging.warn("--if-modified is enabled, but no modified packages were found!")
