@@ -1,4 +1,4 @@
-# Copyright 2005-2013 Gentoo Foundation
+# Copyright 2005-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import print_function
@@ -25,6 +25,9 @@ class OptionItem(object):
 		"""
 		self.short = opt.get('short')
 		self.long = opt.get('long')
+		# '-' are not allowed in python identifiers
+		# so store the sanitized target variable name
+		self.target = self.long[2:].replace('-','_')
 		self.help = opt.get('help')
 		self.status = opt.get('status')
 		self.func = opt.get('func')
@@ -86,15 +89,14 @@ def module_opts(module_controller, module):
 		opts = DEFAULT_OPTIONS
 	for opt in sorted(opts):
 		optd = opts[opt]
-		opto = "  %s, %s" %(optd['short'], optd['long'])
-		_usage += '%s %s\n' % (opto.ljust(15),optd['help'])
+		opto = "  %s, %s" % (optd['short'], optd['long'])
+		_usage += '%s %s\n' % (opto.ljust(15), optd['help'])
 	_usage += '\n'
 	return _usage
 
 
 class TaskHandler(object):
-	"""Handles the running of the tasks it is given
-	"""
+	"""Handles the running of the tasks it is given"""
 
 	def __init__(self, show_progress_bar=True, verbose=True, callback=None):
 		self.show_progress_bar = show_progress_bar
@@ -102,7 +104,6 @@ class TaskHandler(object):
 		self.callback = callback
 		self.isatty = os.environ.get('TERM') != 'dumb' and sys.stdout.isatty()
 		self.progress_bar = ProgressBar(self.isatty, title="Emaint", max_desc_length=27)
-
 
 	def run_tasks(self, tasks, func, status=None, verbose=True, options=None):
 		"""Runs the module tasks"""
@@ -185,7 +186,7 @@ def emaint_main(myargv):
 		if opt.long == '--check':
 			# Default action
 			check_opt = opt
-		if opt.status and getattr(options, opt.long.lstrip("-"), False):
+		if opt.status and getattr(options, opt.target, False):
 			if long_action is not None:
 				parser.error("--%s and %s are exclusive options" %
 					(long_action, opt.long))
@@ -194,6 +195,7 @@ def emaint_main(myargv):
 			long_action = opt.long.lstrip('-')
 
 	if long_action is None:
+		#print("DEBUG: long_action is None: setting to 'check'")
 		long_action = 'check'
 		func = check_opt.func
 		status = check_opt.status
@@ -201,10 +203,10 @@ def emaint_main(myargv):
 	if args[0] == "all":
 		tasks = []
 		for m in module_names[1:]:
-			#print("DEBUG: module: %s, functions: " %(m, str(module_controller.get_functions(m))))
-			if long_action in module_controller.get_functions(m):
+			#print("DEBUG: module: %s, functions: " % (m, str(module_controller.get_functions(m))))
+			if func in module_controller.get_functions(m):
 				tasks.append(module_controller.get_class(m))
-	elif long_action in module_controller.get_functions(args[0]):
+	elif func in module_controller.get_functions(args[0]):
 		tasks = [module_controller.get_class(args[0] )]
 	else:
 		portage.util.writemsg(
@@ -219,4 +221,3 @@ def emaint_main(myargv):
 	task_opts = options.__dict__
 	taskmaster = TaskHandler(callback=print_results)
 	taskmaster.run_tasks(tasks, func, status, options=task_opts)
-

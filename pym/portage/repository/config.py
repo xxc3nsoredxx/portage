@@ -1,4 +1,4 @@
-# Copyright 2010-2013 Gentoo Foundation
+# Copyright 2010-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -33,6 +33,7 @@ from portage import _encodings
 from portage import manifest
 
 if sys.hexversion >= 0x3000000:
+	# pylint: disable=W0622
 	basestring = str
 
 # Characters prohibited by repoman's file.name check.
@@ -166,7 +167,7 @@ class RepoConfig(object):
 		location = repo_opts.get('location')
 		self.user_location = location
 		if location is not None and location.strip():
-			if os.path.isdir(location) or portage._sync_disabled_warnings:
+			if os.path.isdir(location) or portage._sync_mode:
 				location = os.path.realpath(location)
 		else:
 			location = None
@@ -184,7 +185,7 @@ class RepoConfig(object):
 				# is empty (bug #484950).
 				if name is not None:
 					self.name = name
-				if portage._sync_disabled_warnings:
+				if portage._sync_mode:
 					missing = False
 
 		elif name == "DEFAULT":
@@ -443,7 +444,10 @@ class RepoConfigLoader(object):
 			#overlay priority is negative because we want them to be looked before any other repo
 			base_priority = 0
 			for ov in overlays:
-				if isdir_raise_eaccess(ov):
+				# Ignore missing directory for 'gentoo' so that
+				# first sync with emerge-webrsync is possible.
+				if isdir_raise_eaccess(ov) or \
+					(base_priority == 0 and ov is portdir):
 					repo_opts = default_repo_opts.copy()
 					repo_opts['location'] = ov
 					repo = RepoConfig(None, repo_opts, local_config=local_config)
@@ -484,7 +488,7 @@ class RepoConfigLoader(object):
 					prepos[repo.name] = repo
 				else:
 
-					if not portage._sync_disabled_warnings:
+					if not portage._sync_mode:
 						writemsg(_("!!! Invalid PORTDIR_OVERLAY (not a dir): '%s'\n") % ov, noiselevel=-1)
 
 		return portdir
@@ -638,13 +642,17 @@ class RepoConfigLoader(object):
 					del prepos[repo_name]
 					continue
 			else:
-				if not portage._sync_disabled_warnings:
+				if not portage._sync_mode:
 					if not isdir_raise_eaccess(repo.location):
 						writemsg_level("!!! %s\n" % _("Section '%s' in repos.conf has location attribute set "
 							"to nonexistent directory: '%s'") %
 							(repo_name, repo.location), level=logging.ERROR, noiselevel=-1)
-						del prepos[repo_name]
-						continue
+
+						# Ignore missing directory for 'gentoo' so that
+						# first sync with emerge-webrsync is possible.
+						if repo.name != 'gentoo':
+							del prepos[repo_name]
+							continue
 
 					# After removing support for PORTDIR_OVERLAY, the following check can be:
 					# if repo.missing_repo_name:
@@ -700,7 +708,7 @@ class RepoConfigLoader(object):
 				prepos['DEFAULT'].main_repo = main_repo
 			else:
 				prepos['DEFAULT'].main_repo = None
-				if portdir and not portage._sync_disabled_warnings:
+				if portdir and not portage._sync_mode:
 					writemsg(_("!!! main-repo not set in DEFAULT and PORTDIR is empty.\n"), noiselevel=-1)
 
 		if main_repo is not None and prepos[main_repo].priority is None:
@@ -806,7 +814,8 @@ class RepoConfigLoader(object):
 				continue
 
 			if repo._masters_orig is None and self.mainRepo() and \
-				repo.name != self.mainRepo().name and not portage._sync_disabled_warnings:
+				repo.name != self.mainRepo().name and not portage._sync_mode:
+				# TODO: Delete masters code in pym/portage/tests/resolver/ResolverPlayground.py when deleting this warning.
 				writemsg_level("!!! %s\n" % _("Repository '%s' is missing masters attribute in '%s'") %
 					(repo.name, os.path.join(repo.location, "metadata", "layout.conf")) +
 					"!!! %s\n" % _("Set 'masters = %s' in this file for future compatibility") %
@@ -859,7 +868,7 @@ class RepoConfigLoader(object):
 				if r.location is None:
 					writemsg(_("!!! Location not set for repository %s\n") % name, noiselevel=-1)
 				else:
-					if not isdir_raise_eaccess(r.location) and not portage._sync_disabled_warnings:
+					if not isdir_raise_eaccess(r.location) and not portage._sync_mode:
 						self.prepos_order.remove(name)
 						writemsg(_("!!! Invalid Repository Location"
 							" (not a dir): '%s'\n") % r.location, noiselevel=-1)
@@ -918,7 +927,7 @@ class RepoConfigLoader(object):
 		repo_config_tuple_keys = ("masters",)
 		keys = str_or_int_keys + str_tuple_keys + repo_config_tuple_keys
 		config_string = ""
-		for repo_name, repo in sorted(self.prepos.items()):
+		for repo_name, repo in sorted(self.prepos.items(), key=lambda x: (x[0] != "DEFAULT", x[0])):
 			config_string += "\n[%s]\n" % repo_name
 			for key in sorted(keys):
 				if key == "main_repo" and repo_name != "DEFAULT":
@@ -937,7 +946,7 @@ def load_repository_config(settings, extra_files=None):
 	if "PORTAGE_REPOSITORIES" in settings:
 		repoconfigpaths.append(io.StringIO(settings["PORTAGE_REPOSITORIES"]))
 	else:
-		if portage._working_copy:
+		if portage._not_installed:
 			repoconfigpaths.append(os.path.join(PORTAGE_BASE_PATH, "cnf", "repos.conf"))
 		else:
 			repoconfigpaths.append(os.path.join(settings.global_config_path, "repos.conf"))

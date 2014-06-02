@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 1999-2013 Gentoo Foundation
+# Copyright 1999-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 # @FUNCTION: __save_ebuild_env
@@ -14,7 +14,8 @@ __save_ebuild_env() {
 	(
 	if has --exclude-init-phases $* ; then
 		unset S _E_DOCDESTTREE_ _E_EXEDESTTREE_ \
-			PORTAGE_DOCOMPRESS PORTAGE_DOCOMPRESS_SKIP
+			PORTAGE_DOCOMPRESS_SIZE_LIMIT PORTAGE_DOCOMPRESS \
+			PORTAGE_DOCOMPRESS_SKIP
 		if [[ -n $PYTHONPATH &&
 			${PYTHONPATH%%:*} -ef $PORTAGE_PYM_PATH ]] ; then
 			if [[ $PYTHONPATH == *:* ]] ; then
@@ -70,7 +71,7 @@ __save_ebuild_env() {
 		__hasg __hasgq \
 		__save_ebuild_env __set_colors __filter_readonly_variables \
 		__preprocess_ebuild_env \
-		__repo_key __source_all_bashrcs \
+		__repo_attr __source_all_bashrcs \
 		__ebuild_main __ebuild_phase __ebuild_phase_with_hooks \
 		__ebuild_arg_to_phase __ebuild_phase_funcs default \
 		__unpack_tar __unset_colors \

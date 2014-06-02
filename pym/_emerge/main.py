@@ -1,4 +1,4 @@
-# Copyright 1999-2013 Gentoo Foundation
+# Copyright 1999-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import print_function
@@ -32,9 +32,11 @@ options=[
 "--debug",
 "--digest",
 "--emptytree",
+"--verbose-conflicts",
 "--fetchonly",    "--fetch-all-uri",
 "--ignore-default-opts",
 "--noconfmem",
+"--newrepo",
 "--newuse",
 "--nodeps",       "--noreplace",
 "--nospinner",    "--oneshot",
@@ -79,7 +81,7 @@ COWSAY_MOO = """
  -----------------------
         \   ^__^
          \  (oo)\_______
-            (__)\       )\/\ 
+            (__)\       )\/\\
                 ||----w |
                 ||     ||
 
@@ -154,6 +156,7 @@ def insert_optional_args(args):
 		'--usepkg'               : y_or_n,
 		'--usepkgonly'           : y_or_n,
 		'--verbose'              : y_or_n,
+		'--verbose-slot-rebuilds': y_or_n,
 	}
 
 	short_arg_opts = {
@@ -580,7 +583,7 @@ def parse_opts(tmpcmdline, silent=False):
 			             "packages that have been rebuilt",
 			"choices"  : true_y_or_n
 		},
-		
+
 		"--rebuilt-binaries-timestamp": {
 			"help"   : "use only binaries that are newer than this " + \
 			           "timestamp for --rebuilt-binaries",
@@ -636,6 +639,10 @@ def parse_opts(tmpcmdline, silent=False):
 		"--verbose": {
 			"shortopt" : "-v",
 			"help"     : "verbose output",
+			"choices"  : true_y_or_n
+		},
+		"--verbose-slot-rebuilds": {
+			"help"     : "verbose slot rebuild output",
 			"choices"  : true_y_or_n
 		},
 	}
@@ -886,7 +893,7 @@ def parse_opts(tmpcmdline, silent=False):
 					(myoptions.load_average,))
 
 		myoptions.load_average = load_average
-	
+
 	if myoptions.rebuilt_binaries_timestamp:
 		try:
 			rebuilt_binaries_timestamp = int(myoptions.rebuilt_binaries_timestamp)
@@ -1010,7 +1017,7 @@ def emerge_main(args=None):
 	# Portage needs to ensure a sane umask for the files it creates.
 	os.umask(0o22)
 	if myaction == "sync":
-		portage._sync_disabled_warnings = True
+		portage._sync_mode = True
 	emerge_config = load_emerge_config(
 		action=myaction, args=myfiles, opts=myopts)
 	rval = profile_check(emerge_config.trees, emerge_config.action)

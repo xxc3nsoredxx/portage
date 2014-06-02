@@ -1,4 +1,4 @@
-# Copyright 1998-2013 Gentoo Foundation
+# Copyright 1998-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -32,6 +32,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.util.env_update:env_update',
 	'portage.util.listdir:dircache,listdir',
 	'portage.util.movefile:movefile',
+	'portage.util.writeable_check:get_ro_checker',
 	'portage.util._dyn_libs.PreservedLibsRegistry:PreservedLibsRegistry',
 	'portage.util._dyn_libs.LinkageMapELF:LinkageMapELF@LinkageMap',
 	'portage.util._async.SchedulerInterface:SchedulerInterface',
@@ -92,6 +93,7 @@ except ImportError:
 	import pickle
 
 if sys.hexversion >= 0x3000000:
+	# pylint: disable=W0622
 	basestring = str
 	long = int
 	_unicode = str
@@ -3508,6 +3510,8 @@ class dblink(object):
 		
 		This function does the following:
 		
+		calls get_ro_checker to retrieve a function for checking whether Portage
+		will write to a read-only filesystem, then runs it against the directory list
 		calls self._preserve_libs if FEATURES=preserve-libs
 		calls self._collision_protect if FEATURES=collision-protect
 		calls doebuild(mydo=pkg_preinst)
@@ -3684,8 +3688,9 @@ class dblink(object):
 			unicode_error = False
 			eagain_error = False
 
-			myfilelist = []
-			mylinklist = []
+			filelist = []
+			dirlist = []
+			linklist = []
 			paths_with_newlines = []
 			def onerror(e):
 				raise
@@ -3717,6 +3722,9 @@ class dblink(object):
 					unicode_errors.append(new_parent[ed_len:])
 					break
 
+				relative_path = parent[srcroot_len:]
+				dirlist.append(os.path.join("/", relative_path))
+
 				for fname in files:
 					try:
 						fname = _unicode_decode(fname,
@@ -3746,12 +3754,19 @@ class dblink(object):
 
 					file_mode = os.lstat(fpath).st_mode
 					if stat.S_ISREG(file_mode):
-						myfilelist.append(relative_path)
+						filelist.append(relative_path)
 					elif stat.S_ISLNK(file_mode):
 						# Note: os.walk puts symlinks to directories in the "dirs"
 						# list and it does not traverse them since that could lead
 						# to an infinite recursion loop.
-						mylinklist.append(relative_path)
+						linklist.append(relative_path)
+
+						myto = _unicode_decode(
+							_os.readlink(_unicode_encode(fpath,
+							encoding=_encodings['merge'], errors='strict')),
+							encoding=_encodings['merge'], errors='replace')
+						if line_ending_re.search(myto) is not None:
+							paths_with_newlines.append(relative_path)
 
 				if unicode_error:
 					break
@@ -3779,7 +3794,7 @@ class dblink(object):
 		# If there are no files to merge, and an installed package in the same
 		# slot has files, it probably means that something went wrong.
 		if self.settings.get("PORTAGE_PACKAGE_EMPTY_ABORT") == "1" and \
-			not myfilelist and not mylinklist and others_in_slot:
+			not filelist and not linklist and others_in_slot:
 			installed_files = None
 			for other_dblink in others_in_slot:
 				installed_files = other_dblink.getcontents()
@@ -3822,13 +3837,38 @@ class dblink(object):
 			for other in others_in_slot])
 		prepare_build_dirs(settings=self.settings, cleanup=cleanup)
 
+		# Check for read-only filesystems.
+		ro_checker = get_ro_checker()
+		rofilesystems = ro_checker(dirlist)
+
+		if rofilesystems:
+			msg = _("One or more files installed to this package are "
+				"set to be installed to read-only filesystems. "
+				"Please mount the following filesystems as read-write "
+				"and retry.")
+			msg = textwrap.wrap(msg, 70)
+			msg.append("")
+			for f in rofilesystems:
+				msg.append("\t%s" % os.path.join(destroot,
+					f.lstrip(os.path.sep)))
+			msg.append("")
+			self._elog("eerror", "preinst", msg)
+
+			msg = _("Package '%s' NOT merged due to read-only file systems.") % \
+				self.settings.mycpv
+			msg += _(" If necessary, refer to your elog "
+				"messages for the whole content of the above message.")
+			msg = textwrap.wrap(msg, 70)
+			eerror(msg)
+			return 1
+
 		# check for package collisions
 		blockers = self._blockers
 		if blockers is None:
 			blockers = []
 		collisions, symlink_collisions, plib_collisions = \
 			self._collision_protect(srcroot, destroot,
-			others_in_slot + blockers, myfilelist, mylinklist)
+			others_in_slot + blockers, filelist, linklist)
 
 		if symlink_collisions:
 			# Symlink collisions need to be distinguished from other types

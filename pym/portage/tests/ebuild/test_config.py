@@ -1,4 +1,4 @@
-# Copyright 2010-2013 Gentoo Foundation
+# Copyright 2010-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 import portage
@@ -221,6 +221,7 @@ class ConfigTestCase(TestCase):
 						"profile-formats = pms",
 						"thin-manifests = true",
 						"manifest-hashes = SHA256 SHA512 WHIRLPOOL",
+						"# use implicit masters"
 					),
 			}
 		}
@@ -250,7 +251,7 @@ class ConfigTestCase(TestCase):
 			"new_repo_config.thin_manifest != True")
 
 		new_manifest_file = os.path.join(new_repo_config.location, "dev-libs", "A", "Manifest")
-		self.assertEqual(os.path.exists(new_manifest_file), False)
+		self.assertNotExists(new_manifest_file)
 
 		new_manifest_file = os.path.join(new_repo_config.location, "dev-libs", "B", "Manifest")
 		f = open(new_manifest_file)

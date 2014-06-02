@@ -1,4 +1,4 @@
-# Copyright 2012 Gentoo Foundation
+# Copyright 2012-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 import io
@@ -19,11 +19,12 @@ except ImportError:
 	from urllib import splituser as urllib_parse_splituser
 
 if sys.hexversion >= 0x3000000:
+	# pylint: disable=W0622
 	long = int
 
 # to account for the difference between TIMESTAMP of the index' contents
 #  and the file-'mtime'
-TIMESTAMP_TOLERANCE=5
+TIMESTAMP_TOLERANCE = 5
 
 def urlopen(url, if_modified_since=None):
 	parse_result = urllib_parse.urlparse(url)

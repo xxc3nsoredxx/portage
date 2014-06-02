@@ -1,4 +1,4 @@
-# Copyright 1998-2013 Gentoo Foundation
+# Copyright 1998-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 __docformat__ = "epytext"
@@ -24,8 +24,8 @@ from portage.exception import CommandNotFound, FileNotFound, \
 	ParseError, PermissionDenied, PortageException
 from portage.localization import _
 
-havecolor=1
-dotitles=1
+havecolor = 1
+dotitles = 1
 
 _styles = {}
 """Maps style class to tuple of attribute names."""
@@ -164,15 +164,12 @@ def _parse_color_map(config_root='/', onerror=None):
 			token = token[1:-1]
 		return token
 
-	f = None
 	try:
-		f = io.open(_unicode_encode(myfile,
+		with io.open(_unicode_encode(myfile,
 			encoding=_encodings['fs'], errors='strict'),
-			mode='r', encoding=_encodings['content'], errors='replace')
-		lineno = 0
-		for line in f:
-			lineno += 1
-
+			mode='r', encoding=_encodings['content'], errors='replace') as f:
+			lines = f.readlines()
+		for lineno, line in enumerate(lines):
 			commenter_pos = line.find("#")
 			line = line[:commenter_pos].strip()
 			
@@ -230,9 +227,6 @@ def _parse_color_map(config_root='/', onerror=None):
 		elif e.errno == errno.EACCES:
 			raise PermissionDenied(myfile)
 		raise
-	finally:
-		if f is not None:
-			f.close()
 
 def nc_len(mystr):
 	tmp = re.sub(esc_seq + "^m]+m", "", mystr);
@@ -305,12 +299,12 @@ def xtermTitleReset():
 
 def notitles():
 	"turn off title setting"
-	dotitles=0
+	dotitles = 0
 
 def nocolor():
 	"turn off colorization"
 	global havecolor
-	havecolor=0
+	havecolor = 0
 
 def resetColor():
 	return codes["reset"]
@@ -347,9 +341,11 @@ def colorize(color_key, text):
 	else:
 		return text
 
-compat_functions_colors = ["bold","white","teal","turquoise","darkteal",
-	"fuchsia","purple","blue","darkblue","green","darkgreen","yellow",
-	"brown","darkyellow","red","darkred"]
+compat_functions_colors = [
+	"bold", "white", "teal", "turquoise", "darkteal",
+	"fuchsia", "purple", "blue", "darkblue", "green", "darkgreen", "yellow",
+	"brown", "darkyellow", "red", "darkred",
+]
 
 class create_color_func(object):
 	__slots__ = ("_color_key",)

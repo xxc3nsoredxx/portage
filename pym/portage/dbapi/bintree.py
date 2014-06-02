@@ -1,4 +1,4 @@
-# Copyright 1998-2013 Gentoo Foundation
+# Copyright 1998-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -27,7 +27,7 @@ from portage.const import CACHE_PATH
 from portage.dbapi.virtual import fakedbapi
 from portage.dep import Atom, use_reduce, paren_enclose
 from portage.exception import AlarmSignal, InvalidData, InvalidPackageName, \
-	PermissionDenied, PortageException
+	ParseError, PermissionDenied, PortageException
 from portage.localization import _
 from portage import _movefile
 from portage import os
@@ -53,6 +53,7 @@ except ImportError:
 	from urlparse import urlparse
 
 if sys.hexversion >= 0x3000000:
+	# pylint: disable=W0622
 	_unicode = str
 	basestring = str
 	long = int
@@ -908,6 +909,9 @@ class binarytree(object):
 								traceback.print_exc()
 
 							raise
+					except ValueError:
+						raise ParseError("Invalid Portage BINHOST value '%s'"
+										 % url.lstrip())
 
 				if f is None:
 
@@ -1283,11 +1287,6 @@ class binarytree(object):
 
 	def _eval_use_flags(self, cpv, metadata):
 		use = frozenset(metadata["USE"].split())
-		raw_use = use
-		iuse = set(f.lstrip("-+") for f in metadata["IUSE"].split())
-		use = [f for f in use if f in iuse]
-		use.sort()
-		metadata["USE"] = " ".join(use)
 		for k in self._pkgindex_use_evaluated_keys:
 			if k.endswith('DEPEND'):
 				token_class = Atom
@@ -1296,7 +1295,7 @@ class binarytree(object):
 
 			try:
 				deps = metadata[k]
-				deps = use_reduce(deps, uselist=raw_use, token_class=token_class)
+				deps = use_reduce(deps, uselist=use, token_class=token_class)
 				deps = paren_enclose(deps)
 			except portage.exception.InvalidDependString as e:
 				writemsg("%s: %s\n" % (k, str(e)),

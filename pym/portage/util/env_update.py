@@ -1,4 +1,4 @@
-# Copyright 2010-2013 Gentoo Foundation
+# Copyright 2010-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 __all__ = ['env_update']
@@ -24,6 +24,7 @@ from portage.dbapi.vartree import vartree
 from portage.package.ebuild.config import config
 
 if sys.hexversion >= 0x3000000:
+	# pylint: disable=W0622
 	long = int
 
 def env_update(makelinks=1, target_root=None, prev_mtimes=None, contents=None,
@@ -171,9 +172,9 @@ def _env_update(makelinks, target_root, prev_mtimes, contents, env,
 		myld = io.open(_unicode_encode(ldsoconf_path,
 			encoding=_encodings['fs'], errors='strict'),
 			mode='r', encoding=_encodings['content'], errors='replace')
-		myldlines=myld.readlines()
+		myldlines = myld.readlines()
 		myld.close()
-		oldld=[]
+		oldld = []
 		for x in myldlines:
 			#each line has at least one char (a newline)
 			if x[:1] == "#":
@@ -321,7 +322,7 @@ def _env_update(makelinks, target_root, prev_mtimes, contents, env,
 			writemsg_level(_(">>> Regenerating %setc/ld.so.cache...\n") % \
 				(target_root,))
 			os.system("cd / ; %s -X -r '%s'" % (ldconfig, target_root))
-		elif ostype in ("FreeBSD","DragonFly"):
+		elif ostype in ("FreeBSD", "DragonFly"):
 			writemsg_level(_(">>> Regenerating %svar/run/ld-elf.so.hints...\n") % \
 				target_root)
 			os.system(("cd / ; %s -elf -i " + \
@@ -340,7 +341,7 @@ def _env_update(makelinks, target_root, prev_mtimes, contents, env,
 	outfile = atomic_ofstream(os.path.join(eroot, "etc", "profile.env"))
 	outfile.write(penvnotice)
 
-	env_keys = [ x for x in env if x != "LDPATH" ]
+	env_keys = [x for x in env if x != "LDPATH"]
 	env_keys.sort()
 	for k in env_keys:
 		v = env[k]

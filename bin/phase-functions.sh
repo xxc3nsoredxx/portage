@@ -997,7 +997,7 @@ __ebuild_main() {
 	# setup EBUILD_MASTER_PID to refer to the current $BASHPID,
 	# which seems to give the best results when further
 	# nested subshells call die.
-	export EBUILD_MASTER_PID=$BASHPID
+	export EBUILD_MASTER_PID=${BASHPID:-$(__bashpid)}
 	trap 'exit 1' SIGTERM
 
 	#a reasonable default for $S
@@ -1162,7 +1162,7 @@ __ebuild_main() {
 
 			x=LIBDIR_$ABI
 			[ -z "$PKG_CONFIG_PATH" -a -n "$ABI" -a -n "${!x}" ] && \
-				export PKG_CONFIG_PATH=/usr/${!x}/pkgconfig
+				export PKG_CONFIG_PATH=${EPREFIX}/usr/${!x}/pkgconfig
 
 			if has noauto $FEATURES && \
 				[[ ! -f $PORTAGE_BUILDDIR/.unpacked ]] ; then

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 1999-2013 Gentoo Foundation
+# Copyright 1999-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 source "${PORTAGE_BIN_PATH:-/usr/lib/portage/bin}/eapi.sh"
@@ -96,6 +96,13 @@ nonfatal() {
 	fi
 
 	PORTAGE_NONFATAL=1 "$@"
+}
+
+__bashpid() {
+	# The BASHPID variable is new to bash-4.0, so add a hack for older
+	# versions.  This must be used like so:
+	# ${BASHPID:-$(__bashpid)}
+	sh -c 'echo ${PPID}'
 }
 
 __helpers_die() {
@@ -216,7 +223,7 @@ die() {
 	[[ -n $PORTAGE_IPC_DAEMON ]] && "$PORTAGE_BIN_PATH"/ebuild-ipc exit 1
 
 	# subshell die support
-	[[ $BASHPID = $EBUILD_MASTER_PID ]] || kill -s SIGTERM $EBUILD_MASTER_PID
+	[[ ${BASHPID:-$(__bashpid)} == ${EBUILD_MASTER_PID} ]] || kill -s SIGTERM ${EBUILD_MASTER_PID}
 	exit 1
 }
 
@@ -455,7 +462,7 @@ has() {
 	return 1
 }
 
-__repo_key() {
+__repo_attr() {
 	local appropriate_section=0 exit_status=1 line saved_extglob_shopt=$(shopt -p extglob)
 	shopt -s extglob
 	while read line; do

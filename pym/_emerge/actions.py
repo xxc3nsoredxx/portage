@@ -1,4 +1,4 @@
-# Copyright 1999-2013 Gentoo Foundation
+# Copyright 1999-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import print_function, unicode_literals
@@ -39,12 +39,12 @@ from portage import shutil
 from portage import eapi_is_supported, _encodings, _unicode_decode
 from portage.cache.cache_errors import CacheError
 from portage.const import GLOBAL_CONFIG_PATH, VCS_DIRS, _DEPCLEAN_LIB_CHECK_DEFAULT
-from portage.const import SUPPORTED_BINPKG_FORMATS
+from portage.const import SUPPORTED_BINPKG_FORMATS, TIMESTAMP_FORMAT
 from portage.dbapi.dep_expand import dep_expand
 from portage.dbapi._expand_new_virt import expand_new_virt
 from portage.dep import Atom
 from portage.eclass_cache import hashed_path
-from portage.exception import InvalidAtom, InvalidData
+from portage.exception import InvalidAtom, InvalidData, ParseError
 from portage.output import blue, bold, colorize, create_color_func, darkgreen, \
 	red, xtermTitle, xtermTitleReset, yellow
 good = create_color_func("GOOD")
@@ -2073,7 +2073,7 @@ def action_sync(emerge_config, trees=DeprecationWarning,
 				return returncode
 
 	# Reload the whole config from scratch.
-	portage._sync_disabled_warnings = False
+	portage._sync_mode = False
 	load_emerge_config(emerge_config=emerge_config)
 	adjust_configs(emerge_config.opts, emerge_config.trees)
 
@@ -2282,7 +2282,7 @@ def _sync_repo(emerge_config, repo):
 		if content:
 			try:
 				mytimestamp = time.mktime(time.strptime(content[0],
-					"%a, %d %b %Y %H:%M:%S +0000"))
+					TIMESTAMP_FORMAT))
 			except (OverflowError, ValueError):
 				pass
 		del content
@@ -2511,7 +2511,7 @@ def _sync_repo(emerge_config, repo):
 				if content:
 					try:
 						servertimestamp = time.mktime(time.strptime(
-							content[0], "%a, %d %b %Y %H:%M:%S +0000"))
+							content[0], TIMESTAMP_FORMAT))
 					except (OverflowError, ValueError):
 						pass
 				del mycommand, mypids, content
@@ -3486,7 +3486,7 @@ def expand_set_arguments(myfiles, myaction, root_config):
 	unmerge_actions = ("unmerge", "prune", "clean", "depclean")
 
 	for a in myfiles:
-		if a.startswith(SETPREFIX):		
+		if a.startswith(SETPREFIX):
 				s = a[len(SETPREFIX):]
 				if s not in sets:
 					display_missing_pkg_set(root_config, s)
@@ -3544,12 +3544,6 @@ def repo_name_check(trees):
 		if porttree:
 			portdb = porttree.dbapi
 			missing_repo_names.update(portdb.getMissingRepoNames())
-			if portdb.porttree_root in missing_repo_names and \
-				not os.path.exists(os.path.join(
-				portdb.porttree_root, "profiles")):
-				# This is normal if $PORTDIR happens to be empty,
-				# so don't warn about it.
-				missing_repo_names.remove(portdb.porttree_root)
 
 	# Skip warnings about missing repo_name entries for
 	# /usr/local/portage (see bug #248603).
@@ -3715,8 +3709,13 @@ def run_action(emerge_config):
 			# Populate the bintree with current --getbinpkg setting.
 			# This needs to happen before expand_set_arguments(), in case
 			# any sets use the bintree.
-			mytrees["bintree"].populate(
-				getbinpkgs="--getbinpkg" in emerge_config.opts)
+			try:
+				mytrees["bintree"].populate(
+					getbinpkgs="--getbinpkg" in emerge_config.opts)
+			except ParseError as e:
+				writemsg("\n\n!!!%s.\nSee make.conf(5) for more info.\n"
+						 % e, noiselevel=-1)
+				return 1
 
 	del mytrees, mydb
 
@@ -3759,7 +3758,7 @@ def run_action(emerge_config):
 		if retval != os.EX_OK:
 			return retval
 
-		# Need to handle empty sets specially, otherwise emerge will react 
+		# Need to handle empty sets specially, otherwise emerge will react
 		# with the help message for empty argument lists
 		if oldargs and not newargs:
 			print("emerge: no targets left after set expansion")
