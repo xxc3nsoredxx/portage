@@ -428,6 +428,45 @@ def action_build(settings, trees, mtimedb,
 			# least show warnings about missed updates and such.
 			mydepgraph.display_problems()
 
+
+		need_write_vardb = not Scheduler. \
+			_opts_no_self_update.intersection(myopts)
+
+		need_write_bindb = not any(x in myopts for x in
+			("--fetchonly", "--fetch-all-uri", "--pretend")) and \
+			(any("buildpkg" in trees[eroot]["root_config"].
+				settings.features for eroot in trees) or
+			any("buildsyspkg" in trees[eroot]["root_config"].
+				settings.features for eroot in trees))
+
+		if need_write_bindb or need_write_vardb:
+
+			eroots = set()
+			for x in mydepgraph.altlist():
+				if isinstance(x, Package) and x.operation == "merge":
+					eroots.add(x.root)
+
+			for eroot in eroots:
+				if need_write_vardb and \
+					not trees[eroot]["vartree"].dbapi.writable:
+					writemsg_level("!!! %s\n" %
+						_("Read-only file system: %s") %
+						trees[eroot]["vartree"].dbapi._dbroot,
+						level=logging.ERROR, noiselevel=-1)
+					return 1
+
+				if need_write_bindb and \
+					("buildpkg" in trees[eroot]["root_config"].
+					settings.features or
+					"buildsyspkg" in trees[eroot]["root_config"].
+					settings.features) and \
+					not trees[eroot]["bintree"].dbapi.writable:
+					writemsg_level("!!! %s\n" %
+						_("Read-only file system: %s") %
+						trees[eroot]["bintree"].pkgdir,
+						level=logging.ERROR, noiselevel=-1)
+					return 1
+
 		if ("--resume" in myopts):
 			favorites=mtimedb["resume"]["favorites"]
 
@@ -1516,6 +1555,47 @@ def action_info(settings, trees, myopts, myfiles):
 	else:
 		lastSync = "Unknown"
 	append("Timestamp of tree: %s" % (lastSync,))
+
+	# Searching contents for the /bin/sh provider is somewhat
+	# slow. Therefore, use the basename of the symlink target
+	# to locate the package. If this fails, then only the
+	# basename of the symlink target will be displayed. So,
+	# typical output is something like "sh bash 4.2_p53". Since
+	# realpath is used to resolve symlinks recursively, this
+	# approach is also able to handle multiple levels of symlinks
+	# such as /bin/sh -> bb -> busybox. Note that we do not parse
+	# the output of "/bin/sh --version" because many shells
+	# do not have a --version option.
+	basename = os.path.basename(os.path.realpath(os.path.join(
+		os.sep, portage.const.EPREFIX, "bin", "sh")))
+	try:
+		Atom("null/%s" % basename)
+	except InvalidAtom:
+		matches = None
+	else:
+		try:
+			# Try a match against the basename, which should work for
+			# busybox and most shells.
+			matches = (trees[trees._running_eroot]["vartree"].dbapi.
+				match(basename))
+		except portage.exception.AmbiguousPackageName:
+			# If the name is ambiguous, then restrict our match
+			# to the app-shells category.
+			matches = (trees[trees._running_eroot]["vartree"].dbapi.
+				match("app-shells/%s" % basename))
+
+	if matches:
+		pkg = matches[-1]
+		name = pkg.cp
+		version = pkg.version
+		# Omit app-shells category from the output.
+		if name.startswith("app-shells/"):
+			name = name[len("app-shells/"):]
+		sh_str = "%s %s" % (name, version)
+	else:
+		sh_str = basename
+
+	append("sh %s" % sh_str)
 
 	ld_names = []
 	if chost:
@@ -2701,7 +2781,7 @@ def _sync_repo(emerge_config, repo):
 def action_uninstall(settings, trees, ldpath_mtimes,
 	opts, action, files, spinner):
 	# For backward compat, some actions do not require leading '='.
-	ignore_missing_eq = action in ('clean', 'unmerge')
+	ignore_missing_eq = action in ('clean', 'rage-clean', 'unmerge')
 	root = settings['ROOT']
 	eroot = settings['EROOT']
 	vardb = trees[settings['EROOT']]['vartree'].dbapi
@@ -2857,10 +2937,10 @@ def action_uninstall(settings, trees, ldpath_mtimes,
 		settings.backup_changes("PORTAGE_BACKGROUND")
 		settings.lock()
 
-	if action in ('clean', 'unmerge') or \
+	if action in ('clean', 'rage-clean', 'unmerge') or \
 		(action == 'prune' and "--nodeps" in opts):
 		# When given a list of atoms, unmerge them in the order given.
-		ordered = action == 'unmerge'
+		ordered = action in ('rage-clean', 'unmerge')
 		rval = unmerge(trees[settings['EROOT']]['root_config'], opts, action,
 			valid_atoms, ldpath_mtimes, ordered=ordered,
 			scheduler=sched_iface)
@@ -3490,7 +3570,7 @@ def expand_set_arguments(myfiles, myaction, root_config):
 	for e in setconfig.errors:
 		print(colorize("BAD", "Error during set creation: %s" % e))
 
-	unmerge_actions = ("unmerge", "prune", "clean", "depclean")
+	unmerge_actions = ("unmerge", "prune", "clean", "depclean", "rage-clean")
 
 	for a in myfiles:
 		if a.startswith(SETPREFIX):
@@ -3499,10 +3579,12 @@ def expand_set_arguments(myfiles, myaction, root_config):
 					display_missing_pkg_set(root_config, s)
 					return (None, 1)
 				if s == "installed":
-					msg = ("The @installed set is deprecated and will soon be "
-					"removed. Please refer to bug #387059 for details.")
+					msg = ("The @installed set is not recommended when "
+						"updating packages because it will often "
+						"introduce unsolved blocker conflicts. Please "
+						"refer to bug #387059 for details.")
 					out = portage.output.EOutput()
-					for line in textwrap.wrap(msg, 50):
+					for line in textwrap.wrap(msg, 57):
 						out.ewarn(line)
 				setconfig.active.append(s)
 
@@ -3758,7 +3840,7 @@ def run_action(emerge_config):
 	# only expand sets for actions taking package arguments
 	oldargs = emerge_config.args[:]
 	if emerge_config.action in ("clean", "config", "depclean",
-		"info", "prune", "unmerge", None):
+		"info", "prune", "unmerge", "rage-clean", None):
 		newargs, retval = expand_set_arguments(
 			emerge_config.args, emerge_config.action,
 			emerge_config.target_config)
@@ -3839,7 +3921,7 @@ def run_action(emerge_config):
 		if "--pretend" not in emerge_config.opts and \
 			emerge_config.action not in ("search", "info"):
 			need_superuser = emerge_config.action in ('clean', 'depclean',
-				'deselect', 'prune', 'unmerge') or not \
+				'deselect', 'prune', 'unmerge', "rage-clean") or not \
 				(fetchonly or \
 				(buildpkgonly and portage.data.secpass >= 1) or \
 				emerge_config.action in ("metadata", "regen", "sync"))
@@ -3985,7 +4067,7 @@ def run_action(emerge_config):
 			emerge_config.opts, emerge_config.args, spinner)
 
 	elif emerge_config.action in \
-		('clean', 'depclean', 'deselect', 'prune', 'unmerge'):
+		('clean', 'depclean', 'deselect', 'prune', 'unmerge', 'rage-clean'):
 		validate_ebuild_environment(emerge_config.trees)
 		rval = action_uninstall(emerge_config.target_config.settings,
 			emerge_config.trees, emerge_config.target_config.mtimedb["ldpath"],
@@ -4072,6 +4154,7 @@ def run_action(emerge_config):
 			uq = UserQuery(emerge_config.opts)
 			if display_news_notification(emerge_config.target_config,
 								emerge_config.opts) \
+				and "--ask" in emerge_config.opts \
 				and "--read-news" in emerge_config.opts \
 				and uq.query("Would you like to read the news items while " \
 						"calculating dependencies?",

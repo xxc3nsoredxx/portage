@@ -200,7 +200,9 @@ def _doebuild_path(settings, eapi=None):
 	if "xattr" in settings.features:
 		path.append(os.path.join(portage_bin_path, "ebuild-helpers", "xattr"))
 
-	if eprefix and uid != 0 and "fakeroot" not in settings.features:
+	if uid != 0 and \
+		"unprivileged" in settings.features and \
+		"fakeroot" not in settings.features:
 		path.append(os.path.join(portage_bin_path,
 			"ebuild-helpers", "unprivileged"))
 
@@ -335,7 +337,8 @@ def doebuild_environment(myebuild, mydo, myroot=None, settings=None,
 	mysettings["ECLASSDIR"]   = mysettings["PORTDIR"]+"/eclass"
 	mysettings["SANDBOX_LOG"] = mycpv.replace("/", "_-_")
 
-	mysettings["PROFILE_PATHS"] = "\n".join(mysettings.profiles)
+	mysettings["PORTAGE_BASHRC_FILES"] = "\n".join(mysettings._pbashrc)
+
 	mysettings["P"]  = mysplit[0]+"-"+mysplit[1]
 	mysettings["PN"] = mysplit[0]
 	mysettings["PV"] = mysplit[1]
@@ -826,7 +829,8 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 		alist = set(mysettings.configdict["pkg"].get("A", "").split())
 
 		unpacked = False
-		if tree != "porttree":
+		if tree != "porttree" or \
+			mydo in _doebuild_commands_without_builddir:
 			pass
 		elif "unpack" not in phases_to_run:
 			unpacked = os.path.exists(os.path.join(
@@ -909,11 +913,14 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 		if eapi_exports_merge_type(mysettings["EAPI"]) and \
 			"MERGE_TYPE" not in mysettings.configdict["pkg"]:
 			if tree == "porttree":
-				mysettings.configdict["pkg"]["EMERGE_FROM"] = "ebuild"
 				mysettings.configdict["pkg"]["MERGE_TYPE"] = "source"
 			elif tree == "bintree":
-				mysettings.configdict["pkg"]["EMERGE_FROM"] = "binary"
 				mysettings.configdict["pkg"]["MERGE_TYPE"] = "binary"
+
+		if tree == "porttree":
+			mysettings.configdict["pkg"]["EMERGE_FROM"] = "ebuild"
+		elif tree == "bintree":
+			mysettings.configdict["pkg"]["EMERGE_FROM"] = "binary"
 
 		# NOTE: It's not possible to set REPLACED_BY_VERSION for prerm
 		#       and postrm here, since we don't necessarily know what
@@ -1486,7 +1493,7 @@ def spawn(mystring, mysettings, debug=False, free=False, droppriv=False,
 				"uid": portage_uid,
 				"gid": portage_gid,
 				"groups": userpriv_groups,
-				"umask": 0o02
+				"umask": 0o22
 			})
 
 			# Adjust pty ownership so that subprocesses
@@ -1644,8 +1651,9 @@ def _post_phase_userpriv_perms(mysettings):
 		""" Privileged phases may have left files that need to be made
 		writable to a less privileged user."""
 		apply_recursive_permissions(mysettings["T"],
-			uid=portage_uid, gid=portage_gid, dirmode=0o70, dirmask=0,
-			filemode=0o60, filemask=0)
+			uid=portage_uid, gid=portage_gid, dirmode=0o700, dirmask=0,
+			filemode=0o600, filemask=0)
+
 
 def _check_build_log(mysettings, out=None):
 	"""

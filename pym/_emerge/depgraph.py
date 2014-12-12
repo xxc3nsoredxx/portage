@@ -399,6 +399,8 @@ class _dynamic_depgraph_config(object):
 		self._initially_unsatisfied_deps = []
 		self._ignored_deps = []
 		self._highest_pkg_cache = {}
+		self._highest_pkg_cache_cp_map = {}
+		self._flatten_atoms_cache = {}
 
 		# Binary packages that have been rejected because their USE
 		# didn't match the user's config. It maps packages to a set
@@ -526,6 +528,8 @@ class depgraph(object):
 
 		self._event_loop = (portage._internal_caller and
 			global_event_loop() or EventLoop(main=False))
+
+		self._select_atoms_parent = None
 
 		self.query = UserQuery(myopts).query
 
@@ -1657,6 +1661,7 @@ class depgraph(object):
 		debug = "--debug" in self._frozen_config.myopts
 		selective = "selective" in self._dynamic_config.myparams
 		want_downgrade = None
+		want_downgrade_parent = None
 
 		def check_reverse_dependencies(existing_pkg, candidate_pkg,
 			replacement_parent=None):
@@ -1704,31 +1709,22 @@ class depgraph(object):
 		for replacement_parent in self._iter_similar_available(dep.parent,
 			dep.parent.slot_atom, autounmask_level=autounmask_level):
 
+			if replacement_parent < dep.parent:
+				if want_downgrade_parent is None:
+					want_downgrade_parent = self._downgrade_probe(
+						dep.parent)
+				if not want_downgrade_parent:
+					continue
+
 			if not check_reverse_dependencies(dep.parent, replacement_parent):
 				continue
 
 			selected_atoms = None
 
-			atoms = set()
-			invalid_metadata = False
-			for dep_key in ("DEPEND", "HDEPEND", "RDEPEND", "PDEPEND"):
-				dep_string = replacement_parent._metadata[dep_key]
-				if not dep_string:
-					continue
-
-				try:
-					dep_string = portage.dep.use_reduce(dep_string,
-						uselist=self._pkg_use_enabled(replacement_parent),
-						is_valid_flag=replacement_parent.iuse.is_valid_flag,
-						flat=True, token_class=Atom,
-						eapi=replacement_parent.eapi)
-				except portage.exception.InvalidDependString:
-					invalid_metadata = True
-					break
-
-				atoms.update(token for token in dep_string if isinstance(token, Atom))
-
-			if invalid_metadata:
+			try:
+				atoms = self._flatten_atoms(replacement_parent,
+					self._pkg_use_enabled(replacement_parent))
+			except InvalidDependString:
 				continue
 
 			# List of list of child,atom pairs for each atom.
@@ -1994,6 +1990,46 @@ class depgraph(object):
 				root, v, myuse=use, parent=pkg)[pkg])
 		return frozenset(x.unevaluated_atom for
 			x in selected_atoms)
+
+	def _flatten_atoms(self, pkg, use):
+		"""
+		Evaluate all dependency atoms of the given package, and return
+		them as a frozenset. For performance, results are cached.
+
+		@param pkg: a Package instance
+		@type pkg: Package
+		@param pkg: set of enabled USE flags
+		@type pkg: frozenset
+		@rtype: frozenset
+		@return: set of evaluated atoms
+		"""
+
+		cache_key = (pkg, use)
+
+		try:
+			return self._dynamic_config._flatten_atoms_cache[cache_key]
+		except KeyError:
+			pass
+
+		atoms = []
+
+		for dep_key in pkg._dep_keys:
+			dep_string = pkg._metadata[dep_key]
+			if not dep_string:
+				continue
+
+			dep_string = portage.dep.use_reduce(
+				dep_string, uselist=use,
+				is_valid_flag=pkg.iuse.is_valid_flag,
+				flat=True, token_class=Atom, eapi=pkg.eapi)
+
+			atoms.extend(token for token in dep_string
+				if isinstance(token, Atom))
+
+		atoms = frozenset(atoms)
+
+		self._dynamic_config._flatten_atoms_cache[cache_key] = atoms
+		return atoms
 
 	def _iter_similar_available(self, graph_pkg, atom, autounmask_level=None):
 		"""
@@ -2504,8 +2540,8 @@ class depgraph(object):
 			if not previously_added:
 				self._dynamic_config._package_tracker.add_pkg(pkg)
 				self._dynamic_config._filtered_trees[pkg.root]["porttree"].dbapi._clear_cache()
-				self._dynamic_config._highest_pkg_cache.clear()
 				self._check_masks(pkg)
+				self._prune_highest_pkg_cache(pkg)
 
 			if not pkg.installed:
 				# Allow this package to satisfy old-style virtuals in case it
@@ -2650,6 +2686,7 @@ class depgraph(object):
 		# Clear caches.
 		self._dynamic_config._filtered_trees[pkg.root]["porttree"].dbapi._clear_cache()
 		self._dynamic_config._highest_pkg_cache.clear()
+		self._dynamic_config._highest_pkg_cache_cp_map.clear()
 
 
 	def _check_masks(self, pkg):
@@ -2688,6 +2725,20 @@ class depgraph(object):
 		edepend={}
 		for k in Package._dep_keys:
 			edepend[k] = metadata[k]
+
+		use_enabled = self._pkg_use_enabled(pkg)
+
+		with_test_deps = not removal_action and \
+			"with_test_deps" in \
+			self._dynamic_config.myparams and \
+			pkg.depth == 0 and \
+			"test" not in use_enabled and \
+			pkg.iuse.is_valid_flag("test") and \
+			self._is_argument(pkg)
+
+		if with_test_deps:
+			use_enabled = set(use_enabled)
+			use_enabled.add("test")
 
 		if not pkg.built and \
 			"--buildpkgonly" in self._frozen_config.myopts and \
@@ -2772,7 +2823,7 @@ class depgraph(object):
 
 				try:
 					dep_string = portage.dep.use_reduce(dep_string,
-						uselist=self._pkg_use_enabled(pkg),
+						uselist=use_enabled,
 						is_valid_flag=pkg.iuse.is_valid_flag,
 						opconvert=True, token_class=Atom,
 						eapi=pkg.eapi)
@@ -2787,7 +2838,7 @@ class depgraph(object):
 					# practical to ignore this issue for installed packages.
 					try:
 						dep_string = portage.dep.use_reduce(dep_string,
-							uselist=self._pkg_use_enabled(pkg),
+							uselist=use_enabled,
 							opconvert=True, token_class=Atom,
 							eapi=pkg.eapi)
 					except portage.exception.InvalidDependString as e:
@@ -3932,6 +3983,7 @@ class depgraph(object):
 		# Invalidate the package selection cache, since
 		# arguments influence package selections.
 		self._dynamic_config._highest_pkg_cache.clear()
+		self._dynamic_config._highest_pkg_cache_cp_map.clear()
 		for trees in self._dynamic_config._filtered_trees.values():
 			trees["porttree"].dbapi._clear_cache()
 
@@ -4062,11 +4114,13 @@ class depgraph(object):
 			self._dynamic_config._autounmask = False
 			# backup state for restoration, in case of recursive
 			# calls to this method
+			backup_parent = self._select_atoms_parent
 			backup_state = mytrees.copy()
 			try:
 				# clear state from previous call, in case this
 				# call is recursive (we have a backup, that we
 				# will use to restore it later)
+				self._select_atoms_parent = None
 				mytrees.pop("pkg_use_enabled", None)
 				mytrees.pop("parent", None)
 				mytrees.pop("atom_graph", None)
@@ -4074,6 +4128,7 @@ class depgraph(object):
 
 				mytrees["pkg_use_enabled"] = self._pkg_use_enabled
 				if parent is not None:
+					self._select_atoms_parent = parent
 					mytrees["parent"] = parent
 					mytrees["atom_graph"] = atom_graph
 				if priority is not None:
@@ -4085,6 +4140,7 @@ class depgraph(object):
 			finally:
 				# restore state
 				self._dynamic_config._autounmask = _autounmask_backup
+				self._select_atoms_parent = backup_parent
 				mytrees.pop("pkg_use_enabled", None)
 				mytrees.pop("parent", None)
 				mytrees.pop("atom_graph", None)
@@ -4948,12 +5004,27 @@ class depgraph(object):
 			return ret
 		ret = self._select_pkg_highest_available_imp(root, atom, onlydeps=onlydeps, parent=parent)
 		self._dynamic_config._highest_pkg_cache[cache_key] = ret
+		self._dynamic_config._highest_pkg_cache_cp_map. \
+			setdefault(atom.cp, []).append(cache_key)
 		pkg, existing = ret
 		if pkg is not None:
 			if self._pkg_visibility_check(pkg) and \
 				not (pkg.installed and pkg.masks):
 				self._dynamic_config._visible_pkgs[pkg.root].cpv_inject(pkg)
 		return ret
+
+	def _is_argument(self, pkg):
+		for arg, atom in self._iter_atoms_for_pkg(pkg):
+			if isinstance(arg, (AtomArg, PackageArg)):
+				return True
+		return False
+
+	def _prune_highest_pkg_cache(self, pkg):
+		for cp in pkg.provided_cps:
+			for cache_key in self._dynamic_config. \
+				_highest_pkg_cache_cp_map.pop(cp, []):
+				self._dynamic_config._highest_pkg_cache.pop(
+					cache_key, None)
 
 	def _want_installed_pkg(self, pkg):
 		"""
@@ -5250,6 +5321,9 @@ class depgraph(object):
 		If target_use is given, the need changes are computed to make the package useable.
 		Example: target_use = { "foo": True, "bar": False }
 		The flags target_use must be in the pkg's IUSE.
+		@rtype: frozenset
+		@return: set of effectively enabled USE flags, including changes
+			made by autounmask
 		"""
 		if pkg.built:
 			return pkg.use.enabled
@@ -5315,6 +5389,10 @@ class depgraph(object):
 					return True
 
 			return False
+
+		# Always return frozenset since the result needs to be
+		# hashable (see bug #531112).
+		new_use = frozenset(new_use)
 
 		if new_changes != old_changes:
 			#Don't do the change if it violates REQUIRED_USE.
@@ -7799,7 +7877,9 @@ class depgraph(object):
 				settings = self._frozen_config.roots[root].settings
 				protect_obj[root] = ConfigProtect(settings["EROOT"], \
 					shlex_split(settings.get("CONFIG_PROTECT", "")),
-					shlex_split(settings.get("CONFIG_PROTECT_MASK", "")))
+					shlex_split(settings.get("CONFIG_PROTECT_MASK", "")),
+					case_insensitive=("case-insensitive-fs"
+					in settings.features))
 
 		def write_changes(root, changes, file_to_write_to):
 			file_contents = None
@@ -8468,12 +8548,11 @@ class _dep_check_composite_db(dbapi):
 			ret.append(pkg)
 
 		if pkg is not None and \
-			atom.slot is None and \
+			atom.sub_slot is None and \
 			pkg.cp.startswith("virtual/") and \
 			(("remove" not in self._depgraph._dynamic_config.myparams and
 			"--update" not in self._depgraph._frozen_config.myopts) or
-			not ret or
-			not self._depgraph._virt_deps_visible(pkg, ignore_use=True)):
+			not ret):
 			# For new-style virtual lookahead that occurs inside dep_check()
 			# for bug #141118, examine all slots. This is needed so that newer
 			# slots will not unnecessarily be pulled in when a satisfying lower
@@ -8481,34 +8560,66 @@ class _dep_check_composite_db(dbapi):
 			# satisfied via gcj-jdk then there's no need to pull in a newer
 			# slot to satisfy a virtual/jdk dependency, unless --update is
 			# enabled.
-			slots = set()
-			slots.add(pkg.slot)
+			sub_slots = set()
+			resolved_sub_slots = set()
 			for virt_pkg in self._depgraph._iter_match_pkgs_any(
 				self._depgraph._frozen_config.roots[self._root], atom):
 				if virt_pkg.cp != pkg.cp:
 					continue
-				slots.add(virt_pkg.slot)
+				sub_slots.add((virt_pkg.slot, virt_pkg.sub_slot))
 
-			slots.remove(pkg.slot)
-			while slots:
-				slot_atom = atom.with_slot(slots.pop())
+			sub_slot_key = (pkg.slot, pkg.sub_slot)
+			if ret:
+				# We've added pkg to ret already, and only one package
+				# per slot/sub_slot is desired here.
+				sub_slots.discard(sub_slot_key)
+				resolved_sub_slots.add(sub_slot_key)
+			else:
+				sub_slots.add(sub_slot_key)
+
+			while sub_slots:
+				slot, sub_slot = sub_slots.pop()
+				slot_atom = atom.with_slot("%s/%s" % (slot, sub_slot))
 				pkg, existing = self._depgraph._select_package(
 					self._root, slot_atom)
 				if not pkg:
 					continue
-				if not self._visible(pkg, atom_set):
-					continue
+				if not self._visible(pkg, atom_set,
+					avoid_slot_conflict=False):
+					# Try to force a virtual update to be pulled in
+					# when appropriate for bug #526160.
+					selected = pkg
+					for candidate in \
+						self._iter_virt_update(pkg, atom_set):
+
+						if candidate.slot != slot:
+							continue
+
+						if (candidate.slot, candidate.sub_slot) in \
+							resolved_sub_slots:
+							continue
+
+						if selected is None or \
+							selected < candidate:
+							selected = candidate
+
+					if selected is pkg:
+						continue
+					pkg = selected
+
+				resolved_sub_slots.add((pkg.slot, pkg.sub_slot))
 				ret.append(pkg)
 
 			if len(ret) > 1:
-				ret.sort()
+				ret = sorted(set(ret))
 
 		self._match_cache[cache_key] = ret
 		for pkg in ret:
 			self._cpv_pkg_map[pkg.cpv] = pkg
 		return ret[:]
 
-	def _visible(self, pkg, atom_set):
+	def _visible(self, pkg, atom_set, avoid_slot_conflict=True,
+		probe_virt_update=True):
 		if pkg.installed and not self._depgraph._want_installed_pkg(pkg):
 			return False
 		if pkg.installed and \
@@ -8528,6 +8639,25 @@ class _dep_check_composite_db(dbapi):
 					return False
 				elif not self._depgraph._equiv_ebuild_visible(pkg):
 					return False
+
+		if pkg.cp.startswith("virtual/"):
+
+			if not self._depgraph._virt_deps_visible(
+				pkg, ignore_use=True):
+				return False
+
+			if probe_virt_update and \
+				self._have_virt_update(pkg, atom_set):
+				# Force virtual updates to be pulled in when appropriate
+				# for bug #526160.
+				return False
+
+		if not avoid_slot_conflict:
+			# This is useful when trying to pull in virtual updates,
+			# since we don't want another instance that was previously
+			# pulled in to mask an update that we're trying to pull
+			# into the same slot.
+			return True
 
 		in_graph = next(self._depgraph._dynamic_config._package_tracker.match(
 			self._root, pkg.slot_atom, installed=False), None)
@@ -8553,6 +8683,34 @@ class _dep_check_composite_db(dbapi):
 				return True
 			return False
 		return True
+
+	def _iter_virt_update(self, pkg, atom_set):
+
+		if self._depgraph._select_atoms_parent is not None and \
+			self._depgraph._want_update_pkg(
+				self._depgraph._select_atoms_parent, pkg):
+
+			for new_child in self._depgraph._iter_similar_available(
+				pkg, next(iter(atom_set))):
+
+				if not self._depgraph._virt_deps_visible(
+					new_child, ignore_use=True):
+					continue
+
+				if not self._visible(new_child, atom_set,
+					avoid_slot_conflict=False,
+					probe_virt_update=False):
+					continue
+
+				yield new_child
+
+	def _have_virt_update(self, pkg, atom_set):
+
+		for new_child in self._iter_virt_update(pkg, atom_set):
+			if pkg < new_child:
+				return True
+
+		return False
 
 	def aux_get(self, cpv, wants):
 		metadata = self._cpv_pkg_map[cpv]._metadata

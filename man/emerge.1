@@ -1,4 +1,4 @@
-.TH "EMERGE" "1" "Oct 2014" "Portage VERSION" "Portage"
+.TH "EMERGE" "1" "Nov 2014" "Portage VERSION" "Portage"
 .SH "NAME"
 emerge \- Command\-line interface to the Portage system
 .SH "SYNOPSIS"
@@ -258,11 +258,12 @@ portage tree as a tarball, which is much faster than emerge
 .TP
 .BR "\-\-unmerge " (\fB\-C\fR)
 \fBWARNING: This action can remove important packages!\fR Removes
-all matching packages.  This does no checking of dependencies, so
-it may remove packages necessary for the proper operation of your
-system.  Its arguments can be \fIatoms\fR or
-\fIebuilds\fR. For a dependency aware version of \fB\-\-unmerge\fR,
-use \fB\-\-depclean\fR or \fB\-\-prune\fR.
+all matching packages following a counter governed by \fBCLEAN_DELAY\fR.
+This does no checking of dependencies, so it may remove packages necessary
+for the proper operation of your system.  Its arguments can be \fIatoms\fR
+or \fIebuilds\fR. For a dependency aware version of \fB\-\-unmerge\fR, use
+\fB\-\-depclean\fR or \fB\-\-prune\fR.  For a version with
+\fBCLEAN_DELAY=0\fR, use \fB\-\-rage\-clean\fR.
 .TP
 .BR "\-\-version " (\fB\-V\fR)
 Displays the version number of \fBemerge\fR.
@@ -716,8 +717,13 @@ Disable the warning message that's shown prior to
 to be set in the \fBmake.conf\fR(5)
 \fBEMERGE_DEFAULT_OPTS\fR variable.
 .TP
-.BR "\-\-read-news [ y | n ]"
-Offer to read news via eselect if there are unread news.
+.BR "\-\-rage\-clean"
+\fBWARNING: This action can remove important packages!\fR
+\fB\-\-rage\-clean\fR does \fB\-\-unmerge\fR with \fBCLEAN_DELAY=0\fR.
+.TP
+.BR "\-\-read\-news [ y | n ]"
+Offer to read news via eselect if there are unread news. This option
+has no effect unless \fB\-\-ask\fR is enabled.
 .TP
 .BR "\-\-rebuild\-if\-new\-slot [ y | n ]"
 Automatically rebuild or reinstall packages when slot/sub\-slot :=
@@ -888,6 +894,12 @@ installation actions, meaning they will not be installed, and
 This setting can be added to
 \fBEMERGE_DEFAULT_OPTS\fR (see make.conf(5)) and later overridden via the
 command line.
+.TP
+.BR "\-\-with\-test\-deps [ y | n ]"
+For packages matched by arguments, this option will pull in dependencies
+that are conditional on the "test" USE flag, even if "test" is not
+enabled in \fBFEATURES\fR for the matched packages. (see \fBmake.conf\fR(5)
+for more information about \fBFEATURES\fR settings).
 .SH "ENVIRONMENT OPTIONS"
 .TP
 \fBEPREFIX\fR = \fI[path]\fR

@@ -8,6 +8,7 @@ __all__ = [
 ]
 
 import copy
+import errno
 from itertools import chain
 import grp
 import logging
@@ -47,6 +48,7 @@ from portage.util import ensure_dirs, getconfig, grabdict, \
 	grabdict_package, grabfile, grabfile_package, LazyItemsDict, \
 	normalize_path, shlex_split, stack_dictlist, stack_dicts, stack_lists, \
 	writemsg, writemsg_level, _eapi_cache
+from portage.util.path import first_existing
 from portage.util._path import exists_raise_eaccess, isdir_raise_eaccess
 from portage.versions import catpkgsplit, catsplit, cpv_getkey, _pkg_str
 
@@ -254,6 +256,7 @@ class config(object):
 			self._iuse_implicit_match = clone._iuse_implicit_match
 			self._non_user_variables = clone._non_user_variables
 			self._env_d_blacklist = clone._env_d_blacklist
+			self._pbashrc = clone._pbashrc
 			self._repo_make_defaults = clone._repo_make_defaults
 			self.usemask = clone.usemask
 			self.useforce = clone.useforce
@@ -316,6 +319,7 @@ class config(object):
 			self._accept_restrict = copy.deepcopy(clone._accept_restrict)
 			self._paccept_restrict = copy.deepcopy(clone._paccept_restrict)
 			self._penvdict = copy.deepcopy(clone._penvdict)
+			self._pbashrcdict = copy.deepcopy(clone._pbashrcdict)
 			self._expand_map = copy.deepcopy(clone._expand_map)
 
 		else:
@@ -661,6 +665,8 @@ class config(object):
 			self._ppropertiesdict = portage.dep.ExtendedAtomDict(dict)
 			self._paccept_restrict = portage.dep.ExtendedAtomDict(dict)
 			self._penvdict = portage.dep.ExtendedAtomDict(dict)
+			self._pbashrcdict = {}
+			self._pbashrc = ()
 
 			self._repo_make_defaults = {}
 			for repo in self.repositories.repos_with_profiles():
@@ -742,6 +748,25 @@ class config(object):
 				for k, v in penvdict.items():
 					self._penvdict.setdefault(k.cp, {})[k] = v
 
+				# package.bashrc
+				for profile in profiles_complex:
+					if not 'profile-bashrcs' in profile.profile_formats:
+						continue
+					self._pbashrcdict[profile] = \
+						portage.dep.ExtendedAtomDict(dict)
+					bashrc = grabdict_package(os.path.join(profile.location,
+						"package.bashrc"), recursive=1, allow_wildcard=True,
+								allow_repo=True, verify_eapi=False)
+					if not bashrc:
+						continue
+
+					for k, v in bashrc.items():
+						envfiles = [os.path.join(profile.location,
+							"bashrc",
+							envname) for envname in v]
+						self._pbashrcdict[profile].setdefault(k.cp, {})\
+							.setdefault(k, []).extend(envfiles)
+
 			#getting categories from an external file now
 			self.categories = [grabfile(os.path.join(x, "categories")) \
 				for x in locations_manager.profile_and_user_locations]
@@ -803,16 +828,6 @@ class config(object):
 			if "USE_ORDER" not in self:
 				self.backupenv["USE_ORDER"] = "env:pkg:conf:defaults:pkginternal:repo:env.d"
 
-			self.depcachedir = DEPCACHE_PATH
-			if portage.const.EPREFIX:
-				self.depcachedir = os.path.join(portage.const.EPREFIX,
-					DEPCACHE_PATH.lstrip(os.sep))
-
-			if self.get("PORTAGE_DEPCACHEDIR", None):
-				self.depcachedir = self["PORTAGE_DEPCACHEDIR"]
-			self["PORTAGE_DEPCACHEDIR"] = self.depcachedir
-			self.backup_changes("PORTAGE_DEPCACHEDIR")
-
 			if "CBUILD" not in self and "CHOST" in self:
 				self["CBUILD"] = self["CHOST"]
 				self.backup_changes("CBUILD")
@@ -834,14 +849,18 @@ class config(object):
 				"PORTAGE_INST_UID": "0",
 			}
 
-			if eprefix:
-				# For prefix environments, default to the UID and GID of
-				# the top-level EROOT directory.
-				try:
-					eroot_st = os.stat(eroot)
-				except OSError:
-					pass
-				else:
+			eroot_or_parent = first_existing(eroot)
+			unprivileged = False
+			try:
+				eroot_st = os.stat(eroot_or_parent)
+			except OSError:
+				pass
+			else:
+
+				if portage.data._unprivileged_mode(
+					eroot_or_parent, eroot_st):
+					unprivileged = True
+
 					default_inst_ids["PORTAGE_INST_GID"] = str(eroot_st.st_gid)
 					default_inst_ids["PORTAGE_INST_UID"] = str(eroot_st.st_uid)
 
@@ -873,6 +892,22 @@ class config(object):
 					self[var] = default_val
 				self.backup_changes(var)
 
+			self.depcachedir = self.get("PORTAGE_DEPCACHEDIR")
+			if self.depcachedir is None:
+				self.depcachedir = os.path.join(os.sep,
+					portage.const.EPREFIX, DEPCACHE_PATH.lstrip(os.sep))
+				if unprivileged and target_root != os.sep:
+					# In unprivileged mode, automatically make
+					# depcachedir relative to target_root if the
+					# default depcachedir is not writable.
+					if not os.access(first_existing(self.depcachedir),
+						os.W_OK):
+						self.depcachedir = os.path.join(eroot,
+							DEPCACHE_PATH.lstrip(os.sep))
+
+			self["PORTAGE_DEPCACHEDIR"] = self.depcachedir
+			self.backup_changes("PORTAGE_DEPCACHEDIR")
+
 			if portage._internal_caller:
 				self["PORTAGE_INTERNAL_CALLER"] = "1"
 				self.backup_changes("PORTAGE_INTERNAL_CALLER")
@@ -887,6 +922,8 @@ class config(object):
 				default_abi = self.configdict["defaults"].get('DEFAULT_ABI', '').strip()
 				if default_abi:
 					self.configdict["defaults"]["USE"] = self.configdict["defaults"].get("USE", "") + " multilib_abi_" + default_abi
+			if unprivileged:
+				self.features.add('unprivileged')
 
 			if bsd_chflags:
 				self.features.add('chflags')
@@ -1511,6 +1548,23 @@ class config(object):
 			if penv_matches:
 				for x in penv_matches:
 					self._penv.extend(x)
+
+		bashrc_files = []
+
+		for profile in self._locations_manager.profiles_complex:
+			profile_bashrc = os.path.join(profile.location,
+				'profile.bashrc')
+			if os.path.exists(profile_bashrc):
+				bashrc_files.append(profile_bashrc)
+			if profile in self._pbashrcdict:
+				cpdict = self._pbashrcdict[profile].get(cp)
+				if cpdict:
+					bashrc_matches = \
+						ordered_by_atom_specificity(cpdict, cpv_slot)
+					for x in bashrc_matches:
+						bashrc_files.extend(x)
+
+		self._pbashrc = tuple(bashrc_files)
 
 		protected_pkg_keys = set(pkg_configdict)
 		protected_pkg_keys.discard('USE')
@@ -2291,22 +2345,22 @@ class config(object):
 					if v is None:
 						continue
 					prefix = k.lower() + '_'
-					if k in myincrementals:
-						for x in v.split():
-							if x[:1] == '-':
-								expand_use.append('-' + prefix + x[1:])
-							else:
-								expand_use.append(prefix + x)
-					else:
-						for x in v.split():
+					for x in v.split():
+						if x[:1] == '-':
+							expand_use.append('-' + prefix + x[1:])
+						else:
 							expand_use.append(prefix + x)
+
 				if expand_use:
 					expand_use.append(use)
 					use  = ' '.join(expand_use)
 				self.make_defaults_use.append(use)
 			self.make_defaults_use = tuple(self.make_defaults_use)
+			# Preserve both positive and negative flags here, since
+			# negative flags may later interact with other flags pulled
+			# in via USE_ORDER.
 			configdict_defaults['USE'] = ' '.join(
-				stack_lists([x.split() for x in self.make_defaults_use]))
+				filter(None, self.make_defaults_use))
 			# Set to None so this code only runs once.
 			self._make_defaults = None
 
@@ -2622,8 +2676,10 @@ class config(object):
 		eapi = self.get('EAPI')
 		eapi_attrs = _get_eapi_attrs(eapi)
 		phase = self.get('EBUILD_PHASE')
+		emerge_from = self.get('EMERGE_FROM')
 		filter_calling_env = False
 		if self.mycpv is not None and \
+			not (emerge_from == 'ebuild' and phase == 'setup') and \
 			phase not in ('clean', 'cleanrm', 'depend', 'fetch'):
 			temp_dir = self.get('T')
 			if temp_dir is not None and \

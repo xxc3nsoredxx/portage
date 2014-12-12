@@ -18,6 +18,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.util:atomic_ofstream,ensure_dirs,normalize_path,' + \
 		'writemsg,writemsg_stdout',
 	'portage.util.listdir:listdir',
+	'portage.util.path:first_existing',
 	'portage.util._urlopen:urlopen@_urlopen',
 	'portage.versions:best,catpkgsplit,catsplit,_pkg_str',
 )
@@ -43,6 +44,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import time
 import traceback
 import warnings
 from gzip import GzipFile
@@ -83,6 +85,17 @@ class bindbapi(fakedbapi):
 			])
 		self._aux_cache_slot_dict = slot_dict_class(self._aux_cache_keys)
 		self._aux_cache = {}
+
+	@property
+	def writable(self):
+		"""
+		Check if PKGDIR is writable, or permissions are sufficient
+		to create it if it does not exist yet.
+		@rtype: bool
+		@return: True if PKGDIR is writable or can be created,
+			False otherwise
+		"""
+		return os.access(first_existing(self.bintree.pkgdir), os.W_OK)
 
 	def match(self, *pargs, **kwargs):
 		if self.bintree and not self.bintree.populated:
@@ -879,6 +892,11 @@ class binarytree(object):
 				if e.errno != errno.ENOENT:
 					raise
 			local_timestamp = pkgindex.header.get("TIMESTAMP", None)
+			try:
+				download_timestamp = \
+					float(pkgindex.header.get("DOWNLOAD_TIMESTAMP", 0))
+			except ValueError:
+				download_timestamp = 0
 			remote_timestamp = None
 			rmt_idx = self._new_pkgindex()
 			proc = None
@@ -889,6 +907,15 @@ class binarytree(object):
 				# slash, so join manually...
 				url = base_url.rstrip("/") + "/Packages"
 				f = None
+
+				try:
+					ttl = float(pkgindex.header.get("TTL", 0))
+				except ValueError:
+					pass
+				else:
+					if download_timestamp and ttl and \
+						download_timestamp + ttl > time.time():
+						raise UseCachedCopyOfRemoteIndex()
 
 				# Don't use urlopen for https, since it doesn't support
 				# certificate/hostname verification (bug #469888).
@@ -1022,6 +1049,7 @@ class binarytree(object):
 					pass
 			if pkgindex is rmt_idx:
 				pkgindex.modified = False # don't update the header
+				pkgindex.header["DOWNLOAD_TIMESTAMP"] = "%d" % time.time()
 				try:
 					ensure_dirs(os.path.dirname(pkgindex_file))
 					f = atomic_ofstream(pkgindex_file)

@@ -1555,10 +1555,12 @@ class LazyItemsDict(UserDict):
 			return result
 
 class ConfigProtect(object):
-	def __init__(self, myroot, protect_list, mask_list):
+	def __init__(self, myroot, protect_list, mask_list,
+		case_insensitive=False):
 		self.myroot = myroot
 		self.protect_list = protect_list
 		self.mask_list = mask_list
+		self.case_insensitive = case_insensitive
 		self.updateprotect()
 
 	def updateprotect(self):
@@ -1572,18 +1574,22 @@ class ConfigProtect(object):
 		for x in self.protect_list:
 			ppath = normalize_path(
 				os.path.join(self.myroot, x.lstrip(os.path.sep)))
+			# Protect files that don't exist (bug #523684). If the
+			# parent directory doesn't exist, we can safely skip it.
+			if os.path.isdir(os.path.dirname(ppath)):
+				self.protect.append(ppath)
 			try:
 				if stat.S_ISDIR(os.stat(ppath).st_mode):
 					self._dirs.add(ppath)
-				self.protect.append(ppath)
 			except OSError:
-				# If it doesn't exist, there's no need to protect it.
 				pass
 
 		self.protectmask = []
 		for x in self.mask_list:
 			ppath = normalize_path(
 				os.path.join(self.myroot, x.lstrip(os.path.sep)))
+			if self.case_insensitive:
+				ppath = ppath.lower()
 			try:
 				"""Use lstat so that anything, even a broken symlink can be
 				protected."""
@@ -1604,6 +1610,8 @@ class ConfigProtect(object):
 		masked = 0
 		protected = 0
 		sep = os.path.sep
+		if self.case_insensitive:
+			obj = obj.lower()
 		for ppath in self.protect:
 			if len(ppath) > masked and obj.startswith(ppath):
 				if ppath in self._dirs:
@@ -1674,13 +1682,36 @@ def new_protect_filename(mydest, newmd5=None, force=False):
 	old_pfile = normalize_path(os.path.join(real_dirname, last_pfile))
 	if last_pfile and newmd5:
 		try:
-			last_pfile_md5 = portage.checksum._perform_md5_merge(old_pfile)
-		except FileNotFound:
-			# The file suddenly disappeared or it's a broken symlink.
-			pass
+			old_pfile_st = _os_merge.lstat(old_pfile)
+		except OSError as e:
+			if e.errno != errno.ENOENT:
+				raise
 		else:
-			if last_pfile_md5 == newmd5:
-				return old_pfile
+			if stat.S_ISLNK(old_pfile_st.st_mode):
+				try:
+					# Read symlink target as bytes, in case the
+					# target path has a bad encoding.
+					pfile_link = _os.readlink(_unicode_encode(old_pfile,
+						encoding=_encodings['merge'], errors='strict'))
+				except OSError:
+					if e.errno != errno.ENOENT:
+						raise
+				else:
+					pfile_link = _unicode_decode(
+						encoding=_encodings['merge'], errors='replace')
+					if pfile_link == newmd5:
+						return old_pfile
+			else:
+				try:
+					last_pfile_md5 = \
+						portage.checksum._perform_md5_merge(old_pfile)
+				except FileNotFound:
+					# The file suddenly disappeared or it's a
+					# broken symlink.
+					pass
+				else:
+					if last_pfile_md5 == newmd5:
+						return old_pfile
 	return new_pfile
 
 def find_updated_config_files(target_root, config_protect):

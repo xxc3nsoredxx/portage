@@ -379,8 +379,8 @@ def is_protected(argv):
 	protect = portage.util.shlex_split(settings.get("CONFIG_PROTECT", ""))
 	protect_mask = portage.util.shlex_split(
 		settings.get("CONFIG_PROTECT_MASK", ""))
-	protect_obj = ConfigProtect(root, protect, protect_mask)
-
+	protect_obj = ConfigProtect(root, protect, protect_mask,
+		case_insensitive=("case-insensitive-fs" in settings.features))
 	if protect_obj.isprotected(f):
 		return 0
 	return 1
@@ -414,7 +414,8 @@ def filter_protected(argv):
 	protect = portage.util.shlex_split(settings.get("CONFIG_PROTECT", ""))
 	protect_mask = portage.util.shlex_split(
 		settings.get("CONFIG_PROTECT_MASK", ""))
-	protect_obj = ConfigProtect(root, protect, protect_mask)
+	protect_obj = ConfigProtect(root, protect, protect_mask,
+		case_insensitive=("case-insensitive-fs" in settings.features))
 
 	errors = 0
 
@@ -1392,7 +1393,12 @@ def main(argv):
 			sys.stderr.write("Run portageq with --help for info\n")
 			sys.stderr.flush()
 			sys.exit(os.EX_USAGE)
-		eprefix = portage.settings["EPREFIX"]
+		# Calculate EPREFIX and ROOT that will be used to construct
+		# portage.settings later. It's tempting to use
+		# portage.settings["EPREFIX"] here, but that would force
+		# instantiation of portage.settings, which we don't want to do
+		# until after we've calculated ROOT (see bug #529200).
+		eprefix = portage.data._target_eprefix()
 		eroot = portage.util.normalize_path(argv[2])
 
 		if eprefix:

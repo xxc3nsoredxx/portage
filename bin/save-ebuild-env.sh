@@ -75,6 +75,8 @@ __save_ebuild_env() {
 		__ebuild_main __ebuild_phase __ebuild_phase_with_hooks \
 		__ebuild_arg_to_phase __ebuild_phase_funcs default \
 		__unpack_tar __unset_colors \
+		__source_env_files __try_source \
+		__eqaquote __eqatag \
 		${QA_INTERCEPTORS}
 
 	___eapi_has_usex && unset -f usex
@@ -96,7 +98,7 @@ __save_ebuild_env() {
 		GOOD HILITE HOME \
 		LAST_E_CMD LAST_E_LEN LD_PRELOAD MISC_FUNCTIONS_ARGS MOPREFIX \
 		NOCOLOR NORMAL PKGDIR PKGUSE PKG_LOGDIR PKG_TMPDIR \
-		PORTAGE_BASHRCS_SOURCED PORTAGE_COMPRESS \
+		PORTAGE_BASHRC_FILES PORTAGE_BASHRCS_SOURCED PORTAGE_COMPRESS \
 		PORTAGE_COMPRESS_EXCLUDE_SUFFIXES \
 		PORTAGE_DOHTML_UNWARNED_SKIPPED_EXTENSIONS \
 		PORTAGE_DOHTML_UNWARNED_SKIPPED_FILES \
