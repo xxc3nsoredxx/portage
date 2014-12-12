@@ -12,7 +12,8 @@ from portage.const import (BASH_BINARY, PORTAGE_BASE_PATH,
 from portage.process import find_binary
 from portage.tests import TestCase
 from portage.tests.resolver.ResolverPlayground import ResolverPlayground
-from portage.util import ensure_dirs
+from portage.util import (ensure_dirs, find_updated_config_files,
+	shlex_split)
 
 class SimpleEmergeTestCase(TestCase):
 
@@ -41,6 +42,10 @@ src_install() {
 	echo "blah blah blah" > "${T}"/regular-file
 	doins "${T}"/regular-file
 	dosym regular-file /usr/lib/${P}/symlink || die
+
+	# Test CONFIG_PROTECT
+	insinto /etc
+	newins "${T}"/regular-file ${PN}-${SLOT%/*}
 
 	# Test code for bug #381629, using a copyright symbol encoded with latin-1.
 	# We use $(printf "\\xa9") rather than $'\\xa9', since printf apparently
@@ -243,6 +248,12 @@ pkg_preinst() {
 			emerge_cmd + ("--metadata",),
 			rm_cmd + ("-rf", cachedir),
 			emerge_cmd + ("--oneshot", "virtual/foo"),
+			lambda: self.assertFalse(os.path.exists(
+				os.path.join(pkgdir, "virtual", "foo-0.tbz2"))),
+			({"FEATURES" : "unmerge-backup"},) + \
+				emerge_cmd + ("--unmerge", "virtual/foo"),
+			lambda: self.assertTrue(os.path.exists(
+				os.path.join(pkgdir, "virtual", "foo-0.tbz2"))),
 			emerge_cmd + ("--pretend", "dev-libs/A"),
 			ebuild_cmd + (test_ebuild, "manifest", "clean", "package", "merge"),
 			emerge_cmd + ("--pretend", "--tree", "--complete-graph", "dev-libs/A"),
@@ -261,8 +272,18 @@ pkg_preinst() {
 			emerge_cmd + ("--pretend", "--depclean", "--verbose", "dev-libs/B"),
 			emerge_cmd + ("--pretend", "--depclean",),
 			emerge_cmd + ("--depclean",),
-			quickpkg_cmd + ("dev-libs/A",),
+			quickpkg_cmd + ("--include-config", "y", "dev-libs/A",),
+			# Test bug #523684, where a file renamed or removed by the
+			# admin forces replacement files to be merged with config
+			# protection.
+			lambda: self.assertEqual(0,
+				len(list(find_updated_config_files(eroot,
+				shlex_split(settings["CONFIG_PROTECT"]))))),
+			lambda: os.unlink(os.path.join(eprefix, "etc", "A-0")),
 			emerge_cmd + ("--usepkgonly", "dev-libs/A"),
+			lambda: self.assertEqual(1,
+				len(list(find_updated_config_files(eroot,
+				shlex_split(settings["CONFIG_PROTECT"]))))),
 			emaint_cmd + ("--check", "all"),
 			emaint_cmd + ("--fix", "all"),
 			fixpackages_cmd,
@@ -394,6 +415,10 @@ move dev-util/git dev-vcs/git
 				stdout = subprocess.PIPE
 
 			for args in test_commands:
+
+				if hasattr(args, '__call__'):
+					args()
+					continue
 
 				if isinstance(args[0], dict):
 					local_env = env.copy()

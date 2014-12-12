@@ -965,14 +965,20 @@ __ebuild_phase_funcs() {
 				default_src_test() { __eapi0_src_test; }
 
 			# defaults starting with EAPI 2
+			[[ ${phase_func} == src_prepare ]] && \
+				default_src_prepare() { __eapi2_src_prepare; }
 			[[ ${phase_func} == src_configure ]] && \
 				default_src_configure() { __eapi2_src_configure; }
 			[[ ${phase_func} == src_compile ]] && \
 				default_src_compile() { __eapi2_src_compile; }
 
 			# bind supported phases to the defaults
+			declare -F pkg_nofetch >/dev/null || \
+				pkg_nofetch() { default; }
 			declare -F src_unpack >/dev/null || \
 				src_unpack() { default; }
+			declare -F src_prepare >/dev/null || \
+				src_prepare() { default; }
 			declare -F src_configure >/dev/null || \
 				src_configure() { default; }
 			declare -F src_compile >/dev/null || \

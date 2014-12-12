@@ -1,4 +1,4 @@
-.TH "EMERGE" "1" "Mar 2014" "Portage VERSION" "Portage"
+.TH "EMERGE" "1" "Oct 2014" "Portage VERSION" "Portage"
 .SH "NAME"
 emerge \- Command\-line interface to the Portage system
 .SH "SYNOPSIS"
@@ -367,7 +367,8 @@ to config files, respecting \fBCONFIG_PROTECT\fR and \fB\-\-ask\fR.
 If the corresponding package.* is a file, the changes are appended to
 it, if it is a directory, changes are written to the lexicographically
 last file. This way it is always ensured that the new changes take
-precedence over existing changes.
+precedence over existing changes. This option is automatically enabled with
+\-\-ask.
 .TP
 .BR \-\-backtrack=COUNT
 Specifies an integer number of times to backtrack if
@@ -398,7 +399,7 @@ Creates binary packages for all ebuilds processed without actually
 merging the packages.  This comes with the caveat that all build-time
 dependencies must already be emerged on the system.
 .TP
-.BR "\-\-changed\-use"
+.BR "\-\-changed\-use " (\fB\-U\fR)
 Tells emerge to include installed packages where USE flags have
 changed since installation. This option also implies the
 \fB\-\-selective\fR option. Unlike \fB\-\-newuse\fR, the
@@ -714,6 +715,9 @@ Disable the warning message that's shown prior to
 \fB\-\-unmerge\fR actions. This option is intended
 to be set in the \fBmake.conf\fR(5)
 \fBEMERGE_DEFAULT_OPTS\fR variable.
+.TP
+.BR "\-\-read-news [ y | n ]"
+Offer to read news via eselect if there are unread news.
 .TP
 .BR "\-\-rebuild\-if\-new\-slot [ y | n ]"
 Automatically rebuild or reinstall packages when slot/sub\-slot :=
