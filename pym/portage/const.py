@@ -1,5 +1,5 @@
 # portage: Constants
-# Copyright 1998-2013 Gentoo Foundation
+# Copyright 1998-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -74,6 +74,7 @@ MOVE_BINARY              = "/bin/mv"
 PRELINK_BINARY           = "/usr/sbin/prelink"
 
 INVALID_ENV_FILE         = "/etc/spork/is/not/valid/profile.env"
+MERGING_IDENTIFIER       = "-MERGING-"
 REPO_NAME_FILE           = "repo_name"
 REPO_NAME_LOC            = "profiles" + "/" + REPO_NAME_FILE
 

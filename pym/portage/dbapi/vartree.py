@@ -1,7 +1,7 @@
 # Copyright 1998-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
-from __future__ import unicode_literals
+from __future__ import division, unicode_literals
 
 __all__ = [
 	"vardbapi", "vartree", "dblink"] + \
@@ -45,7 +45,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 )
 
 from portage.const import CACHE_PATH, CONFIG_MEMORY_FILE, \
-	PORTAGE_PACKAGE_ATOM, PRIVATE_PATH, VDB_PATH
+	MERGING_IDENTIFIER, PORTAGE_PACKAGE_ATOM, PRIVATE_PATH, VDB_PATH
 from portage.dbapi import dbapi
 from portage.exception import CommandNotFound, \
 	InvalidData, InvalidLocation, InvalidPackageName, \
@@ -104,7 +104,7 @@ class vardbapi(dbapi):
 
 	_excluded_dirs = ["CVS", "lost+found"]
 	_excluded_dirs = [re.escape(x) for x in _excluded_dirs]
-	_excluded_dirs = re.compile(r'^(\..*|-MERGING-.*|' + \
+	_excluded_dirs = re.compile(r'^(\..*|' + MERGING_IDENTIFIER + '.*|' + \
 		"|".join(_excluded_dirs) + r')$')
 
 	_aux_cache_version        = "1"
@@ -1043,7 +1043,7 @@ class vardbapi(dbapi):
 			from md5 import new as _new_hash
 
 		_hash_bits = 16
-		_hex_chars = int(_hash_bits / 4)
+		_hex_chars = _hash_bits // 4
 
 		def __init__(self, vardb):
 			self._vardb = vardb
@@ -1504,7 +1504,7 @@ class dblink(object):
 		self.dbroot = normalize_path(os.path.join(self._eroot, VDB_PATH))
 		self.dbcatdir = self.dbroot+"/"+cat
 		self.dbpkgdir = self.dbcatdir+"/"+pkg
-		self.dbtmpdir = self.dbcatdir+"/-MERGING-"+pkg
+		self.dbtmpdir = self.dbcatdir+"/"+MERGING_IDENTIFIER+pkg
 		self.dbdir = self.dbpkgdir
 		self.settings = mysettings
 		self._verbose = self.settings.get("PORTAGE_VERBOSE") == "1"

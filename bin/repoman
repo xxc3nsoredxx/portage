@@ -1895,7 +1895,11 @@ for x in effective_scanlist:
 					stats[myqakey] += 1
 					fails[myqakey].append(relative_path)
 
-		if myaux['DESCRIPTION'][-1:] in ['.']:
+		# Abbreviations usable at the end of sentence.
+		abbreviations = (
+			'etc.',
+		)
+		if myaux['DESCRIPTION'][-1:] == '.' and not myaux['DESCRIPTION'].split()[-1] in abbreviations:
 			stats['DESCRIPTION.punctuation'] += 1
 			fails['DESCRIPTION.punctuation'].append(
 				"%s: DESCRIPTION ends with a '%s' character"
@@ -2042,15 +2046,15 @@ for x in effective_scanlist:
 					if atom == "||":
 						continue
 
+					is_blocker = atom.blocker
+
 					# Skip dependency.unknown for blockers, so that we
 					# don't encourage people to remove necessary blockers,
 					# as discussed in bug #382407.
-					if atom.blocker is None and \
+					if not is_blocker and \
 						not portdb.xmatch("match-all", atom) and \
 						not atom.cp.startswith("virtual/"):
 						unknown_pkgs.add((mytype, atom.unevaluated_atom))
-
-					is_blocker = atom.blocker
 
 					if catdir != "virtual":
 						if not is_blocker and \
