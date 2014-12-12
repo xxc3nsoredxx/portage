@@ -84,7 +84,7 @@ from _emerge.sync.old_tree_timestamp import old_tree_timestamp_warn
 from _emerge.unmerge import unmerge
 from _emerge.UnmergeDepPriority import UnmergeDepPriority
 from _emerge.UseFlagDisplay import pkg_use_display
-from _emerge.userquery import userquery
+from _emerge.UserQuery import UserQuery
 
 if sys.hexversion >= 0x3000000:
 	long = int
@@ -387,8 +387,9 @@ def action_build(settings, trees, mtimedb,
 			else:
 				prompt="Would you like to merge these packages?"
 		print()
+		uq = UserQuery(myopts)
 		if prompt is not None and "--ask" in myopts and \
-			userquery(prompt, enter_invalid) == "No":
+			uq.query(prompt, enter_invalid) == "No":
 			print()
 			print("Quitting.")
 			print()
@@ -468,6 +469,7 @@ def action_build(settings, trees, mtimedb,
 
 def action_config(settings, trees, myopts, myfiles):
 	enter_invalid = '--ask-enter-invalid' in myopts
+	uq = UserQuery(myopts)
 	if len(myfiles) != 1:
 		print(red("!!! config can only take a single package atom at this time\n"))
 		sys.exit(1)
@@ -497,7 +499,7 @@ def action_config(settings, trees, myopts, myfiles):
 				print(options[-1]+") "+pkg)
 			print("X) Cancel")
 			options.append("X")
-			idx = userquery("Selection?", enter_invalid, responses=options)
+			idx = uq.query("Selection?", enter_invalid, responses=options)
 			if idx == "X":
 				sys.exit(128 + signal.SIGINT)
 			pkg = pkgs[int(idx)-1]
@@ -512,7 +514,7 @@ def action_config(settings, trees, myopts, myfiles):
 
 	print()
 	if "--ask" in myopts:
-		if userquery("Ready to configure %s?" % pkg, enter_invalid) == "No":
+		if uq.query("Ready to configure %s?" % pkg, enter_invalid) == "No":
 			sys.exit(128 + signal.SIGINT)
 	else:
 		print("Configuring pkg...")
@@ -557,10 +559,9 @@ def action_depclean(settings, trees, ldpath_mtimes,
 	msg.append("\n")
 	msg.append("As a safety measure, depclean will not remove any packages\n")
 	msg.append("unless *all* required dependencies have been resolved.  As a\n")
-	msg.append("consequence, it is often necessary to run %s\n" % \
-		good("`emerge --update"))
-	msg.append(good("--newuse --deep @world`") + \
-		" prior to depclean.\n")
+	msg.append("consequence of this, it often becomes necessary to run \n")
+	msg.append("%s" % good("`emerge --update --newuse --deep @world`")
+			+ " prior to depclean.\n")
 
 	if action == "depclean" and "--quiet" not in myopts and not myfiles:
 		portage.writemsg_stdout("\n")
@@ -1365,7 +1366,8 @@ def action_deselect(settings, trees, opts, atoms):
 			if '--ask' in opts:
 				prompt = "Would you like to remove these " + \
 					"packages from your world favorites?"
-				if userquery(prompt, enter_invalid) == 'No':
+				uq = UserQuery(opts)
+				if uq.query(prompt, enter_invalid) == 'No':
 					return 128 + signal.SIGINT
 
 			remaining = set(world_set)
@@ -2403,7 +2405,8 @@ def _sync_repo(emerge_config, repo):
 
 			if (retries==0):
 				if "--ask" in myopts:
-					if userquery("Do you want to sync your Portage tree " + \
+					uq = UserQuery(myopts)
+					if uq.query("Do you want to sync your Portage tree " + \
 						"with the mirror at\n" + blue(dosyncuri) + bold("?"),
 						enter_invalid) == "No":
 						print()
@@ -2996,6 +2999,7 @@ def relative_profile_path(portdir, abs_profile):
 	return profilever
 
 def getportageversion(portdir, _unused, profile, chost, vardb):
+	pythonver = 'python %d.%d.%d-%s-%d' % sys.version_info[:]
 	profilever = None
 	repositories = vardb.settings.repositories
 	if profile:
@@ -3051,8 +3055,8 @@ def getportageversion(portdir, _unused, profile, chost, vardb):
 	gccver = getgccversion(chost)
 	unameout=platform.release()+" "+platform.machine()
 
-	return "Portage %s (%s, %s, %s, %s)" % \
-		(portage.VERSION + "-multilib", profilever, gccver, ",".join(libcver), unameout)
+	return "Portage %s (%s, %s, %s, %s, %s)" % \
+		(portage.VERSION + "-multilib", pythonver, profilever, gccver, ",".join(libcver), unameout)
 
 def git_sync_timestamps(portdb, portdir):
 	"""
@@ -3849,7 +3853,8 @@ def run_action(emerge_config):
 						(access_desc,), noiselevel=-1)
 					if portage.data.secpass < 1 and not need_superuser:
 						portage.data.portage_group_warning()
-					if userquery("Would you like to add --pretend to options?",
+					uq = UserQuery(emerge_config.opts)
+					if uq.query("Would you like to add --pretend to options?",
 						"--ask-enter-invalid" in emerge_config.opts) == "No":
 						return 128 + signal.SIGINT
 					emerge_config.opts["--pretend"] = True

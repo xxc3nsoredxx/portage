@@ -73,7 +73,7 @@ from _emerge.SetArg import SetArg
 from _emerge.show_invalid_depstring_notice import show_invalid_depstring_notice
 from _emerge.UnmergeDepPriority import UnmergeDepPriority
 from _emerge.UseFlagDisplay import pkg_use_display
-from _emerge.userquery import userquery
+from _emerge.UserQuery import UserQuery
 
 from _emerge.resolver.backtracking import Backtracker, BacktrackParameter
 from _emerge.resolver.package_tracker import PackageTracker, PackageTrackerDbapiWrapper
@@ -520,6 +520,9 @@ class depgraph(object):
 		self._event_loop = (portage._internal_caller and
 			global_event_loop() or EventLoop(main=False))
 
+		self.uq = UserQuery(myopts)
+		self.query = UserQuery.query
+
 	def _load_vdb(self):
 		"""
 		Load installed package metadata if appropriate. This used to be called
@@ -643,7 +646,10 @@ class depgraph(object):
 			rebuild_atoms = atoms.get(root, set())
 
 			for dep in deps:
-				if getattr(dep.parent, "installed", False) or dep.child.installed or \
+				if not isinstance(dep.parent, Package):
+					continue
+
+				if dep.parent.installed or dep.child.installed or \
 					dep.parent.slot_atom not in rebuild_atoms:
 					continue
 
@@ -990,6 +996,11 @@ class depgraph(object):
 		if not conflicts:
 			return
 
+		if debug:
+			writemsg_level(
+				"\n!!! Slot conflict handler started.\n",
+				level=logging.DEBUG, noiselevel=-1)
+
 		# Get a set of all conflicting packages.
 		conflict_pkgs = set()
 		for conflict in conflicts:
@@ -1044,6 +1055,13 @@ class depgraph(object):
 				return "(%s)" % ",".join(str(pkg) for pkg in self)
 
 		for conflict in conflicts:
+			if debug:
+				writemsg_level("   conflict:\n", level=logging.DEBUG, noiselevel=-1)
+				writemsg_level("      root: %s\n" % conflict.root, level=logging.DEBUG, noiselevel=-1)
+				writemsg_level("      atom: %s\n" % conflict.atom, level=logging.DEBUG, noiselevel=-1)
+				for pkg in conflict:
+					writemsg_level("      pkg: %s\n" % pkg, level=logging.DEBUG, noiselevel=-1)
+
 			all_parent_atoms = set()
 			for pkg in conflict:
 				all_parent_atoms.update(
@@ -1051,9 +1069,16 @@ class depgraph(object):
 
 			for parent, atom in all_parent_atoms:
 				is_arg_parent = isinstance(parent, AtomArg)
+				is_non_conflict_parent = parent not in conflict_pkgs and \
+					parent not in indirect_conflict_pkgs
 
-				if parent not in conflict_pkgs and \
-					parent not in indirect_conflict_pkgs:
+				if debug:
+					writemsg_level("      parent: %s\n" % parent, level=logging.DEBUG, noiselevel=-1)
+					writemsg_level("      arg, non-conflict: %s, %s\n" % (is_arg_parent, is_non_conflict_parent),
+						level=logging.DEBUG, noiselevel=-1)
+					writemsg_level("         atom: %s\n" % atom, level=logging.DEBUG, noiselevel=-1)
+
+				if is_non_conflict_parent:
 					parent = non_conflict_node
 
 				atom_set = InternalPackageSet(
@@ -1065,6 +1090,11 @@ class depgraph(object):
 						modified_use=self._pkg_use_enabled(pkg)) and \
 						not (is_arg_parent and pkg.installed):
 						matched.append(pkg)
+
+				if debug:
+					for match in matched:
+						writemsg_level("         match: %s\n" % match, level=logging.DEBUG, noiselevel=-1)
+
 				if len(matched) == len(conflict):
 					# All packages match.
 					continue
@@ -1336,6 +1366,10 @@ class depgraph(object):
 		found_update = False
 		for parent_atom, conflict_pkgs in conflict_atoms.items():
 			parent, atom = parent_atom
+
+			if not isinstance(parent, Package):
+				continue
+
 			if atom.slot_operator != "=" or not parent.built:
 				continue
 
@@ -1540,7 +1574,7 @@ class depgraph(object):
 			slot operator parents.
 			"""
 			for parent, atom in self._dynamic_config._parent_atoms.get(existing_pkg, []):
-				if atom.slot_operator == "=" and parent.built:
+				if atom.slot_operator == "=" and getattr(parent, "built", False):
 					continue
 
 				atom_set = InternalPackageSet(initial_atoms=(atom,),
@@ -1631,6 +1665,8 @@ class depgraph(object):
 							# different slot_operator is an older version
 							if not want_downgrade:
 								continue
+						if pkg.version == dep.child.version and not dep.child.built:
+							continue
 
 					insignificant = False
 					if not slot_conflict and \
@@ -2211,7 +2247,8 @@ class depgraph(object):
 				# Display the specific atom from SetArg or
 				# Package types.
 				uneval = ""
-				if dep.atom is not dep.atom.unevaluated_atom:
+				if dep.atom and dep.atom.unevaluated_atom and \
+						dep.atom is not dep.atom.unevaluated_atom:
 					uneval = " (%s)" % (dep.atom.unevaluated_atom,)
 				writemsg_level(
 					"%s%s%s required by %s\n" %
@@ -7621,7 +7658,7 @@ class depgraph(object):
 		if ask and write_to_file and file_to_write_to:
 			prompt = "\nWould you like to add these " + \
 				"changes to your config files?"
-			if userquery(prompt, enter_invalid) == 'No':
+			if self.query(prompt, enter_invalid) == 'No':
 				write_to_file = False
 
 		if write_to_file and file_to_write_to:
@@ -7888,7 +7925,7 @@ class depgraph(object):
 					"favorites?"
 				enter_invalid = '--ask-enter-invalid' in \
 					self._frozen_config.myopts
-				if userquery(prompt, enter_invalid) == "No":
+				if self.query(prompt, enter_invalid) == "No":
 					skip = True
 
 			if not skip:
