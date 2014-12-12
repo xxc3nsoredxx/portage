@@ -522,23 +522,20 @@ econf() {
 			done
 		fi
 
+		local conf_args=()
 		if ___eapi_econf_passes_--disable-dependency-tracking || ___eapi_econf_passes_--disable-silent-rules; then
 			local conf_help=$("${ECONF_SOURCE}/configure" --help 2>/dev/null)
 
 			if ___eapi_econf_passes_--disable-dependency-tracking; then
-				case "${conf_help}" in
-					*--disable-dependency-tracking*)
-						set -- --disable-dependency-tracking "$@"
-						;;
-				esac
+				if [[ ${conf_help} == *--disable-dependency-tracking* ]]; then
+					conf_args+=( --disable-dependency-tracking )
+				fi
 			fi
 
 			if ___eapi_econf_passes_--disable-silent-rules; then
-				case "${conf_help}" in
-					*--disable-silent-rules*)
-						set -- --disable-silent-rules "$@"
-						;;
-				esac
+				if [[ ${conf_help} == *--disable-silent-rules* ]]; then
+					conf_args+=( --disable-silent-rules )
+				fi
 			fi
 		fi
 
@@ -555,7 +552,9 @@ econf() {
 			CONF_PREFIX=${CONF_PREFIX#*=}
 			[[ ${CONF_PREFIX} != /* ]] && CONF_PREFIX="/${CONF_PREFIX}"
 			[[ ${CONF_LIBDIR} != /* ]] && CONF_LIBDIR="/${CONF_LIBDIR}"
-			set -- --libdir="$(__strip_duplicate_slashes "${CONF_PREFIX}${CONF_LIBDIR}")" "$@"
+			conf_args+=(
+				--libdir="$(__strip_duplicate_slashes "${CONF_PREFIX}${CONF_LIBDIR}")"
+			)
 		fi
 
 		# Handle arguments containing quoted whitespace (see bug #457136).
@@ -571,6 +570,7 @@ econf() {
 			--datadir="${EPREFIX}"/usr/share \
 			--sysconfdir="${EPREFIX}"/etc \
 			--localstatedir="${EPREFIX}"/var/lib \
+			"${conf_args[@]}" \
 			"$@" \
 			"${EXTRA_ECONF[@]}"
 		__vecho "${ECONF_SOURCE}/configure" "$@"
@@ -668,15 +668,13 @@ __eapi0_src_test() {
 		internal_opts+=" -j1"
 	fi
 	if $emake_cmd ${internal_opts} check -n &> /dev/null; then
-		__vecho ">>> Test phase [check]: ${CATEGORY}/${PF}"
+		__vecho "${emake_cmd} ${internal_opts} check" >&2
 		$emake_cmd ${internal_opts} check || \
 			die "Make check failed. See above for details."
 	elif $emake_cmd ${internal_opts} test -n &> /dev/null; then
-		__vecho ">>> Test phase [test]: ${CATEGORY}/${PF}"
+		__vecho "${emake_cmd} ${internal_opts} test" >&2
 		$emake_cmd ${internal_opts} test || \
 			die "Make test failed. See above for details."
-	else
-		__vecho ">>> Test phase [none]: ${CATEGORY}/${PF}"
 	fi
 }
 

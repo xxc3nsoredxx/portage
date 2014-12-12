@@ -15,6 +15,7 @@ from portage.package.ebuild.config import config
 from portage.package.ebuild.digestgen import digestgen
 from portage._sets import load_default_config
 from portage._sets.base import InternalPackageSet
+from portage.tests import cnf_path
 from portage.util import ensure_dirs, normalize_path
 from portage.versions import catsplit
 
@@ -58,15 +59,19 @@ class ResolverPlayground(object):
 
 	def __init__(self, ebuilds={}, binpkgs={}, installed={}, profile={}, repo_configs={}, \
 		user_config={}, sets={}, world=[], world_sets=[], distfiles={},
-		targetroot=False, debug=False):
+		eprefix=None, targetroot=False, debug=False):
 		"""
 		ebuilds: cpv -> metadata mapping simulating available ebuilds.
 		installed: cpv -> metadata mapping simulating installed packages.
 			If a metadata key is missing, it gets a default value.
 		profile: settings defined by the profile.
 		"""
+
 		self.debug = debug
-		self.eprefix = normalize_path(tempfile.mkdtemp())
+		if eprefix is None:
+			self.eprefix = normalize_path(tempfile.mkdtemp())
+		else:
+			self.eprefix = normalize_path(eprefix)
 		portage.const.EPREFIX = self.eprefix.rstrip(os.sep)
 
 		self.eroot = self.eprefix + os.sep
@@ -414,7 +419,7 @@ class ResolverPlayground(object):
 		make_globals_path = os.path.join(self.eroot,
 			GLOBAL_CONFIG_PATH.lstrip(os.sep), "make.globals")
 		ensure_dirs(os.path.dirname(make_globals_path))
-		os.symlink(os.path.join(PORTAGE_BASE_PATH, "cnf", "make.globals"),
+		os.symlink(os.path.join(cnf_path, "make.globals"),
 			make_globals_path)
 
 		#Create /usr/share/portage/config/sets/portage.conf
@@ -425,8 +430,8 @@ class ResolverPlayground(object):
 		except os.error:
 			pass
 
-		provided_sets_portage_conf = \
-			os.path.join(PORTAGE_BASE_PATH, "cnf/sets/portage.conf")
+		provided_sets_portage_conf = (
+			os.path.join(cnf_path, "sets", "portage.conf"))
 		os.symlink(provided_sets_portage_conf, os.path.join(default_sets_conf_dir, "portage.conf"))
 
 		set_config_dir = os.path.join(user_config_dir, "sets")
@@ -544,6 +549,7 @@ class ResolverPlaygroundTestCase(object):
 		self.all_permutations = kwargs.pop("all_permutations", False)
 		self.ignore_mergelist_order = kwargs.pop("ignore_mergelist_order", False)
 		self.ambiguous_merge_order = kwargs.pop("ambiguous_merge_order", False)
+		self.ambiguous_slot_collision_solutions = kwargs.pop("ambiguous_slot_collision_solutions", False)
 		self.check_repo_names = kwargs.pop("check_repo_names", False)
 		self.merge_order_assertions = kwargs.pop("merge_order_assertions", False)
 
@@ -659,7 +665,16 @@ class ResolverPlaygroundTestCase(object):
 									str((node1, node2))) + \
 									", got: " + str(got))
 
-			elif key in ("unstable_keywords", "needed_p_mask_changes") and expected is not None:
+			elif key == "slot_collision_solutions" and \
+				self.ambiguous_slot_collision_solutions:
+				# Tests that use all_permutations can have multiple
+				# outcomes here.
+				for x in expected:
+					if x == got:
+						expected = x
+						break
+			elif key in ("unstable_keywords", "needed_p_mask_changes",
+				"unsatisfied_deps") and expected is not None:
 				expected = set(expected)
 
 			if got != expected:
@@ -675,9 +690,10 @@ class ResolverPlaygroundResult(object):
 
 	checks = (
 		"success", "mergelist", "use_changes", "license_changes", "unstable_keywords", "slot_collision_solutions",
-		"circular_dependency_solutions", "needed_p_mask_changes",
+		"circular_dependency_solutions", "needed_p_mask_changes", "unsatisfied_deps",
 		)
 	optional_checks = (
+		"unsatisfied_deps"
 		)
 
 	def __init__(self, atoms, success, mydepgraph, favorites):
@@ -692,6 +708,7 @@ class ResolverPlaygroundResult(object):
 		self.needed_p_mask_changes = None
 		self.slot_collision_solutions = None
 		self.circular_dependency_solutions = None
+		self.unsatisfied_deps = frozenset()
 
 		if self.depgraph._dynamic_config._serialized_tasks_cache is not None:
 			self.mergelist = []
@@ -750,6 +767,10 @@ class ResolverPlaygroundResult(object):
 			handler = self.depgraph._dynamic_config._circular_dependency_handler
 			sol = handler.solutions
 			self.circular_dependency_solutions = dict(zip([x.cpv for x in sol.keys()], sol.values()))
+
+		if self.depgraph._dynamic_config._unsatisfied_deps_for_display:
+			self.unsatisfied_deps = set(dep_info[0][1]
+				for dep_info in self.depgraph._dynamic_config._unsatisfied_deps_for_display)
 
 class ResolverPlaygroundDepcleanResult(object):
 
