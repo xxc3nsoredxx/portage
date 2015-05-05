@@ -109,10 +109,6 @@ is_auto-multilib() {
 	return 1
 }
 
-is_ebuild() {
-	[[ ${PORTAGE_CALLER} == ebuild ]] && return 0 || return 1
-}
-
 get_abi_order() {
 	if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
 		local order=
@@ -140,13 +136,10 @@ get_abi_order() {
 
 get_abi_list() {
 	if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
-		if ! is_ebuild; then
-			for my_abi in $(get_abi_order); do
-				[[ -e "${D%/}".${my_abi} ]] || break
-			done
-		fi
+		for my_abi in $(get_abi_order); do
+			[[ -e "${D%/}".${my_abi} ]] || break
+		done
 
-		is_ebuild && echo $(get_abi_order) || echo ${my_abi}
 	else
 		echo "default"
 	fi
@@ -164,17 +157,6 @@ set_abi() {
 		ABI_SAVE=${ABI}
 	else
 		unset ABI_SAVE
-	fi
-
-	if is_ebuild; then
-		if [ -d "${WORKDIR}" ]; then
-			_unset_abi_dir
-		fi
-
-		if [ -d "${WORKDIR}.${abi}" ]; then
-			# If it doesn't exist, then we're making it soon in dyn_unpack
-			mv ${WORKDIR}.${abi} ${WORKDIR} || die "IO Failure -- Failed to 'mv work.${abi} work'"
-		fi
 	fi
 
 	echo "${abi}" > ${PORTAGE_BUILDDIR}/.abi || die "IO Failure -- Failed to create .abi."
@@ -210,9 +192,6 @@ _unset_abi_dir() {
 unset_abi() {
 	is_auto-multilib || return 0;
 
-	if is_ebuild; then
-		_unset_abi_dir
-	fi
 	_save_abi_env "${ABI}"
 	export ABI=${DEFAULT_ABI}
 	if [[ -f ${PORTAGE_BUILDDIR}/abi-code/environment."${ABI}" ]]; then
@@ -318,13 +297,6 @@ _finalize_abi_install() {
 		for my_abi in ${ALL_ABIS}; do
 			[[ -e "${D%/}".${my_abi} ]] || return 0
 		done
-	else
-		if is_ebuild; then
-			mv "${D}" "${D%/}".${ABI} || die
-			for my_abi in ${ALL_ABIS}; do
-				[[ -e "${D%/}".${my_abi} ]] || return 0
-			done
-		fi
 	fi
 
 	mkdir -p "${D}"
