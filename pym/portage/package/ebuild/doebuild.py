@@ -1,4 +1,4 @@
-# Copyright 2010-2013 Gentoo Foundation
+# Copyright 2010-2015 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -33,7 +33,11 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.package.ebuild._ipc.QueryCommand:QueryCommand',
 	'portage.dep._slot_operator:evaluate_slot_operator_equal_deps',
 	'portage.package.ebuild._spawn_nofetch:spawn_nofetch',
+	'portage.util.elf.header:ELFHeader',
+	'portage.dep.soname.multilib_category:compute_multilib_category',
 	'portage.util._desktop_entry:validate_desktop_entry',
+	'portage.util._dyn_libs.NeededEntry:NeededEntry',
+	'portage.util._dyn_libs.soname_deps:SonameDepsProcessor',
 	'portage.util._async.SchedulerInterface:SchedulerInterface',
 	'portage.util._eventloop.EventLoop:EventLoop',
 	'portage.util._eventloop.global_event_loop:global_event_loop',
@@ -57,16 +61,18 @@ from portage.eapi import eapi_exports_KV, eapi_exports_merge_type, \
 	eapi_has_pkg_pretend, _get_eapi_attrs
 from portage.elog import elog_process, _preload_elog_modules
 from portage.elog.messages import eerror, eqawarn
-from portage.exception import DigestException, FileNotFound, \
-	IncorrectParameter, InvalidDependString, PermissionDenied, \
-	UnsupportedAPIException
+from portage.exception import (DigestException, FileNotFound,
+	IncorrectParameter, InvalidData, InvalidDependString,
+	PermissionDenied, UnsupportedAPIException)
 from portage.localization import _
 from portage.output import colormap
 from portage.package.ebuild.prepare_build_dirs import prepare_build_dirs
 from portage.util import apply_recursive_permissions, \
 	apply_secpass_permissions, noiselimit, normalize_path, \
 	writemsg, writemsg_stdout, write_atomic
-from portage.util.lafilefixer import rewrite_lafile	
+from portage.util.cpuinfo import get_cpu_count
+from portage.util.lafilefixer import rewrite_lafile
+from portage.util.socks5 import get_socks5_proxy
 from portage.versions import _pkgsplit
 from _emerge.BinpkgEnvExtractor import BinpkgEnvExtractor
 from _emerge.EbuildBuildDir import EbuildBuildDir
@@ -74,6 +80,11 @@ from _emerge.EbuildPhase import EbuildPhase
 from _emerge.EbuildSpawnProcess import EbuildSpawnProcess
 from _emerge.Package import Package
 from _emerge.RootConfig import RootConfig
+
+if sys.hexversion >= 0x3000000:
+	_unicode = str
+else:
+	_unicode = unicode
 
 _unsandboxed_phases = frozenset([
 	"clean", "cleanrm", "config",
@@ -84,7 +95,7 @@ _unsandboxed_phases = frozenset([
 
 # phases in which IPC with host is allowed
 _ipc_phases = frozenset([
-	"setup", "pretend",
+	"setup", "pretend", "config", "info",
 	"preinst", "postinst", "prerm", "postrm",
 ])
 
@@ -463,6 +474,11 @@ def doebuild_environment(myebuild, mydo, myroot=None, settings=None,
 				mysettings["PATH"] = os.path.join(os.sep, eprefix_lstrip,
 					 "usr", libdir, "ccache", "bin") + ":" + mysettings["PATH"]
 
+		if 'MAKEOPTS' not in mysettings:
+			nproc = get_cpu_count()
+			if nproc:
+				mysettings['MAKEOPTS'] = '-j%d' % (nproc)
+
 		if not eapi_exports_KV(eapi):
 			# Discard KV for EAPIs that don't support it. Cached KV is restored
 			# from the backupenv whenever config.reset() is called.
@@ -495,7 +511,7 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 	"""
 	Wrapper function that invokes specific ebuild phases through the spawning
 	of ebuild.sh
-	
+
 	@param myebuild: name of the ebuild to invoke the phase on (CPV)
 	@type myebuild: String
 	@param mydo: Phase to run
@@ -538,13 +554,13 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 	@return:
 	1. 0 for success
 	2. 1 for error
-	
+
 	Most errors have an accompanying error message.
-	
+
 	listonly and fetchonly are only really necessary for operations involving 'fetch'
 	prev_mtimes are only necessary for merge operations.
 	Other variables may not be strictly required, many have defaults that are set inside of doebuild.
-	
+
 	"""
 
 	if settings is None:
@@ -566,8 +582,8 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 	if not tree:
 		writemsg("Warning: tree not specified to doebuild\n")
 		tree = "porttree"
-	
-	# chunked out deps for each phase, so that ebuild binary can use it 
+
+	# chunked out deps for each phase, so that ebuild binary can use it
 	# to collapse targets down.
 	actionmap_deps={
 	"pretend"  : [],
@@ -582,7 +598,7 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 	"package":["install"],
 	"merge"  :["install"],
 	}
-	
+
 	if mydbapi is None:
 		mydbapi = portage.db[myroot][tree].dbapi
 
@@ -1481,14 +1497,28 @@ def spawn(mystring, mysettings, debug=False, free=False, droppriv=False,
 		keywords['unshare_net'] = not networked
 		keywords['unshare_ipc'] = not ipc
 
+		if not networked and mysettings.get("EBUILD_PHASE") != "nofetch":
+			# Provide a SOCKS5-over-UNIX-socket proxy to escape sandbox
+			# Don't do this for pkg_nofetch, since the spawn_nofetch
+			# function creates a private PORTAGE_TMPDIR.
+			try:
+				proxy = get_socks5_proxy(mysettings)
+			except NotImplementedError:
+				pass
+			else:
+				mysettings['PORTAGE_SOCKS5_PROXY'] = proxy
+				mysettings['DISTCC_SOCKS_PROXY'] = proxy
+
 	# TODO: Enable fakeroot to be used together with droppriv.  The
 	# fake ownership/permissions will have to be converted to real
 	# permissions in the merge phase.
 	fakeroot = fakeroot and uid != 0 and portage.process.fakeroot_capable
 	portage_build_uid = os.getuid()
 	portage_build_gid = os.getgid()
+	logname = None
 	if uid == 0 and portage_uid and portage_gid and hasattr(os, "setgroups"):
 		if droppriv:
+			logname = portage.data._portage_username
 			keywords.update({
 				"uid": portage_uid,
 				"gid": portage_gid,
@@ -1573,21 +1603,35 @@ def spawn(mystring, mysettings, debug=False, free=False, droppriv=False,
 		spawn_func = selinux.spawn_wrapper(spawn_func,
 			mysettings["PORTAGE_SANDBOX_T"])
 
-	if keywords.get("returnpid"):
-		return spawn_func(mystring, env=mysettings.environ(),
-			**portage._native_kwargs(keywords))
+	logname_backup = None
+	if logname is not None:
+		logname_backup = mysettings.configdict["env"].get("LOGNAME")
+		mysettings.configdict["env"]["LOGNAME"] = logname
 
-	proc = EbuildSpawnProcess(
-		background=False, args=mystring,
-		scheduler=SchedulerInterface(portage._internal_caller and
-			global_event_loop() or EventLoop(main=False)),
-		spawn_func=spawn_func,
-		settings=mysettings, **portage._native_kwargs(keywords))
+	try:
+		if keywords.get("returnpid"):
+			return spawn_func(mystring, env=mysettings.environ(),
+				**portage._native_kwargs(keywords))
 
-	proc.start()
-	proc.wait()
+		proc = EbuildSpawnProcess(
+			background=False, args=mystring,
+			scheduler=SchedulerInterface(portage._internal_caller and
+				global_event_loop() or EventLoop(main=False)),
+			spawn_func=spawn_func,
+			settings=mysettings, **portage._native_kwargs(keywords))
 
-	return proc.returncode
+		proc.start()
+		proc.wait()
+
+		return proc.returncode
+
+	finally:
+		if logname is None:
+			pass
+		elif logname_backup is None:
+			mysettings.configdict["env"].pop("LOGNAME", None)
+		else:
+			mysettings.configdict["env"]["LOGNAME"] = logname_backup
 
 # parse actionmap to spawn ebuild with the appropriate args
 def spawnebuild(mydo, actionmap, mysettings, debug, alwaysdep=0,
@@ -2232,21 +2276,64 @@ def _post_src_install_soname_symlinks(mysettings, out):
 		is_libdir_cache[obj_parent] = rval
 		return rval
 
-	missing_symlinks = []
+	build_info_dir = os.path.join(
+		mysettings['PORTAGE_BUILDDIR'], 'build-info')
+	try:
+		with io.open(_unicode_encode(os.path.join(build_info_dir,
+			"PROVIDES_EXCLUDE"), encoding=_encodings['fs'],
+			errors='strict'), mode='r', encoding=_encodings['repo.content'],
+			errors='replace') as f:
+			provides_exclude = f.read()
+	except IOError as e:
+		if e.errno not in (errno.ENOENT, errno.ESTALE):
+			raise
+		provides_exclude = ""
 
-	# Parse NEEDED.ELF.2 like LinkageMapELF.rebuild() does.
+	try:
+		with io.open(_unicode_encode(os.path.join(build_info_dir,
+			"REQUIRES_EXCLUDE"), encoding=_encodings['fs'],
+			errors='strict'), mode='r', encoding=_encodings['repo.content'],
+			errors='replace') as f:
+			requires_exclude = f.read()
+	except IOError as e:
+		if e.errno not in (errno.ENOENT, errno.ESTALE):
+			raise
+		requires_exclude = ""
+
+	missing_symlinks = []
+	soname_deps = SonameDepsProcessor(
+		provides_exclude, requires_exclude)
+
+	# Parse NEEDED.ELF.2 like LinkageMapELF.rebuild() does, and
+	# rewrite it to include multilib categories.
+	needed_file = portage.util.atomic_ofstream(needed_filename,
+		encoding=_encodings["repo.content"], errors="strict")
+
 	for l in lines:
 		l = l.rstrip("\n")
 		if not l:
 			continue
-		fields = l.split(";")
-		if len(fields) < 5:
-			portage.util.writemsg_level(_("\nWrong number of fields " \
-				"in %s: %s\n\n") % (needed_filename, l),
+		try:
+			entry = NeededEntry.parse(needed_filename, l)
+		except InvalidData as e:
+			portage.util.writemsg_level("\n%s\n\n" % (e,),
 				level=logging.ERROR, noiselevel=-1)
 			continue
 
-		obj, soname = fields[1:3]
+		filename = os.path.join(image_dir,
+			entry.filename.lstrip(os.sep))
+		with open(_unicode_encode(filename, encoding=_encodings['fs'],
+			errors='strict'), 'rb') as f:
+			elf_header = ELFHeader.read(f)
+
+		# Compute the multilib category and write it back to the file.
+		entry.multilib_category = compute_multilib_category(elf_header)
+		needed_file.write(_unicode(entry))
+
+		soname_deps.add(entry)
+		obj = entry.filename
+		soname = entry.soname
+
 		if not soname:
 			continue
 		if not is_libdir(os.path.dirname(obj)):
@@ -2265,6 +2352,22 @@ def _post_src_install_soname_symlinks(mysettings, out):
 			continue
 
 		missing_symlinks.append((obj, soname))
+
+	needed_file.close()
+
+	if soname_deps.requires is not None:
+		with io.open(_unicode_encode(os.path.join(build_info_dir,
+			'REQUIRES'), encoding=_encodings['fs'], errors='strict'),
+			mode='w', encoding=_encodings['repo.content'],
+			errors='strict') as f:
+			f.write(soname_deps.requires)
+
+	if soname_deps.provides is not None:
+		with io.open(_unicode_encode(os.path.join(build_info_dir,
+			'PROVIDES'), encoding=_encodings['fs'], errors='strict'),
+			mode='w', encoding=_encodings['repo.content'],
+			errors='strict') as f:
+			f.write(soname_deps.provides)
 
 	if not missing_symlinks:
 		return

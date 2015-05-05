@@ -609,9 +609,10 @@ def get_manpages():
 			for g, mans in groups.items():
 				yield [os.path.join('$mandir', topdir, 'man%s' % g), mans]
 
+
 setup(
 	name = 'portage',
-	version = '2.2.15',
+	version = '2.2.18',
 	url = 'https://wiki.gentoo.org/wiki/Project:Portage',
 	author = 'Gentoo Portage Development Team',
 	author_email = 'dev-portage@gentoo.org',
@@ -629,6 +630,7 @@ setup(
 		['$portage_setsdir', ['cnf/sets/portage.conf']],
 		['$docdir', ['NEWS', 'RELEASE-NOTES']],
 		['$portage_base/bin', ['bin/deprecated-path']],
+		['$sysconfdir/portage/repo.postsync.d', ['cnf/repo.postsync.d/example']],
 	],
 
 	cmdclass = {

@@ -81,7 +81,8 @@ class bindbapi(fakedbapi):
 			["BUILD_TIME", "CHOST", "DEPEND", "EAPI",
 			"HDEPEND", "IUSE", "KEYWORDS",
 			"LICENSE", "PDEPEND", "PROPERTIES", "PROVIDE",
-			"RDEPEND", "repository", "RESTRICT", "SLOT", "USE", "DEFINED_PHASES"
+			"RDEPEND", "repository", "RESTRICT", "SLOT", "USE",
+			"DEFINED_PHASES", "PROVIDES", "REQUIRES"
 			])
 		self._aux_cache_slot_dict = slot_dict_class(self._aux_cache_keys)
 		self._aux_cache = {}
@@ -322,7 +323,7 @@ class binarytree(object):
 				["BUILD_TIME", "CHOST", "DEPEND", "DESCRIPTION", "EAPI",
 				"HDEPEND", "IUSE", "KEYWORDS", "LICENSE", "PDEPEND", "PROPERTIES",
 				"PROVIDE", "RESTRICT", "RDEPEND", "repository", "SLOT", "USE", "DEFINED_PHASES",
-				"BASE_URI"]
+				"BASE_URI", "PROVIDES", "REQUIRES"]
 			self._pkgindex_aux_keys = list(self._pkgindex_aux_keys)
 			self._pkgindex_use_evaluated_keys = \
 				("DEPEND", "HDEPEND", "LICENSE", "RDEPEND",
@@ -347,7 +348,9 @@ class binarytree(object):
 				"PDEPEND" : "",
 				"PROPERTIES" : "",
 				"PROVIDE" : "",
+				"PROVIDES": "",
 				"RDEPEND" : "",
+				"REQUIRES": "",
 				"RESTRICT": "",
 				"SLOT"    : "0",
 				"USE"     : "",
@@ -359,16 +362,6 @@ class binarytree(object):
 				"CHOST"        : self.settings.get("CHOST", ""),
 				"repository"   : "",
 			}
-
-			# It is especially important to populate keys like
-			# "repository" that save space when entries can
-			# inherit them from the header. If an existing
-			# pkgindex header already defines these keys, then
-			# they will appropriately override our defaults.
-			main_repo = self.settings.repositories.mainRepo()
-			if main_repo is not None and not main_repo.missing_repo_name:
-				self._pkgindex_default_header_data["repository"] = \
-					main_repo.name
 
 			self._pkgindex_translated_keys = (
 				("DESCRIPTION"   ,   "DESC"),
@@ -401,7 +394,7 @@ class binarytree(object):
 		# sanity check
 		for atom in (origcp, newcp):
 			if not isjustname(atom):
-				raise InvalidPackageName(str(atom))
+				raise InvalidPackageName(_unicode(atom))
 		mynewcat = catsplit(newcp)[0]
 		origmatches=self.dbapi.cp_list(origcp)
 		moves = 0
@@ -813,8 +806,8 @@ class binarytree(object):
 
 					d["CPV"] = mycpv
 					d["SLOT"] = slot
-					d["MTIME"] = str(s[stat.ST_MTIME])
-					d["SIZE"] = str(s.st_size)
+					d["MTIME"] = _unicode(s[stat.ST_MTIME])
+					d["SIZE"] = _unicode(s.st_size)
 
 					d.update(zip(self._pkgindex_aux_keys,
 						self.dbapi.aux_get(mycpv, self._pkgindex_aux_keys)))
@@ -1034,7 +1027,11 @@ class binarytree(object):
 			except EnvironmentError as e:
 				writemsg(_("\n\n!!! Error fetching binhost package" \
 					" info from '%s'\n") % _hide_url_passwd(base_url))
-				writemsg("!!! %s\n\n" % str(e))
+				# With Python 2, the EnvironmentError message may
+				# contain bytes or unicode, so use _unicode to ensure
+				# safety with all locales (bug #532784).
+				writemsg("!!! %s\n\n" % _unicode(e,
+					_encodings["stdio"], errors="replace"))
 				del e
 				pkgindex = None
 			if proc is not None:
@@ -1252,8 +1249,8 @@ class binarytree(object):
 
 		d["CPV"] = cpv
 		st = os.stat(pkg_path)
-		d["MTIME"] = str(st[stat.ST_MTIME])
-		d["SIZE"] = str(st.st_size)
+		d["MTIME"] = _unicode(st[stat.ST_MTIME])
+		d["SIZE"] = _unicode(st.st_size)
 
 		rel_path = self._pkg_paths[cpv]
 		# record location if it's non-default
@@ -1280,7 +1277,7 @@ class binarytree(object):
 			if profile_path.startswith(profiles_base):
 				profile_path = profile_path[len(profiles_base):]
 			header["PROFILE"] = profile_path
-		header["VERSION"] = str(self._pkgindex_version)
+		header["VERSION"] = _unicode(self._pkgindex_version)
 		base_uri = self.settings.get("PORTAGE_BINHOST_HEADER_URI")
 		if base_uri:
 			header["URI"] = base_uri
@@ -1326,8 +1323,7 @@ class binarytree(object):
 				deps = use_reduce(deps, uselist=use, token_class=token_class)
 				deps = paren_enclose(deps)
 			except portage.exception.InvalidDependString as e:
-				writemsg("%s: %s\n" % (k, str(e)),
-					noiselevel=-1)
+				writemsg("%s: %s\n" % (k, e), noiselevel=-1)
 				raise
 			metadata[k] = deps
 

@@ -720,7 +720,7 @@ __dyn_install() {
 		for f in ASFLAGS CBUILD CC CFLAGS CHOST CTARGET CXX \
 			CXXFLAGS EXTRA_ECONF EXTRA_EINSTALL EXTRA_MAKE \
 			LDFLAGS LIBCFLAGS LIBCXXFLAGS QA_CONFIGURE_OPTIONS \
-			QA_DESKTOP_FILE ; do
+			QA_DESKTOP_FILE PROVIDES_EXCLUDE REQUIRES_EXCLUDE ; do
 			x=$(echo -n ${!f})
 			[[ -n $x ]] && echo "$x" > $f
 		done
@@ -993,6 +993,17 @@ __ebuild_phase_funcs() {
 
 				declare -F src_install >/dev/null || \
 					src_install() { default; }
+			fi
+
+			# defaults starting with EAPI 6
+			if ! has ${eapi} 2 3 4 4-python 4-slot-abi 5 5-progress 5-hdepend; then
+				[[ ${phase_func} == src_prepare ]] && \
+					default_src_prepare() { __eapi6_src_prepare; }
+				[[ ${phase_func} == src_install ]] && \
+					default_src_install() { __eapi6_src_install; }
+
+				declare -F src_prepare >/dev/null || \
+					src_prepare() { default; }
 			fi
 			;;
 	esac

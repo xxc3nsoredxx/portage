@@ -569,13 +569,20 @@ if ! has "$EBUILD_PHASE" clean cleanrm ; then
 		# we make a backup copy for QA checks.
 		__INHERITED_QA_CACHE=$INHERITED
 
+		# Catch failed globbing attempts in case ebuild writer forgot to
+		# escape '*' or likes.
+		# Note: this needs to be done before unsetting EAPI.
+		if ___eapi_enables_failglob_in_global_scope; then
+			shopt -s failglob
+		fi
+
 		# *DEPEND and IUSE will be set during the sourcing of the ebuild.
 		# In order to ensure correct interaction between ebuilds and
 		# eclasses, they need to be unset before this process of
 		# interaction begins.
 		unset EAPI DEPEND RDEPEND PDEPEND HDEPEND INHERITED IUSE REQUIRED_USE \
 			ECLASS E_IUSE E_REQUIRED_USE E_DEPEND E_RDEPEND E_PDEPEND \
-			E_HDEPEND
+			E_HDEPEND PROVIDES_EXCLUDE REQUIRES_EXCLUDE
 
 		if [[ $PORTAGE_DEBUG != 1 || ${-/x/} != $- ]] ; then
 			source "$EBUILD" || die "error sourcing ebuild"
@@ -583,6 +590,10 @@ if ! has "$EBUILD_PHASE" clean cleanrm ; then
 			set -x
 			source "$EBUILD" || die "error sourcing ebuild"
 			set +x
+		fi
+
+		if ___eapi_enables_failglob_in_global_scope; then
+			shopt -u failglob
 		fi
 
 		if [[ "${EBUILD_PHASE}" != "depend" ]] ; then

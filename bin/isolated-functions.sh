@@ -36,11 +36,18 @@ __assert_sigpipe_ok() {
 	local x pipestatus=${PIPESTATUS[*]}
 	for x in $pipestatus ; do
 		# Allow SIGPIPE through (128 + 13)
-		[[ $x -ne 0 && $x -ne ${PORTAGE_SIGPIPE_STATUS:-141} ]] && die "$@"
+		if [[ $x -ne 0 && $x -ne ${PORTAGE_SIGPIPE_STATUS:-141} ]]
+		then
+			__helpers_die "$@"
+			return 1
+		fi
 	done
 
 	# Require normal success for the last process (tar).
-	[[ $x -eq 0 ]] || die "$@"
+	if [[ $x -ne 0 ]]; then
+		__helpers_die "$@"
+		return 1
+	fi
 }
 
 shopt -s extdebug
@@ -106,7 +113,7 @@ __bashpid() {
 }
 
 __helpers_die() {
-	if ___eapi_helpers_can_die; then
+	if ___eapi_helpers_can_die && [[ ${PORTAGE_NONFATAL} != 1 ]]; then
 		die "$@"
 	else
 		echo -e "$@" >&2
@@ -116,9 +123,11 @@ __helpers_die() {
 die() {
 	local IFS=$' \t\n'
 
-	if [[ $PORTAGE_NONFATAL -eq 1 ]]; then
-		echo -e " $WARN*$NORMAL ${FUNCNAME[1]}: WARNING: $@" >&2
-		return 1
+	if ___eapi_die_can_respect_nonfatal; then
+		if [[ ${1} == -n ]]; then
+			[[ ${PORTAGE_NONFATAL} == 1 ]] && return 1
+			shift
+		fi
 	fi
 
 	set +e

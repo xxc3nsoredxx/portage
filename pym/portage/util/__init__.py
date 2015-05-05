@@ -43,8 +43,8 @@ from portage import _unicode_encode
 from portage import _unicode_decode
 from portage.const import VCS_DIRS
 from portage.exception import InvalidAtom, PortageException, FileNotFound, \
-       IsADirectory, OperationNotPermitted, ParseError, PermissionDenied, \
-	   ReadOnlyFileSystem
+	IsADirectory, OperationNotPermitted, ParseError, PermissionDenied, \
+	ReadOnlyFileSystem
 from portage.localization import _
 from portage.proxy.objectproxy import ObjectProxy
 from portage.cache.mappings import UserDict
@@ -425,9 +425,9 @@ def read_corresponding_eapi_file(filename, default="0"):
 	return eapi
 
 def grabdict_package(myfilename, juststrings=0, recursive=0, allow_wildcard=False, allow_repo=False,
-	verify_eapi=False, eapi=None):
+	verify_eapi=False, eapi=None, eapi_default="0"):
 	""" Does the same thing as grabdict except it validates keys
-	    with isvalidatom()"""
+		with isvalidatom()"""
 
 	if recursive:
 		file_list = _recursive_file_list(myfilename)
@@ -441,7 +441,8 @@ def grabdict_package(myfilename, juststrings=0, recursive=0, allow_wildcard=Fals
 		if not d:
 			continue
 		if verify_eapi and eapi is None:
-			eapi = read_corresponding_eapi_file(myfilename)
+			eapi = read_corresponding_eapi_file(
+				myfilename, default=eapi_default)
 
 		for k, v in d.items():
 			try:
@@ -460,13 +461,15 @@ def grabdict_package(myfilename, juststrings=0, recursive=0, allow_wildcard=Fals
 	return atoms
 
 def grabfile_package(myfilename, compatlevel=0, recursive=0, allow_wildcard=False, allow_repo=False,
-	remember_source_file=False, verify_eapi=False, eapi=None):
+	remember_source_file=False, verify_eapi=False, eapi=None,
+	eapi_default="0"):
 
 	pkgs=grabfile(myfilename, compatlevel, recursive=recursive, remember_source_file=True)
 	if not pkgs:
 		return pkgs
 	if verify_eapi and eapi is None:
-		eapi = read_corresponding_eapi_file(myfilename)
+		eapi = read_corresponding_eapi_file(
+			myfilename, default=eapi_default)
 	mybasename = os.path.basename(myfilename)
 	atoms = []
 	for pkg, source_file in pkgs:
@@ -998,24 +1001,24 @@ def unique_array(s):
 	return u
 
 def unique_everseen(iterable, key=None):
-    """
-    List unique elements, preserving order. Remember all elements ever seen.
-    Taken from itertools documentation.
-    """
-    # unique_everseen('AAAABBBCCDAABBB') --> A B C D
-    # unique_everseen('ABBCcAD', str.lower) --> A B C D
-    seen = set()
-    seen_add = seen.add
-    if key is None:
-        for element in filterfalse(seen.__contains__, iterable):
-            seen_add(element)
-            yield element
-    else:
-        for element in iterable:
-            k = key(element)
-            if k not in seen:
-                seen_add(k)
-                yield element
+	"""
+	List unique elements, preserving order. Remember all elements ever seen.
+	Taken from itertools documentation.
+	"""
+	# unique_everseen('AAAABBBCCDAABBB') --> A B C D
+	# unique_everseen('ABBCcAD', str.lower) --> A B C D
+	seen = set()
+	seen_add = seen.add
+	if key is None:
+		for element in filterfalse(seen.__contains__, iterable):
+			seen_add(element)
+			yield element
+	else:
+		for element in iterable:
+			k = key(element)
+			if k not in seen:
+				seen_add(k)
+				yield element
 
 def apply_permissions(filename, uid=-1, gid=-1, mode=-1, mask=-1,
 	stat_cached=None, follow_links=True):
@@ -1682,7 +1685,7 @@ def new_protect_filename(mydest, newmd5=None, force=False):
 	old_pfile = normalize_path(os.path.join(real_dirname, last_pfile))
 	if last_pfile and newmd5:
 		try:
-			old_pfile_st = _os_merge.lstat(old_pfile)
+			old_pfile_st = os.lstat(old_pfile)
 		except OSError as e:
 			if e.errno != errno.ENOENT:
 				raise
@@ -1691,7 +1694,7 @@ def new_protect_filename(mydest, newmd5=None, force=False):
 				try:
 					# Read symlink target as bytes, in case the
 					# target path has a bad encoding.
-					pfile_link = _os.readlink(_unicode_encode(old_pfile,
+					pfile_link = os.readlink(_unicode_encode(old_pfile,
 						encoding=_encodings['merge'], errors='strict'))
 				except OSError:
 					if e.errno != errno.ENOENT:

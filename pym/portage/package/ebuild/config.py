@@ -22,6 +22,7 @@ from _emerge.Package import Package
 import portage
 portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.data:portage_gid',
+	'portage.dep.soname.SonameAtom:SonameAtom',
 	'portage.dbapi.vartree:vartree',
 	'portage.package.ebuild.doebuild:_phase_func_map',
 )
@@ -230,6 +231,7 @@ class config(object):
 		self._features_overrides = []
 		self._make_defaults = None
 		self._parent_stable = None
+		self._soname_provided = None
 
 		# _unknown_features records unknown features that
 		# have triggered warning messages, and ensures that
@@ -266,6 +268,7 @@ class config(object):
 			self.make_defaults_use = clone.make_defaults_use
 			self.mycpv = clone.mycpv
 			self._setcpv_args_hash = clone._setcpv_args_hash
+			self._soname_provided = clone._soname_provided
 
 			# immutable attributes (internal policy ensures lack of mutation)
 			self._locations_manager = clone._locations_manager
@@ -391,6 +394,7 @@ class config(object):
 
 			# Allow make.globals to set default paths relative to ${EPREFIX}.
 			expand_map["EPREFIX"] = eprefix
+			expand_map["PORTAGE_CONFIGROOT"] = config_root
 
 			if portage._not_installed:
 				make_globals_path = os.path.join(PORTAGE_BASE_PATH, "cnf", "make.globals")
@@ -512,7 +516,6 @@ class config(object):
 				if v is not None:
 					portdir_sync = v
 
-			known_repos = frozenset(known_repos)
 			self["PORTDIR"] = portdir
 			self["PORTDIR_OVERLAY"] = portdir_overlay
 			if portdir_sync:
@@ -522,6 +525,9 @@ class config(object):
 				self.repositories = load_repository_config(self)
 			else:
 				self.repositories = repositories
+
+			known_repos.extend(repo.location for repo in self.repositories)
+			known_repos = frozenset(known_repos)
 
 			self['PORTAGE_REPOSITORIES'] = self.repositories.config_string()
 			self.backup_changes('PORTAGE_REPOSITORIES')
@@ -562,8 +568,10 @@ class config(object):
 			self.user_profile_dir = locations_manager.user_profile_dir
 
 			try:
-				packages_list = [grabfile_package(os.path.join(x, "packages"),
-					verify_eapi=True) for x in self.profiles]
+				packages_list = [grabfile_package(
+					os.path.join(x.location, "packages"),
+					verify_eapi=True, eapi=x.eapi, eapi_default=None)
+					for x in profiles_complex]
 			except IOError as e:
 				if e.errno == IsADirectory.errno:
 					raise IsADirectory(os.path.join(self.profile_path,
@@ -756,7 +764,8 @@ class config(object):
 						portage.dep.ExtendedAtomDict(dict)
 					bashrc = grabdict_package(os.path.join(profile.location,
 						"package.bashrc"), recursive=1, allow_wildcard=True,
-								allow_repo=True, verify_eapi=False)
+								allow_repo=True, verify_eapi=True,
+								eapi=profile.eapi, eapi_default=None)
 					if not bashrc:
 						continue
 
@@ -779,7 +788,7 @@ class config(object):
 
 			archlist = [grabfile(os.path.join(x, "arch.list")) \
 				for x in locations_manager.profile_and_user_locations]
-			archlist = stack_lists(archlist, incremental=1)
+			archlist = sorted(stack_lists(archlist, incremental=1))
 			self.configdict["conf"]["PORTAGE_ARCHLIST"] = " ".join(archlist)
 
 			pkgprovidedlines = [grabfile(
@@ -800,12 +809,6 @@ class config(object):
 				if not cpvr or cpvr[0] == "null":
 					writemsg(_("Invalid package name in package.provided: ")+pkgprovidedlines[x]+"\n",
 						noiselevel=-1)
-					has_invalid_data = True
-					del pkgprovidedlines[x]
-					continue
-				if cpvr[0] == "virtual":
-					writemsg(_("Virtual package in package.provided: %s\n") % \
-						myline, noiselevel=-1)
 					has_invalid_data = True
 					del pkgprovidedlines[x]
 					continue
@@ -1056,6 +1059,16 @@ class config(object):
 	@property
 	def punmaskdict(self):
 		return self._mask_manager._punmaskdict.copy()
+
+	@property
+	def soname_provided(self):
+		if self._soname_provided is None:
+			d = stack_dictlist((grabdict(
+				os.path.join(x, "soname.provided"), recursive=True)
+				for x in self.profiles), incremental=True)
+			self._soname_provided = frozenset(SonameAtom(cat, soname)
+				for cat, sonames in d.items() for soname in sonames)
+		return self._soname_provided
 
 	def expandLicenseTokens(self, tokens):
 		""" Take a token from ACCEPT_LICENSE or package.license and expand it

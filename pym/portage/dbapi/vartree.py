@@ -64,6 +64,7 @@ from portage import _os_merge
 from portage import _selinux_merge
 from portage import _unicode_decode
 from portage import _unicode_encode
+from ._VdbMetadataDelta import VdbMetadataDelta
 
 from _emerge.EbuildBuildDir import EbuildBuildDir
 from _emerge.EbuildPhase import EbuildPhase
@@ -175,10 +176,14 @@ class vardbapi(dbapi):
 			"EAPI", "HDEPEND", "HOMEPAGE", "IUSE", "KEYWORDS",
 			"LICENSE", "PDEPEND", "PROPERTIES", "PROVIDE", "RDEPEND",
 			"repository", "RESTRICT" , "SLOT", "USE", "DEFINED_PHASES",
+			"PROVIDES", "REQUIRES"
 			])
 		self._aux_cache_obj = None
 		self._aux_cache_filename = os.path.join(self._eroot,
 			CACHE_PATH, "vdb_metadata.pickle")
+		self._cache_delta_filename = os.path.join(self._eroot,
+			CACHE_PATH, "vdb_metadata_delta.json")
+		self._cache_delta = VdbMetadataDelta(self)
 		self._counter_path = os.path.join(self._eroot,
 			CACHE_PATH, "counter")
 
@@ -435,6 +440,9 @@ class vardbapi(dbapi):
 		(generally this is only necessary in critical sections that
 		involve merge or unmerge of packages).
 		"""
+		return list(self._iter_cpv_all(use_cache=use_cache))
+
+	def _iter_cpv_all(self, use_cache=True, sort=False):
 		returnme = []
 		basepath = os.path.join(self._eroot, VDB_PATH) + os.path.sep
 
@@ -451,26 +459,32 @@ class vardbapi(dbapi):
 					del e
 					return []
 
-		for x in listdir(basepath, EmptyOnError=1, ignorecvs=1, dirsonly=1):
+		catdirs = listdir(basepath, EmptyOnError=1, ignorecvs=1, dirsonly=1)
+		if sort:
+			catdirs.sort()
+
+		for x in catdirs:
 			if self._excluded_dirs.match(x) is not None:
 				continue
 			if not self._category_re.match(x):
 				continue
-			for y in listdir(basepath + x, EmptyOnError=1, dirsonly=1):
+
+			pkgdirs = listdir(basepath + x, EmptyOnError=1, dirsonly=1)
+			if sort:
+				pkgdirs.sort()
+
+			for y in pkgdirs:
 				if self._excluded_dirs.match(y) is not None:
 					continue
 				subpath = x + "/" + y
 				# -MERGING- should never be a cpv, nor should files.
 				try:
-					if catpkgsplit(subpath) is None:
-						self.invalidentry(self.getpath(subpath))
-						continue
+					subpath = _pkg_str(subpath)
 				except InvalidData:
 					self.invalidentry(self.getpath(subpath))
 					continue
-				returnme.append(subpath)
 
-		return returnme
+				yield subpath
 
 	def cp_all(self, use_cache=1):
 		mylist = self.cpv_all(use_cache=use_cache)
@@ -560,22 +574,31 @@ class vardbapi(dbapi):
 		long as at least part of the cache is still valid)."""
 		if self._flush_cache_enabled and \
 			self._aux_cache is not None and \
-			len(self._aux_cache["modified"]) >= self._aux_cache_threshold and \
-			secpass >= 2:
+			secpass >= 2 and \
+			(len(self._aux_cache["modified"]) >= self._aux_cache_threshold or
+			not os.path.exists(self._cache_delta_filename)):
+
+			ensure_dirs(os.path.dirname(self._aux_cache_filename))
+
 			self._owners.populate() # index any unindexed contents
 			valid_nodes = set(self.cpv_all())
 			for cpv in list(self._aux_cache["packages"]):
 				if cpv not in valid_nodes:
 					del self._aux_cache["packages"][cpv]
 			del self._aux_cache["modified"]
-			try:
-				f = atomic_ofstream(self._aux_cache_filename, 'wb')
-				pickle.dump(self._aux_cache, f, protocol=2)
-				f.close()
-				apply_secpass_permissions(
-					self._aux_cache_filename, gid=portage_gid, mode=0o644)
-			except (IOError, OSError) as e:
-				pass
+			timestamp = time.time()
+			self._aux_cache["timestamp"] = timestamp
+
+			f = atomic_ofstream(self._aux_cache_filename, 'wb')
+			pickle.dump(self._aux_cache, f, protocol=2)
+			f.close()
+			apply_secpass_permissions(
+				self._aux_cache_filename, mode=0o644)
+
+			self._cache_delta.initialize(timestamp)
+			apply_secpass_permissions(
+				self._cache_delta_filename, mode=0o644)
+
 			self._aux_cache["modified"] = set()
 
 	@property
@@ -1612,6 +1635,13 @@ class dblink(object):
 			writemsg(_("portage.dblink.delete(): invalid dbdir: %s\n") % \
 				self.dbdir, noiselevel=-1)
 			return
+
+		if self.dbdir is self.dbpkgdir:
+			counter, = self.vartree.dbapi.aux_get(
+				self.mycpv, ["COUNTER"])
+			self.vartree.dbapi._cache_delta.recordEvent(
+				"remove", self.mycpv,
+				self.settings["SLOT"].split("/")[0], counter)
 
 		shutil.rmtree(self.dbdir)
 		# If empty, remove parent category directory.
@@ -4223,6 +4253,8 @@ class dblink(object):
 			self.delete()
 			_movefile(self.dbtmpdir, self.dbpkgdir, mysettings=self.settings)
 			self._merged_path(self.dbpkgdir, os.lstat(self.dbpkgdir))
+			self.vartree.dbapi._cache_delta.recordEvent(
+				"add", self.mycpv, slot, counter)
 		finally:
 			self.unlockdb()
 
@@ -4856,8 +4888,10 @@ class dblink(object):
 
 		if protected and dest_mode is not None:
 			# we have a protection path; enable config file management.
-			if src_md5 != dest_md5 and \
-				src_md5 == cfgfiledict.get(dest_real, [None])[0]:
+			if src_md5 == dest_md5:
+				protected = False
+
+			elif src_md5 == cfgfiledict.get(dest_real, [None])[0]:
 				# An identical update has previously been
 				# merged.  Skip it unless the user has chosen
 				# --noconfmem.

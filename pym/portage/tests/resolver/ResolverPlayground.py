@@ -1,4 +1,4 @@
-# Copyright 2010-2014 Gentoo Foundation
+# Copyright 2010-2015 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from itertools import permutations
@@ -40,6 +40,7 @@ class ResolverPlayground(object):
 	config_files = frozenset(("eapi", "layout.conf", "make.conf", "package.accept_keywords",
 		"package.keywords", "package.license", "package.mask", "package.properties",
 		"package.unmask", "package.use", "package.use.aliases", "package.use.stable.mask",
+		"soname.provided",
 		"unpack_dependencies", "use.aliases", "use.force", "use.mask", "layout.conf"))
 
 	metadata_xml_template = """<?xml version="1.0" encoding="UTF-8"?>
@@ -72,6 +73,12 @@ class ResolverPlayground(object):
 			self.eprefix = normalize_path(tempfile.mkdtemp())
 		else:
 			self.eprefix = normalize_path(eprefix)
+
+		# Tests may override portage.const.EPREFIX in order to
+		# simulate a prefix installation. It's reasonable to do
+		# this because tests should be self-contained such that
+		# the "real" value of portage.const.EPREFIX is entirely
+		# irrelevant (see bug #492932).
 		portage.const.EPREFIX = self.eprefix.rstrip(os.sep)
 
 		self.eroot = self.eprefix + os.sep
@@ -248,6 +255,8 @@ class ResolverPlayground(object):
 			unknown_keys.discard("COUNTER")
 			unknown_keys.discard("repository")
 			unknown_keys.discard("USE")
+			unknown_keys.discard("PROVIDES")
+			unknown_keys.discard("REQUIRES")
 			if unknown_keys:
 				raise ValueError("metadata of installed '%s' contains unknown keys: %s" %
 					(cpv, sorted(unknown_keys)))
