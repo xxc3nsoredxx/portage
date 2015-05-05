@@ -139,7 +139,7 @@ get_abi_list() {
 		for my_abi in $(get_abi_order); do
 			[[ -e "${D%/}".${my_abi} ]] || break
 		done
-
+		echo ${my_abi}
 	else
 		echo "default"
 	fi
