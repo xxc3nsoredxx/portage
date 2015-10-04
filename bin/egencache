@@ -71,9 +71,9 @@ else:
 	except ImportError:
 		pass
 	else:
-		from repoman.utilities import parse_metadata_use
+		from repoman.metadata import parse_metadata_use
 
-from repoman.utilities import FindVCS
+from repoman.vcs.vcs import FindVCS
 
 if sys.hexversion >= 0x3000000:
 	# pylint: disable=W0622
