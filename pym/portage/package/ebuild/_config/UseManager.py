@@ -153,7 +153,8 @@ class UseManager(object):
 		return tuple(ret)
 
 	def _parse_file_to_dict(self, file_name, juststrings=False, recursive=True,
-		eapi_filter=None, user_config=False, eapi=None, eapi_default="0"):
+		eapi_filter=None, user_config=False, eapi=None, eapi_default="0",
+		allow_build_id=False):
 		"""
 		@param file_name: input file name
 		@type file_name: str
@@ -176,6 +177,9 @@ class UseManager(object):
 		@param eapi_default: the default EAPI which applies if the
 			current profile node does not define a local EAPI
 		@type eapi_default: str
+		@param allow_build_id: allow atoms to specify a particular
+			build-id
+		@type allow_build_id: bool
 		@rtype: tuple
 		@return: collection of USE flags
 		"""
@@ -192,7 +196,7 @@ class UseManager(object):
 		file_dict = grabdict_package(file_name, recursive=recursive,
 			allow_wildcard=extended_syntax, allow_repo=extended_syntax,
 			verify_eapi=(not extended_syntax), eapi=eapi,
-			eapi_default=eapi_default)
+			eapi_default=eapi_default, allow_build_id=allow_build_id)
 		if eapi is not None and eapi_filter is not None and not eapi_filter(eapi):
 			if file_dict:
 				writemsg(_("--- EAPI '%s' does not support '%s': '%s'\n") %
@@ -204,6 +208,9 @@ class UseManager(object):
 			useflags = []
 			use_expand_prefix = ''
 			for prefixed_useflag in v:
+				if extended_syntax and prefixed_useflag == "\n":
+					use_expand_prefix = ""
+					continue
 				if extended_syntax and prefixed_useflag[-1] == ":":
 					use_expand_prefix = prefixed_useflag[:-1].lower() + "_"
 					continue
@@ -232,11 +239,14 @@ class UseManager(object):
 		ret = ExtendedAtomDict(dict)
 		if user_config:
 			pusedict = grabdict_package(
-				os.path.join(location, file_name), recursive=1, allow_wildcard=True, allow_repo=True, verify_eapi=False)
+				os.path.join(location, file_name), recursive=1, newlines=1, allow_wildcard=True, allow_repo=True, verify_eapi=False)
 			for k, v in pusedict.items():
 				l = []
 				use_expand_prefix = ''
 				for flag in v:
+					if flag == "\n":
+						use_expand_prefix = ""
+						continue
 					if flag[-1] == ":":
 						use_expand_prefix = flag[:-1].lower() + "_"
 						continue
@@ -262,7 +272,8 @@ class UseManager(object):
 		for repo in repositories.repos_with_profiles():
 			ret[repo.name] = self._parse_file_to_dict(
 				os.path.join(repo.location, "profiles", file_name),
-				eapi_filter=eapi_filter, eapi_default=repo.eapi)
+				eapi_filter=eapi_filter, eapi_default=repo.eapi,
+				allow_build_id=("build-id" in repo.profile_formats))
 		return ret
 
 	def _parse_profile_files_to_tuple_of_tuples(self, file_name, locations,
@@ -279,7 +290,8 @@ class UseManager(object):
 			os.path.join(profile.location, file_name), juststrings,
 			recursive=profile.portage1_directories, eapi_filter=eapi_filter,
 			user_config=profile.user_config, eapi=profile.eapi,
-			eapi_default=None) for profile in locations)
+			eapi_default=None, allow_build_id=profile.allow_build_id)
+			for profile in locations)
 
 	def _parse_repository_usealiases(self, repositories):
 		ret = {}

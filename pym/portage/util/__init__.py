@@ -340,7 +340,7 @@ def stack_lists(lists, incremental=1, remember_source_file=False,
 	else:
 		return list(new_list)
 
-def grabdict(myfilename, juststrings=0, empty=0, recursive=0, incremental=1):
+def grabdict(myfilename, juststrings=0, empty=0, recursive=0, incremental=1, newlines=0):
 	"""
 	This function grabs the lines in a file, normalizes whitespace and returns lines in a dictionary
 
@@ -354,6 +354,8 @@ def grabdict(myfilename, juststrings=0, empty=0, recursive=0, incremental=1):
 	@type recursive: Boolean (integer)
 	@param incremental: Append to the return list, don't overwrite
 	@type incremental: Boolean (integer)
+	@param newlines: Append newlines
+	@type newlines: Boolean (integer)
 	@rtype: Dictionary
 	@return:
 	1.  Returns the lines in a file in a dictionary, for example:
@@ -379,6 +381,8 @@ def grabdict(myfilename, juststrings=0, empty=0, recursive=0, incremental=1):
 			continue
 		if len(myline) < 1 and empty == 1:
 			continue
+		if newlines:
+			myline.append("\n")
 		if incremental:
 			newdict.setdefault(myline[0], []).extend(myline[1:])
 		else:
@@ -424,7 +428,8 @@ def read_corresponding_eapi_file(filename, default="0"):
 		return default
 	return eapi
 
-def grabdict_package(myfilename, juststrings=0, recursive=0, allow_wildcard=False, allow_repo=False,
+def grabdict_package(myfilename, juststrings=0, recursive=0, newlines=0,
+	allow_wildcard=False, allow_repo=False, allow_build_id=False,
 	verify_eapi=False, eapi=None, eapi_default="0"):
 	""" Does the same thing as grabdict except it validates keys
 		with isvalidatom()"""
@@ -437,7 +442,7 @@ def grabdict_package(myfilename, juststrings=0, recursive=0, allow_wildcard=Fals
 	atoms = {}
 	for filename in file_list:
 		d = grabdict(filename, juststrings=False,
-			empty=True, recursive=False, incremental=True)
+			empty=True, recursive=False, incremental=True, newlines=newlines)
 		if not d:
 			continue
 		if verify_eapi and eapi is None:
@@ -447,7 +452,8 @@ def grabdict_package(myfilename, juststrings=0, recursive=0, allow_wildcard=Fals
 		for k, v in d.items():
 			try:
 				k = Atom(k, allow_wildcard=allow_wildcard,
-					allow_repo=allow_repo, eapi=eapi)
+					allow_repo=allow_repo,
+					allow_build_id=allow_build_id, eapi=eapi)
 			except InvalidAtom as e:
 				writemsg(_("--- Invalid atom in %s: %s\n") % (filename, e),
 					noiselevel=-1)
@@ -460,7 +466,8 @@ def grabdict_package(myfilename, juststrings=0, recursive=0, allow_wildcard=Fals
 
 	return atoms
 
-def grabfile_package(myfilename, compatlevel=0, recursive=0, allow_wildcard=False, allow_repo=False,
+def grabfile_package(myfilename, compatlevel=0, recursive=0,
+	allow_wildcard=False, allow_repo=False, allow_build_id=False,
 	remember_source_file=False, verify_eapi=False, eapi=None,
 	eapi_default="0"):
 
@@ -480,7 +487,9 @@ def grabfile_package(myfilename, compatlevel=0, recursive=0, allow_wildcard=Fals
 		if pkg[:1] == '*' and mybasename == 'packages':
 			pkg = pkg[1:]
 		try:
-			pkg = Atom(pkg, allow_wildcard=allow_wildcard, allow_repo=allow_repo, eapi=eapi)
+			pkg = Atom(pkg, allow_wildcard=allow_wildcard,
+				allow_repo=allow_repo, allow_build_id=allow_build_id,
+				eapi=eapi)
 		except InvalidAtom as e:
 			writemsg(_("--- Invalid atom in %s: %s\n") % (source_file, e),
 				noiselevel=-1)
@@ -841,8 +850,20 @@ def varexpand(mystring, mydict=None, error_leader=None):
 					continue
 			elif current == "$":
 				pos += 1
+				if pos == length:
+					# shells handle this like \$
+					newstring.append(current)
+					continue
+
 				if mystring[pos] == "{":
 					pos += 1
+					if pos == length:
+						msg = _varexpand_unexpected_eof_msg
+						if error_leader is not None:
+							msg = error_leader() + msg
+						writemsg(msg + "\n", noiselevel=-1)
+						return ""
+
 					braced = True
 				else:
 					braced = False
@@ -1700,7 +1721,7 @@ def new_protect_filename(mydest, newmd5=None, force=False):
 					if e.errno != errno.ENOENT:
 						raise
 				else:
-					pfile_link = _unicode_decode(
+					pfile_link = _unicode_decode(pfile_link,
 						encoding=_encodings['merge'], errors='replace')
 					if pfile_link == newmd5:
 						return old_pfile

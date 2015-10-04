@@ -33,7 +33,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.util.env_update:env_update',
 	'portage.util.listdir:dircache,listdir',
 	'portage.util.movefile:movefile',
-	'portage.util.path:first_existing',
+	'portage.util.path:first_existing,iter_parents',
 	'portage.util.writeable_check:get_ro_checker',
 	'portage.util._dyn_libs.PreservedLibsRegistry:PreservedLibsRegistry',
 	'portage.util._dyn_libs.LinkageMapELF:LinkageMapELF@LinkageMap',
@@ -173,7 +173,8 @@ class vardbapi(dbapi):
 		self.vartree = vartree
 		self._aux_cache_keys = set(
 			["BUILD_TIME", "CHOST", "COUNTER", "DEPEND", "DESCRIPTION",
-			"EAPI", "HDEPEND", "HOMEPAGE", "IUSE", "KEYWORDS",
+			"EAPI", "HDEPEND", "HOMEPAGE",
+			"BUILD_ID", "IUSE", "KEYWORDS",
 			"LICENSE", "PDEPEND", "PROPERTIES", "PROVIDE", "RDEPEND",
 			"repository", "RESTRICT" , "SLOT", "USE", "DEFINED_PHASES",
 			"PROVIDES", "REQUIRES"
@@ -425,7 +426,10 @@ class vardbapi(dbapi):
 				continue
 			if len(mysplit) > 1:
 				if ps[0] == mysplit[1]:
-					returnme.append(_pkg_str(mysplit[0]+"/"+x))
+					cpv = "%s/%s" % (mysplit[0], x)
+					metadata = dict(zip(self._aux_cache_keys,
+						self.aux_get(cpv, self._aux_cache_keys)))
+					returnme.append(_pkg_str(cpv, metadata=metadata))
 		self._cpv_sort_ascending(returnme)
 		if use_cache:
 			self.cpcache[mycp] = [mystat, returnme[:]]
@@ -1573,6 +1577,7 @@ class dblink(object):
 		self._hash_key = (self._eroot, self.mycpv)
 		self._protect_obj = None
 		self._pipe = pipe
+		self._postinst_failure = False
 
 		# When necessary, this attribute is modified for
 		# compliance with RESTRICT=preserve-libs.
@@ -2586,6 +2591,9 @@ class dblink(object):
 				os.path.join(real_root, f.lstrip(os.path.sep)))
 
 		msg.append("")
+		msg.append("Use the UNINSTALL_IGNORE variable to exempt specific symlinks")
+		msg.append("from the following search (see the make.conf man page).")
+		msg.append("")
 		msg.append(_("Searching all installed"
 			" packages for files installed via above symlink(s)..."))
 		msg.append("")
@@ -3321,6 +3329,8 @@ class dblink(object):
 			showMessage = self._display_merge
 			stopmerge = False
 			collisions = []
+			dirs = set()
+			dirs_ro = set()
 			symlink_collisions = []
 			destroot = self.settings['ROOT']
 			showMessage(_(" %s checking %d files for package collisions\n") % \
@@ -3333,6 +3343,18 @@ class dblink(object):
 
 				dest_path = normalize_path(
 					os.path.join(destroot, f.lstrip(os.path.sep)))
+
+				parent = os.path.dirname(dest_path)
+				if parent not in dirs:
+					for x in iter_parents(parent):
+						if x in dirs:
+							break
+						dirs.add(x)
+						if os.path.isdir(x):
+							if not os.access(x, os.W_OK):
+								dirs_ro.add(x)
+							break
+
 				try:
 					dest_lstat = os.lstat(dest_path)
 				except EnvironmentError as e:
@@ -3406,7 +3428,7 @@ class dblink(object):
 							break
 					if stopmerge:
 						collisions.append(f)
-			return collisions, symlink_collisions, plib_collisions
+			return collisions, dirs_ro, symlink_collisions, plib_collisions
 
 	def _lstat_inode_map(self, path_iter):
 		"""
@@ -3747,6 +3769,7 @@ class dblink(object):
 		line_ending_re = re.compile('[\n\r]')
 		srcroot_len = len(srcroot)
 		ed_len = len(self.settings["ED"])
+		eprefix_len = len(self.settings["EPREFIX"])
 
 		while True:
 
@@ -3754,7 +3777,6 @@ class dblink(object):
 			eagain_error = False
 
 			filelist = []
-			dirlist = []
 			linklist = []
 			paths_with_newlines = []
 			def onerror(e):
@@ -3786,9 +3808,6 @@ class dblink(object):
 					unicode_error = True
 					unicode_errors.append(new_parent[ed_len:])
 					break
-
-				relative_path = parent[srcroot_len:]
-				dirlist.append(os.path.join(destroot, relative_path))
 
 				for fname in files:
 					try:
@@ -3902,9 +3921,17 @@ class dblink(object):
 			for other in others_in_slot])
 		prepare_build_dirs(settings=self.settings, cleanup=cleanup)
 
+		# check for package collisions
+		blockers = self._blockers
+		if blockers is None:
+			blockers = []
+		collisions, dirs_ro, symlink_collisions, plib_collisions = \
+			self._collision_protect(srcroot, destroot,
+			others_in_slot + blockers, filelist, linklist)
+
 		# Check for read-only filesystems.
 		ro_checker = get_ro_checker()
-		rofilesystems = ro_checker(dirlist)
+		rofilesystems = ro_checker(dirs_ro)
 
 		if rofilesystems:
 			msg = _("One or more files installed to this package are "
@@ -3925,14 +3952,6 @@ class dblink(object):
 			msg = textwrap.wrap(msg, 70)
 			eerror(msg)
 			return 1
-
-		# check for package collisions
-		blockers = self._blockers
-		if blockers is None:
-			blockers = []
-		collisions, symlink_collisions, plib_collisions = \
-			self._collision_protect(srcroot, destroot,
-			others_in_slot + blockers, filelist, linklist)
 
 		if symlink_collisions:
 			# Symlink collisions need to be distinguished from other types
@@ -4358,8 +4377,10 @@ class dblink(object):
 		if a != os.EX_OK:
 			# It's stupid to bail out here, so keep going regardless of
 			# phase return code.
-			showMessage(_("!!! FAILED postinst: ")+str(a)+"\n",
-				level=logging.ERROR, noiselevel=-1)
+			self._postinst_failure = True
+			self._elog("eerror", "postinst", [
+				_("FAILED postinst: %s") % (a,),
+			])
 
 		#update environment settings, library paths. DO NOT change symlinks.
 		env_update(
@@ -5023,6 +5044,10 @@ class dblink(object):
 			self.vartree.dbapi._bump_mtime(self.mycpv)
 			if not parallel_install:
 				self.unlockdb()
+
+		if retval == os.EX_OK and self._postinst_failure:
+			retval = portage.const.RETURNCODE_POSTINST_FAILURE
+
 		return retval
 
 	def getstring(self,name):

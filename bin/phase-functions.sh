@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 1999-2013 Gentoo Foundation
+# Copyright 1999-2015 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 # Hardcoded bash lists are needed for backward compatibility with
@@ -549,13 +549,6 @@ __dyn_test() {
 	elif [[ ${EBUILD_FORCE_TEST} != 1 ]] && ! has test ${FEATURES} ; then
 		__vecho ">>> Test phase [not enabled]: ${CATEGORY}/${PF}"
 	else
-		# If ${EBUILD_FORCE_TEST} == 1 and USE came from ${T}/environment
-		# then it might not have USE=test like it's supposed to here.
-		if [[ ${EBUILD_FORCE_TEST} == 1 && test =~ ${PORTAGE_IUSE} ]] && \
-			! has test ${USE} ; then
-			export USE="${USE} test"
-		fi
-
 		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
 			if [ ${PORTAGE_BUILDDIR}/.tested.${LOOP_ABI} -nt "${WORKDIR}" ]; then
 				echo ">>> It appears that ${PN} is already tested for ABI=${LOOP_ABI}; skipping."
@@ -563,7 +556,6 @@ __dyn_test() {
 				continue
 			fi
 		fi
-
 		local save_sp=${SANDBOX_PREDICT}
 		addpredict /
 		__ebuild_phase pre_src_test
@@ -669,7 +661,7 @@ __dyn_install() {
 		for f in ASFLAGS CBUILD CC CFLAGS CHOST CTARGET CXX \
 			CXXFLAGS EXTRA_ECONF EXTRA_EINSTALL EXTRA_MAKE \
 			LDFLAGS LIBCFLAGS LIBCXXFLAGS QA_CONFIGURE_OPTIONS \
-			QA_DESKTOP_FILE PROVIDES_EXCLUDE REQUIRES_EXCLUDE ; do
+			QA_DESKTOP_FILE QA_PREBUILT PROVIDES_EXCLUDE REQUIRES_EXCLUDE ; do
 			x=$(echo -n ${!f})
 			[[ -n $x ]] && echo "$x" > $f
 		done
