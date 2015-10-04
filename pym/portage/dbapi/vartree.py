@@ -35,6 +35,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.util.movefile:movefile',
 	'portage.util.path:first_existing,iter_parents',
 	'portage.util.writeable_check:get_ro_checker',
+	'portage.util._xattr:xattr',
 	'portage.util._dyn_libs.PreservedLibsRegistry:PreservedLibsRegistry',
 	'portage.util._dyn_libs.LinkageMapELF:LinkageMapELF@LinkageMap',
 	'portage.util._async.SchedulerInterface:SchedulerInterface',
@@ -490,7 +491,7 @@ class vardbapi(dbapi):
 
 				yield subpath
 
-	def cp_all(self, use_cache=1):
+	def cp_all(self, use_cache=1, sort=False):
 		mylist = self.cpv_all(use_cache=use_cache)
 		d={}
 		for y in mylist:
@@ -505,7 +506,7 @@ class vardbapi(dbapi):
 				self.invalidentry(self.getpath(y))
 				continue
 			d[mysplit[0]+"/"+mysplit[1]] = None
-		return list(d)
+		return sorted(d) if sort else list(d)
 
 	def checkblockers(self, origdep):
 		pass
@@ -5266,7 +5267,8 @@ def write_contents(contents, root, f):
 			line = "%s %s\n" % (entry_type, relative_filename)
 		f.write(line)
 
-def tar_contents(contents, root, tar, protect=None, onProgress=None):
+def tar_contents(contents, root, tar, protect=None, onProgress=None,
+	xattrs=False):
 	os = _os_merge
 	encoding = _encodings['merge']
 
@@ -5384,9 +5386,19 @@ def tar_contents(contents, root, tar, protect=None, onProgress=None):
 				tar.addfile(tarinfo, f)
 				f.close()
 			else:
-				with open(_unicode_encode(path,
+				path_bytes = _unicode_encode(path,
 					encoding=encoding,
-					errors='strict'), 'rb') as f:
+					errors='strict')
+
+				if xattrs:
+					# Compatible with GNU tar, which saves the xattrs
+					# under the SCHILY.xattr namespace.
+					for k in xattr.list(path_bytes):
+						tarinfo.pax_headers['SCHILY.xattr.' +
+							_unicode_decode(k)] = _unicode_decode(
+							xattr.get(path_bytes, _unicode_encode(k)))
+
+				with open(path_bytes, 'rb') as f:
 					tar.addfile(tarinfo, f)
 
 		else:

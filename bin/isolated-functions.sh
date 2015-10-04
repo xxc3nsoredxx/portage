@@ -2,7 +2,7 @@
 # Copyright 1999-2014 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
-source "${PORTAGE_BIN_PATH:-/usr/lib/portage/bin}/eapi.sh"
+source "${PORTAGE_BIN_PATH}/eapi.sh" || exit 1
 
 # We need this next line for "die" and "assert". It expands
 # It _must_ preceed all the calls to die and assert.
@@ -121,6 +121,7 @@ __helpers_die() {
 }
 
 die() {
+	set +x # tracing only produces useless noise here
 	local IFS=$' \t\n'
 
 	if ___eapi_die_can_respect_nonfatal; then
