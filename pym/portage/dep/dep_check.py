@@ -84,11 +84,14 @@ def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 						use_tokens = []
 					else:
 						use_tokens = list(x.unevaluated_atom.use.tokens)
+					if 'abi_x86_64' in use_tokens:
+						use_tokens[use_tokens.index('abi_x86_64')] = 'multilib_abi_amd64'
+					if 'abi_x86_32' in use_tokens:
+						use_tokens[use_tokens.index('abi_x86_32')] = 'multilib_abi_x86'
 					use_tokens.extend(multilib_flags)
 					x = Atom(x.unevaluated_atom.without_use +
 						"[%s]" % (",".join(use_tokens)))
 					x = x.evaluate_conditionals(myuse)
-
 		mykey = x.cp
 		if not mykey.startswith("virtual/"):
 			newsplit.append(x)
