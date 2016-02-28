@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 
 from __future__ import print_function, unicode_literals
 
@@ -632,7 +633,7 @@ class Scanner(object):
 							continue
 						# we are testing deps for a masked package; give it some lee-way
 						suffix = "masked"
-						matchmode = "minimum-all"
+						matchmode = "minimum-all-ignore-profile"
 					else:
 						suffix = ""
 						matchmode = "minimum-visible"
@@ -688,15 +689,27 @@ class Scanner(object):
 								# if we emptied out our list, continue:
 								if not atoms:
 									continue
+								if self.options.output_style in ['column']:
+									self.qatracker.add_error(mykey,
+										"%s: %s: %s(%s) %s"
+										% (ebuild.relative_path, mytype, keyword,
+											prof, repr(atoms)))
+								else:
+									self.qatracker.add_error(mykey,
+										"%s: %s: %s(%s)\n%s"
+										% (ebuild.relative_path, mytype, keyword,
+											prof, pformat(atoms, indent=6)))
+						else:
+							if self.options.output_style in ['column']:
+								self.qatracker.add_error(mykey,
+									"%s: %s: %s(%s) %s"
+									% (ebuild.relative_path, mytype, keyword,
+										prof, repr(atoms)))
+							else:
 								self.qatracker.add_error(mykey,
 									"%s: %s: %s(%s)\n%s"
-									% (ebuild.relative_path, mytype, keyword, prof,
-										pformat(atoms, indent=6)))
-						else:
-							self.qatracker.add_error(mykey,
-								"%s: %s: %s(%s)\n%s"
-								% (ebuild.relative_path, mytype, keyword, prof,
-									pformat(atoms, indent=6)))
+									% (ebuild.relative_path, mytype, keyword,
+										prof, pformat(atoms, indent=6)))
 
 			if not baddepsyntax and unknown_pkgs:
 				type_map = {}

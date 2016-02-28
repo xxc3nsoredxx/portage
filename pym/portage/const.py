@@ -150,6 +150,7 @@ SUPPORTED_FEATURES       = frozenset([
 	"force-multilib",
 	"force-prefix",
 	"getbinpkg",
+	"icecream",
 	"installsources",
 	"ipc-sandbox",
 	"keeptemp",

@@ -10,6 +10,7 @@ import sys
 # import our initialized portage instance
 from repoman._portage import portage
 
+from portage import _unicode_decode
 from portage import util
 from portage.util._argparse import ArgumentParser
 
@@ -209,6 +210,9 @@ def parse_args(argv, qahelp, repoman_default_opts):
 	for val in range(opts.quiet):
 		logger = logging.getLogger()
 		logger.setLevel(logger.getEffectiveLevel() + 10)
+
+	if opts.mode == 'commit' and opts.commitmsg:
+		opts.commitmsg = _unicode_decode(opts.commitmsg)
 
 	if opts.mode == 'commit' and not (opts.force or opts.pretend):
 		if opts.ignore_masked:
