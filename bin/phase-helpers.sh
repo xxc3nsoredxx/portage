@@ -806,7 +806,7 @@ __eapi4_src_install() {
 }
 
 __eapi6_src_prepare() {
-	if [[ $(declare -p PATCHES) == "declare -a"* ]]; then
+	if [[ $(declare -p PATCHES 2>/dev/null) == "declare -a"* ]]; then
 		eapply "${PATCHES[@]}"
 	elif [[ -n ${PATCHES} ]]; then
 		eapply ${PATCHES}
@@ -982,6 +982,9 @@ fi
 
 if ___eapi_has_eapply; then
 	eapply() {
+		local failed
+		local -x LC_COLLATE=POSIX
+
 		_eapply_patch() {
 			local f=${1}
 			local prefix=${2}
@@ -991,35 +994,68 @@ if ___eapi_has_eapply; then
 			# -p1 as a sane default
 			# -f to avoid interactivity
 			# -s to silence progress output
-			patch -p1 -f -s "${patch_options[@]}" < "${f}"
-			if ! eend ${?}; then
+			# -g0 to guarantee no VCS interaction
+			# --no-backup-if-mismatch not to pollute the sources
+			patch -p1 -f -s -g0 --no-backup-if-mismatch \
+				"${patch_options[@]}" < "${f}"
+			failed=${?}
+			if ! eend "${failed}"; then
 				__helpers_die "patch -p1 ${patch_options[*]} failed with ${f}"
-				failed=1
 			fi
 		}
 
-		local f patch_options=() failed started_applying options_terminated
-		for f; do
-			if [[ ${f} == -* && -z ${options_terminated} ]]; then
-				if [[ -n ${started_applying} ]]; then
-					die "eapply: options need to be specified before files"
+		local patch_options=() files=()
+		local i found_doublehyphen
+		# first, try to split on --
+		for (( i = 1; i <= ${#@}; ++i )); do
+			if [[ ${@:i:1} == -- ]]; then
+				patch_options=( "${@:1:i-1}" )
+				files=( "${@:i+1}" )
+				found_doublehyphen=1
+				break
+			fi
+		done
+
+		# then, try to split on first non-option
+		if [[ -z ${found_doublehyphen} ]]; then
+			for (( i = 1; i <= ${#@}; ++i )); do
+				if [[ ${@:i:1} != -* ]]; then
+					patch_options=( "${@:1:i-1}" )
+					files=( "${@:i}" )
+					break
 				fi
-				if [[ ${f} == -- ]]; then
-					options_terminated=1
-				else
-					patch_options+=( ${f} )
+			done
+
+			# ensure that no options were interspersed with files
+			for i in "${files[@]}"; do
+				if [[ ${i} == -* ]]; then
+					die "eapply: all options must be passed before non-options"
 				fi
-			elif [[ -d ${f} ]]; then
+			done
+		fi
+
+		if [[ -z ${files[@]} ]]; then
+			die "eapply: no files specified"
+		fi
+
+		local f
+		for f in "${files[@]}"; do
+			if [[ -d ${f} ]]; then
 				_eapply_get_files() {
 					local LC_ALL=POSIX
 					local prev_shopt=$(shopt -p nullglob)
 					shopt -s nullglob
-					files=( "${f}"/*.{patch,diff} )
+					local f
+					for f in "${1}"/*; do
+						if [[ ${f} == *.diff || ${f} == *.patch ]]; then
+							files+=( "${f}" )
+						fi
+					done
 					${prev_shopt}
 				}
 
-				local files
-				_eapply_get_files
+				local files=()
+				_eapply_get_files "${f}"
 				[[ -z ${files[@]} ]] && die "No *.{patch,diff} files in directory ${f}"
 
 				einfo "Applying patches from ${f} ..."
@@ -1028,13 +1064,13 @@ if ___eapi_has_eapply; then
 					_eapply_patch "${f2}" '  '
 
 					# in case of nonfatal
-					[[ -n ${failed} ]] && return 1
+					[[ ${failed} -ne 0 ]] && return "${failed}"
 				done
 			else
 				_eapply_patch "${f}"
 
 				# in case of nonfatal
-				[[ -n ${failed} ]] && return 1
+				[[ ${failed} -ne 0 ]] && return "${failed}"
 			fi
 		done
 
@@ -1044,6 +1080,10 @@ fi
 
 if ___eapi_has_eapply_user; then
 	eapply_user() {
+		local tagfile=${T}/.portage_user_patches_applied
+		[[ -f ${tagfile} ]] && return
+		>> "${tagfile}"
+
 		local basedir=${PORTAGE_CONFIGROOT%/}/etc/portage/patches
 
 		local d applied

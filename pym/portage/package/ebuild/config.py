@@ -24,6 +24,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.dep.soname.SonameAtom:SonameAtom',
 	'portage.dbapi.vartree:vartree',
 	'portage.package.ebuild.doebuild:_phase_func_map',
+	'portage.util.locale:check_locale,split_LC_ALL',
 )
 from portage import bsd_chflags, \
 	load_mod, os, selinux, _unicode_decode
@@ -2781,6 +2782,21 @@ class config(object):
 			phase_func = _phase_func_map.get(phase)
 			if phase_func is not None:
 				mydict["EBUILD_PHASE_FUNC"] = phase_func
+
+		if eapi_attrs.posixish_locale:
+			split_LC_ALL(mydict)
+			mydict["LC_COLLATE"] = "C"
+			if not check_locale(silent=True, env=mydict):
+				# try another locale
+				for l in ("C.UTF-8", "en_US.UTF-8", "en_GB.UTF-8", "C"):
+					mydict["LC_CTYPE"] = l
+					if check_locale(silent=True, env=mydict):
+						# TODO: output the following only once
+#						writemsg(_("!!! LC_CTYPE unsupported, using %s instead\n")
+#								% mydict["LC_CTYPE"])
+						break
+				else:
+					raise AssertionError("C locale did not pass the test!")
 
 		return mydict
 

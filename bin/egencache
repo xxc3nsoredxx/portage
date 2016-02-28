@@ -55,7 +55,9 @@ from portage.const import TIMESTAMP_FORMAT
 from portage.manifest import guessManifestFileType
 from portage.package.ebuild._parallel_manifest.ManifestScheduler import ManifestScheduler
 from portage.util import cmp_sort_key, writemsg_level
+from portage.util._async.AsyncFunction import AsyncFunction
 from portage.util._async.run_main_scheduler import run_main_scheduler
+from portage.util._async.TaskScheduler import TaskScheduler
 from portage.util._eventloop.global_event_loop import global_event_loop
 from portage import cpv_getkey
 from portage.dep import Atom, isjustname
@@ -748,7 +750,8 @@ class _special_filename(_filename_base):
 			return self.file_name < other.file_name
 
 class GenChangeLogs(object):
-	def __init__(self, portdb, changelog_output, changelog_reversed):
+	def __init__(self, portdb, changelog_output, changelog_reversed,
+		max_jobs=None, max_load=None):
 		self.returncode = os.EX_OK
 		self._portdb = portdb
 		self._wrapper = textwrap.TextWrapper(
@@ -758,6 +761,18 @@ class GenChangeLogs(object):
 			)
 		self._changelog_output = changelog_output
 		self._changelog_reversed = changelog_reversed
+		self._max_jobs = max_jobs
+		self._max_load = max_load
+		self._repo_path = self._portdb.porttrees[0]
+		# --work-tree=... must be passed to Git if GIT_DIR is used
+		# and GIT_DIR is not a child of the root of the checkout
+		# eg:
+		# GIT_DIR=$parent/work/.git/
+		# work-tree=$parent/staging/
+		# If work-tree is not passed, Git tries to use the shared
+		# parent of the current directory and the $GIT_DIR, which can
+		# be outside the root of the checkout.
+		self._work_tree = '--work-tree=%s' % self._repo_path
 
 	@staticmethod
 	def grab(cmd):
@@ -766,6 +781,23 @@ class GenChangeLogs(object):
 				encoding=_encodings['stdio'], errors='strict')
 
 	def generate_changelog(self, cp):
+
+		os.chdir(os.path.join(self._repo_path, cp))
+		# Determine whether ChangeLog is up-to-date by comparing
+		# the newest commit timestamp with the ChangeLog timestamp.
+		lmod = self.grab(['git', self._work_tree, 'log', '--format=%ct', '-1', '.'])
+		if not lmod:
+			# This cp has not been added to the repo.
+			return
+
+		try:
+			cmod = os.stat('ChangeLog').st_mtime
+		except OSError:
+			cmod = 0
+
+		if float(cmod) >= float(lmod):
+			return
+
 		try:
 			output = io.open(self._changelog_output,
 				mode='w', encoding=_encodings['repo.content'],
@@ -785,7 +817,7 @@ class GenChangeLogs(object):
 			''' % (cp, time.strftime('%Y'))))
 
 		# now grab all the commits
-		revlist_cmd = ['git', 'rev-list']
+		revlist_cmd = ['git', self._work_tree, 'rev-list']
 		if self._changelog_reversed:
 			revlist_cmd.append('--reverse')
 		revlist_cmd.extend(['HEAD', '--', '.'])
@@ -797,12 +829,17 @@ class GenChangeLogs(object):
 			# --no-renames to avoid getting more complex records on the list
 			# --format to get the timestamp, author and commit description
 			# --root to make it work fine even with the initial commit
-			# --relative to get paths relative to ebuilddir
+			# --relative=$cp to get paths relative to ebuilddir
 			# -r (recursive) to get per-file changes
 			# then the commit-id and path.
 
-			cinfo = self.grab(['git', 'diff-tree', '--name-status', '--no-renames',
-					'--format=%ct %cN <%cE>%n%B', '--root', '--relative', '-r',
+			cinfo = self.grab(['git', self._work_tree, 'diff-tree',
+					'--name-status',
+					'--no-renames',
+					'--format=%ct %cN <%cE>%n%B',
+					'--root',
+					'--relative=%s' % (cp, ),
+					'-r',
 					c, '--', '.']).rstrip('\n').split('\n')
 
 			# Expected output:
@@ -882,9 +919,8 @@ class GenChangeLogs(object):
 
 		output.close()
 
-	def run(self):
-		repo_path = self._portdb.porttrees[0]
-		os.chdir(repo_path)
+	def _task_iter(self):
+		os.chdir(self._repo_path)
 
 		if 'git' not in FindVCS():
 			writemsg_level(
@@ -894,21 +930,12 @@ class GenChangeLogs(object):
 			return
 
 		for cp in self._portdb.cp_all():
-			os.chdir(os.path.join(repo_path, cp))
-			# Determine whether ChangeLog is up-to-date by comparing
-			# the newest commit timestamp with the ChangeLog timestamp.
-			lmod = self.grab(['git', 'log', '--format=%ct', '-1', '.'])
-			if not lmod:
-				# This cp has not been added to the repo.
-				continue
+			yield AsyncFunction(target=self.generate_changelog, args=[cp])
 
-			try:
-				cmod = os.stat('ChangeLog').st_mtime
-			except OSError:
-				cmod = 0
-
-			if float(cmod) < float(lmod):
-				self.generate_changelog(cp)
+	def run(self):
+		return run_main_scheduler(
+			TaskScheduler(self._task_iter(), event_loop=global_event_loop(),
+				max_jobs=self._max_jobs, max_load=self._max_load))
 
 def egencache_main(args):
 
@@ -1095,29 +1122,6 @@ def egencache_main(args):
 		else:
 			ret.append(gen_cache.returncode)
 
-	if options.update_manifests:
-
-		cp_iter = None
-		if atoms:
-			cp_iter = iter(atoms)
-
-		event_loop = global_event_loop()
-		scheduler = ManifestScheduler(portdb, cp_iter=cp_iter,
-			gpg_cmd=gpg_cmd, gpg_vars=gpg_vars,
-			force_sign_key=force_sign_key,
-			max_jobs=options.jobs,
-			max_load=options.load_average,
-			event_loop=event_loop)
-
-		signum = run_main_scheduler(scheduler)
-		if signum is not None:
-			sys.exit(128 + signum)
-
-		if options.tolerant:
-			ret.append(os.EX_OK)
-		else:
-			ret.append(scheduler.returncode)
-
 	if options.update_pkg_desc_index:
 		if repo_config.writable:
 			writable_location = repo_config.location
@@ -1149,9 +1153,36 @@ def egencache_main(args):
 	if options.update_changelogs:
 		gen_clogs = GenChangeLogs(portdb,
 			changelog_output=options.changelog_output,
-			changelog_reversed=options.changelog_reversed)
-		gen_clogs.run()
+			changelog_reversed=options.changelog_reversed,
+			max_jobs=options.jobs,
+			max_load=options.load_average)
+		signum = gen_clogs.run()
+		if signum is not None:
+			sys.exit(128 + signum)
 		ret.append(gen_clogs.returncode)
+
+	if options.update_manifests:
+
+		cp_iter = None
+		if atoms:
+			cp_iter = iter(atoms)
+
+		event_loop = global_event_loop()
+		scheduler = ManifestScheduler(portdb, cp_iter=cp_iter,
+			gpg_cmd=gpg_cmd, gpg_vars=gpg_vars,
+			force_sign_key=force_sign_key,
+			max_jobs=options.jobs,
+			max_load=options.load_average,
+			event_loop=event_loop)
+
+		signum = run_main_scheduler(scheduler)
+		if signum is not None:
+			sys.exit(128 + signum)
+
+		if options.tolerant:
+			ret.append(os.EX_OK)
+		else:
+			ret.append(scheduler.returncode)
 
 	if options.write_timestamp:
 		timestamp_path = os.path.join(repo_path, 'metadata', 'timestamp.chk')
