@@ -222,12 +222,6 @@ __dyn_pretend() {
 }
 
 __dyn_setup() {
-	if [[ -e $PORTAGE_BUILDDIR/.setuped ]] ; then
-		__vecho ">>> It appears that '$PF' is already setup; skipping."
-		__vecho ">>> Remove '$PORTAGE_BUILDDIR/.setuped' to force setup."
-		return
-	fi
-
 	if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
 		if ! is_auto-multilib && ! use multilib_abi_"${DEFAULT_ABI}" ; then
 			ewarn
