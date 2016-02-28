@@ -82,13 +82,24 @@ class Scanner(object):
 			portage.util.stack_lists([self.categories], incremental=1))
 		self.categories = self.repo_settings.repoman_settings.categories
 
+		metadata_dtd = None
+		for path in reversed(self.repo_settings.repo_config.eclass_db.porttrees):
+			path = os.path.join(path, 'metadata/dtd/metadata.dtd')
+			if os.path.exists(path):
+				metadata_dtd = path
+				break
+
 		self.portdb = repo_settings.portdb
 		self.portdb.settings = self.repo_settings.repoman_settings
 		# We really only need to cache the metadata that's necessary for visibility
 		# filtering. Anything else can be discarded to reduce memory consumption.
-		self.portdb._aux_cache_keys.clear()
-		self.portdb._aux_cache_keys.update(
-			["EAPI", "IUSE", "KEYWORDS", "repository", "SLOT"])
+		if self.options.mode != "manifest" and self.options.digest != "y":
+			# Don't do this when generating manifests, since that uses
+			# additional keys if spawn_nofetch is called (RESTRICT and
+			# DEFINED_PHASES).
+			self.portdb._aux_cache_keys.clear()
+			self.portdb._aux_cache_keys.update(
+				["EAPI", "IUSE", "KEYWORDS", "repository", "SLOT"])
 
 		self.reposplit = myreporoot.split(os.path.sep)
 		self.repolevel = len(self.reposplit)
@@ -201,7 +212,8 @@ class Scanner(object):
 		self.status_check = VCSStatus(self.vcs_settings, self.qatracker)
 		self.fetchcheck = FetchChecks(
 			self.qatracker, self.repo_settings, self.portdb, self.vcs_settings)
-		self.pkgmeta = PkgMetadata(self.options, self.qatracker, self.repo_settings.repoman_settings)
+		self.pkgmeta = PkgMetadata(self.options, self.qatracker,
+			self.repo_settings.repoman_settings, metadata_dtd=metadata_dtd)
 		self.thirdparty = ThirdPartyMirrors(self.repo_settings.repoman_settings, self.qatracker)
 		self.use_flag_checks = USEFlagChecks(self.qatracker, uselist)
 		self.keywordcheck = KeywordChecks(self.qatracker, self.options)

@@ -3667,7 +3667,7 @@ class depgraph(object):
 				if ebuild_path:
 					if ebuild_path != os.path.join(os.path.realpath(tree_root),
 						cp, os.path.basename(ebuild_path)):
-						writemsg(colorize("BAD", "\n*** You need to adjust PORTDIR or PORTDIR_OVERLAY to emerge this package.\n\n"), noiselevel=-1)
+						writemsg(colorize("BAD", "\n*** You need to adjust repos.conf to emerge this package.\n\n"), noiselevel=-1)
 						self._dynamic_config._skip_restart = True
 						return 0, myfavorites
 					if mykey not in portdb.xmatch(
@@ -4015,7 +4015,7 @@ class depgraph(object):
 							continue
 
 						if not (isinstance(arg, SetArg) and \
-							arg.name in ("selected", "system", "world")):
+							arg.name in ("selected", "world")):
 							self._dynamic_config._unsatisfied_deps_for_display.append(
 								((myroot, atom), {"myparent" : arg}))
 							return 0, myfavorites
@@ -5407,8 +5407,14 @@ class depgraph(object):
 		@return: True if the package is deeper than the max allowed depth
 		"""
 		deep = self._dynamic_config.myparams.get("deep", 0)
-		return depth is self._UNREACHABLE_DEPTH or (
-			isinstance(deep, int) and isinstance(depth, int) and depth > deep)
+		if depth is self._UNREACHABLE_DEPTH:
+			return True
+		elif deep is True:
+			return False
+		else:
+			# All non-integer cases are handled above,
+			# so both values must be int type.
+			return depth > deep
 
 	def _depth_increment(self, depth, n=1):
 		"""
@@ -9058,7 +9064,9 @@ class _dep_check_composite_db(dbapi):
 			# Note: highest_visible is not necessarily the real highest
 			# visible, especially when --update is not enabled, so use
 			# < operator instead of !=.
-			if highest_visible is not None and pkg < highest_visible:
+			if (highest_visible is not None and pkg < highest_visible
+				and atom_set.findAtomForPackage(highest_visible,
+				modified_use=self._depgraph._pkg_use_enabled(highest_visible))):
 				return False
 		elif in_graph != pkg:
 			# Mask choices for packages that would trigger a slot

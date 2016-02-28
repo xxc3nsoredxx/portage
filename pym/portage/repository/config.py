@@ -89,8 +89,8 @@ class RepoConfig(object):
 		'profile_formats', 'sign_commit', 'sign_manifest',
 		'sync_depth', 'sync_hooks_only_on_change',
 		'sync_type', 'sync_umask', 'sync_uri', 'sync_user', 'thin_manifest',
-		'update_changelog', 'user_location', '_eapis_banned',
-		'_eapis_deprecated', '_masters_orig', 'module_specific_options',
+		'update_changelog', '_eapis_banned', '_eapis_deprecated',
+		'_masters_orig', 'module_specific_options',
 		)
 
 	def __init__(self, name, repo_opts, local_config=True):
@@ -187,7 +187,6 @@ class RepoConfig(object):
 		self.format = format
 
 		location = repo_opts.get('location')
-		self.user_location = location
 		if location is not None and location.strip():
 			if os.path.isdir(location) or portage._sync_mode:
 				location = os.path.realpath(location)
@@ -408,8 +407,8 @@ class RepoConfig(object):
 		repo_msg.append(self.name)
 		if self.format:
 			repo_msg.append(indent + "format: " + self.format)
-		if self.user_location:
-			repo_msg.append(indent + "location: " + self.user_location)
+		if self.location:
+			repo_msg.append(indent + "location: " + self.location)
 		if self.sync_type:
 			repo_msg.append(indent + "sync-type: " + self.sync_type)
 		if self.sync_umask:
@@ -525,7 +524,7 @@ class RepoConfigLoader(object):
 							old_location == default_portdir):
 							ignored_map.setdefault(repo.name, []).append(old_location)
 							if old_location == portdir:
-								portdir = repo.user_location
+								portdir = repo.location
 
 					if repo.priority is None:
 						if base_priority == 0 and ov == portdir_orig:
@@ -805,7 +804,7 @@ class RepoConfigLoader(object):
 				master_repos = []
 				for master_name in repo.masters:
 					if master_name not in prepos:
-						layout_filename = os.path.join(repo.user_location,
+						layout_filename = os.path.join(repo.location,
 							"metadata", "layout.conf")
 						writemsg_level(_("Unavailable repository '%s' " \
 							"referenced by masters entry in '%s'\n") % \
@@ -885,14 +884,6 @@ class RepoConfigLoader(object):
 
 			self._prepos_changed = False
 		return self._repo_location_list
-
-	def repoUserLocationList(self):
-		"""Get a list of repositories location. Replaces PORTDIR_OVERLAY"""
-		user_location_list = []
-		for repo in self.prepos_order:
-			if self.prepos[repo].location is not None:
-				user_location_list.append(self.prepos[repo].user_location)
-		return tuple(user_location_list)
 
 	def mainRepoLocation(self):
 		"""Returns the location of main repo"""

@@ -1,4 +1,4 @@
-# Copyright 1999-2014 Gentoo Foundation
+# Copyright 1999-2015 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import division, print_function, unicode_literals
@@ -326,6 +326,10 @@ def action_build(settings, trees, mtimedb,
 			root_config = trees[settings['EROOT']]['root_config']
 			display_missing_pkg_set(root_config, e.value)
 			return 1
+
+		if "--autounmask-only" in myopts:
+			mydepgraph.display_problems()
+			return 0
 
 		if not success:
 			mydepgraph.display_problems()
@@ -1580,7 +1584,7 @@ def action_info(settings, trees, myopts, myfiles):
 	chost = settings.get("CHOST")
 
 	append(getportageversion(settings["PORTDIR"], None,
-		settings.profile_path, settings["CHOST"],
+		settings.profile_path, chost,
 		trees[settings['EROOT']]["vartree"].dbapi))
 
 	header_width = 65
@@ -2393,7 +2397,7 @@ def load_emerge_config(emerge_config=None, **kargs):
 
 	return emerge_config
 
-def getgccversion(chost):
+def getgccversion(chost=None):
 	"""
 	rtype: C{str}
 	return:  the current in-use gcc version
@@ -2408,30 +2412,31 @@ def getgccversion(chost):
 	"!!! other terminals also.\n"
 	)
 
-	try:
-		proc = subprocess.Popen(["gcc-config", "-c"],
-			stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-	except OSError:
-		myoutput = None
-		mystatus = 1
-	else:
-		myoutput = _unicode_decode(proc.communicate()[0]).rstrip("\n")
-		mystatus = proc.wait()
-	if mystatus == os.EX_OK and myoutput.startswith(chost + "-"):
-		return myoutput.replace(chost + "-", gcc_ver_prefix, 1)
+	if chost:
+		try:
+			proc = subprocess.Popen(["gcc-config", "-c"],
+				stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+		except OSError:
+			myoutput = None
+			mystatus = 1
+		else:
+			myoutput = _unicode_decode(proc.communicate()[0]).rstrip("\n")
+			mystatus = proc.wait()
+		if mystatus == os.EX_OK and myoutput.startswith(chost + "-"):
+			return myoutput.replace(chost + "-", gcc_ver_prefix, 1)
 
-	try:
-		proc = subprocess.Popen(
-			[chost + "-" + gcc_ver_command[0]] + gcc_ver_command[1:],
-			stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-	except OSError:
-		myoutput = None
-		mystatus = 1
-	else:
-		myoutput = _unicode_decode(proc.communicate()[0]).rstrip("\n")
-		mystatus = proc.wait()
-	if mystatus == os.EX_OK:
-		return gcc_ver_prefix + myoutput
+		try:
+			proc = subprocess.Popen(
+				[chost + "-" + gcc_ver_command[0]] + gcc_ver_command[1:],
+				stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+		except OSError:
+			myoutput = None
+			mystatus = 1
+		else:
+			myoutput = _unicode_decode(proc.communicate()[0]).rstrip("\n")
+			mystatus = proc.wait()
+		if mystatus == os.EX_OK:
+			return gcc_ver_prefix + myoutput
 
 	try:
 		proc = subprocess.Popen(gcc_ver_command,
@@ -2817,7 +2822,7 @@ def run_action(emerge_config):
 			writemsg_level(bad("!!! has some basic instructions for the setup\n"),level=logging.ERROR, noiselevel=-1)
 			return 1
 
-	for fmt in emerge_config.target_config.settings["PORTAGE_BINPKG_FORMAT"].split():
+	for fmt in emerge_config.target_config.settings.get("PORTAGE_BINPKG_FORMAT", "").split():
 		if not fmt in portage.const.SUPPORTED_BINPKG_FORMATS:
 			if "--pkg-format" in emerge_config.opts:
 				problematic="--pkg-format"
@@ -2834,7 +2839,7 @@ def run_action(emerge_config):
 			emerge_config.target_config.settings["PORTDIR"],
 			None,
 			emerge_config.target_config.settings.profile_path,
-			emerge_config.target_config.settings["CHOST"],
+			emerge_config.target_config.settings.get("CHOST"),
 			emerge_config.target_config.trees['vartree'].dbapi) + '\n',
 			noiselevel=-1)
 		return 0

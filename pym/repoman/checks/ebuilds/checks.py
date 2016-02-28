@@ -337,6 +337,10 @@ class EbuildPatches(LineCheck):
 	re = re.compile(r'^\s*PATCHES=[^\(]')
 	error = errors.PATCHES_ERROR
 
+	def check_eapi(self, eapi):
+		return eapi in ("0", "1", "2", "3", "4", "4-python",
+			"4-slot-abi", "5", "5-hdepend", "5-progress")
+
 
 class EbuildQuotedA(LineCheck):
 	"""Ensure ebuilds have no quoting around ${A}"""
@@ -418,6 +422,12 @@ class InheritDeprecated(LineCheck):
 		"python": "python-r1 / python-single-r1 / python-any-r1",
 		"ruby": "ruby-ng",
 		"x-modular": "xorg-2",
+		"gst-plugins-bad": "gstreamer",
+		"gst-plugins-base": "gstreamer",
+		"gst-plugins-good": "gstreamer",
+		"gst-plugins-ugly": "gstreamer",
+		"gst-plugins10": "gstreamer",
+		"clutter": "gnome2",
 	}
 
 	_inherit_re = re.compile(r'^\s*inherit\s(.*)$')
