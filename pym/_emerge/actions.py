@@ -699,35 +699,49 @@ def calc_depclean(settings, trees, ldpath_mtimes,
 	protected_set = InternalPackageSet()
 	protected_set_name = '____depclean_protected_set____'
 	required_sets[protected_set_name] = protected_set
-	system_set = psets["system"]
 
+	set_error = False
 	set_atoms = {}
 	for k in ("profile", "system", "selected"):
 		try:
 			set_atoms[k] = root_config.setconfig.getSetAtoms(k)
-		except portage.exception.PackageSetNotFound:
+		except portage.exception.PackageSetNotFound as e:
 			# A nested set could not be resolved, so ignore nested sets.
 			set_atoms[k] = root_config.sets[k].getAtoms()
+			writemsg_level(_("!!! The set '%s' "
+				"contains a non-existent set named '%s'.\n") %
+				(k, e), level=logging.ERROR, noiselevel=-1)
+			set_error = True
 
-	if (not set_atoms["system"] or
-		not (set_atoms["selected"] or set_atoms["profile"])):
-
-		if not set_atoms["system"]:
-			writemsg_level("!!! You have no system list.\n",
-				level=logging.ERROR, noiselevel=-1)
-
-		# Skip this warning if @profile is non-empty, in order to
-		# support using @profile as an alternative to @selected
-		# for building a stage 4.
-		if not (set_atoms["selected"] or set_atoms["profile"]):
-			writemsg_level("!!! You have no world file.\n",
-					level=logging.WARNING, noiselevel=-1)
-
-		writemsg_level("!!! Proceeding is likely to " + \
-			"break your installation.\n",
+	# Support @profile as an alternative to @system.
+	if not (set_atoms["system"] or set_atoms["profile"]):
+		writemsg_level(_("!!! You have no system list.\n"),
 			level=logging.WARNING, noiselevel=-1)
-		if "--pretend" not in myopts:
-			countdown(int(settings["EMERGE_WARNING_DELAY"]), ">>> Depclean")
+
+	if not set_atoms["selected"]:
+		writemsg_level(_("!!! You have no world file.\n"),
+			level=logging.WARNING, noiselevel=-1)
+
+	# Suppress world file warnings unless @world is completely empty,
+	# since having an empty world file can be a valid state.
+	try:
+		world_atoms = bool(root_config.setconfig.getSetAtoms('world'))
+	except portage.exception.PackageSetNotFound as e:
+		writemsg_level(_("!!! The set '%s' "
+			"contains a non-existent set named '%s'.\n") %
+			("world", e), level=logging.ERROR, noiselevel=-1)
+		set_error = True
+	else:
+		if not world_atoms:
+			writemsg_level(_("!!! Your @world set is empty.\n"),
+				level=logging.ERROR, noiselevel=-1)
+			set_error = True
+
+	if set_error:
+		writemsg_level(_("!!! Aborting due to set configuration "
+			"errors displayed above.\n"),
+			level=logging.ERROR, noiselevel=-1)
+		return 1, [], False, 0
 
 	if action == "depclean":
 		emergelog(xterm_titles, " >>> depclean")
@@ -849,11 +863,31 @@ def calc_depclean(settings, trees, ldpath_mtimes,
 
 	def unresolved_deps():
 
+		soname_deps = set()
 		unresolvable = set()
 		for dep in resolver._dynamic_config._initially_unsatisfied_deps:
 			if isinstance(dep.parent, Package) and \
 				(dep.priority > UnmergeDepPriority.SOFT):
-				unresolvable.add((dep.atom, dep.parent.cpv))
+				if dep.atom.soname:
+					soname_deps.add((dep.atom, dep.parent.cpv))
+				else:
+					unresolvable.add((dep.atom, dep.parent.cpv))
+
+		if soname_deps:
+			# Generally, broken soname dependencies can safely be
+			# suppressed by a REQUIRES_EXCLUDE setting in the ebuild,
+			# so they should only trigger a warning message.
+			prefix = warn(" * ")
+			msg = []
+			msg.append("Broken soname dependencies found:")
+			msg.append("")
+			for atom, parent in soname_deps:
+				msg.append("  %s required by:" % (atom,))
+				msg.append("    %s" % (parent,))
+				msg.append("")
+
+			writemsg_level("".join("%s%s\n" % (prefix, line) for line in msg),
+				level=logging.WARNING, noiselevel=-1)
 
 		if not unresolvable:
 			return False
@@ -871,7 +905,7 @@ def calc_depclean(settings, trees, ldpath_mtimes,
 			msg.append("the following required packages not being installed:")
 			msg.append("")
 			for atom, parent in unresolvable:
-				if atom != atom.unevaluated_atom and \
+				if atom.package and atom != atom.unevaluated_atom and \
 					vardb.match(_unicode(atom)):
 					msg.append("  %s (%s) pulled in by:" %
 						(atom.unevaluated_atom, atom))

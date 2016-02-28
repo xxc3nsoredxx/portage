@@ -5,6 +5,7 @@
 # unicode_literals for compat with TextIOWrapper in Python 2
 from __future__ import print_function, unicode_literals
 
+import argparse
 import platform
 import signal
 import stat
@@ -54,7 +55,6 @@ from portage.const import TIMESTAMP_FORMAT
 from portage.manifest import guessManifestFileType
 from portage.package.ebuild._parallel_manifest.ManifestScheduler import ManifestScheduler
 from portage.util import cmp_sort_key, writemsg_level
-from portage.util._argparse import ArgumentParser
 from portage.util._async.run_main_scheduler import run_main_scheduler
 from portage.util._eventloop.global_event_loop import global_event_loop
 from portage import cpv_getkey
@@ -81,7 +81,7 @@ if sys.hexversion >= 0x3000000:
 
 def parse_args(args):
 	usage = "egencache [options] <action> ... [atom] ..."
-	parser = ArgumentParser(usage=usage)
+	parser = argparse.ArgumentParser(usage=usage)
 
 	actions = parser.add_argument_group('Actions')
 	actions.add_argument("--update",
@@ -169,6 +169,15 @@ def parse_args(args):
 	uld.add_argument("--use-local-desc-output",
 		help="output file for use.local.desc data (or '-' for stdout)",
 		dest="uld_output")
+
+	uc = parser.add_argument_group('--update-changelogs options')
+	uc.add_argument("--changelog-reversed",
+		action="store_true",
+		help="log commits in reverse order (oldest first)")
+	uc.add_argument("--changelog-output",
+		help="output filename for change logs",
+		dest="changelog_output",
+		default="ChangeLog")
 
 	options, args = parser.parse_known_args(args)
 
@@ -739,7 +748,7 @@ class _special_filename(_filename_base):
 			return self.file_name < other.file_name
 
 class GenChangeLogs(object):
-	def __init__(self, portdb):
+	def __init__(self, portdb, changelog_output, changelog_reversed):
 		self.returncode = os.EX_OK
 		self._portdb = portdb
 		self._wrapper = textwrap.TextWrapper(
@@ -747,6 +756,8 @@ class GenChangeLogs(object):
 				initial_indent = '  ',
 				subsequent_indent = '  '
 			)
+		self._changelog_output = changelog_output
+		self._changelog_reversed = changelog_reversed
 
 	@staticmethod
 	def grab(cmd):
@@ -756,7 +767,7 @@ class GenChangeLogs(object):
 
 	def generate_changelog(self, cp):
 		try:
-			output = io.open('ChangeLog',
+			output = io.open(self._changelog_output,
 				mode='w', encoding=_encodings['repo.content'],
 				errors='backslashreplace')
 		except IOError as e:
@@ -769,12 +780,16 @@ class GenChangeLogs(object):
 		output.write(textwrap.dedent('''\
 			# ChangeLog for %s
 			# Copyright 1999-%s Gentoo Foundation; Distributed under the GPL v2
-			# $Header: $
+			# (auto-generated from git log)
 
 			''' % (cp, time.strftime('%Y'))))
 
 		# now grab all the commits
-		commits = self.grab(['git', 'rev-list', 'HEAD', '--', '.']).split()
+		revlist_cmd = ['git', 'rev-list']
+		if self._changelog_reversed:
+			revlist_cmd.append('--reverse')
+		revlist_cmd.extend(['HEAD', '--', '.'])
+		commits = self.grab(revlist_cmd).split()
 
 		for c in commits:
 			# Explaining the arguments:
@@ -809,7 +824,7 @@ class GenChangeLogs(object):
 					f = l.split()
 					if f[1] == 'Manifest':
 						pass # XXX: remanifest commits?
-					elif f[1] == 'ChangeLog':
+					elif f[1].startswith('ChangeLog'):
 						pass
 					elif f[0].startswith('A'):
 						changed.append(_special_filename("+", f[1]))
@@ -1132,7 +1147,9 @@ def egencache_main(args):
 		ret.append(gen_desc.returncode)
 
 	if options.update_changelogs:
-		gen_clogs = GenChangeLogs(portdb)
+		gen_clogs = GenChangeLogs(portdb,
+			changelog_output=options.changelog_output,
+			changelog_reversed=options.changelog_reversed)
 		gen_clogs.run()
 		ret.append(gen_clogs.returncode)
 
