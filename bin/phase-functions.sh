@@ -222,6 +222,12 @@ __dyn_pretend() {
 }
 
 __dyn_setup() {
+	if [[ -e $PORTAGE_BUILDDIR/.setuped ]] ; then
+		__vecho ">>> It appears that '$PF' is already setup; skipping."
+		__vecho ">>> Remove '$PORTAGE_BUILDDIR/.setuped' to force setup."
+		return
+	fi
+
 	if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
 		if ! is_auto-multilib && ! use multilib_abi_"${DEFAULT_ABI}" ; then
 			ewarn
@@ -270,7 +276,7 @@ __dyn_unpack() {
 	>> "$PORTAGE_BUILDDIR/.unpacked" || \
 		die "Failed to create $PORTAGE_BUILDDIR/.unpacked"
 	__vecho ">>> Source unpacked in ${WORKDIR}"
-	__ebuild_phase post_src_unpack
+__ebuild_phase post_src_unpack
 }
 
 __dyn_clean() {
@@ -410,6 +416,11 @@ __dyn_prepare() {
 	__ebuild_phase src_prepare
 
 	done
+
+	# keep path in eapply_user in sync!
+	if ___eapi_has_eapply_user && [[ ! -f ${T}/.portage_user_patches_applied ]]; then
+		die "eapply_user (or default) must be called in src_prepare()!"
+	fi
 
 	>> "$PORTAGE_BUILDDIR/.prepared" || \
 		die "Failed to create $PORTAGE_BUILDDIR/.prepared"

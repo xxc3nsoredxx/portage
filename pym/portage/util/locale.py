@@ -6,7 +6,7 @@ Function to check whether the current used LC_CTYPE handles case
 transformations of ASCII characters in a way compatible with the POSIX
 locale.
 """
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import locale
 import logging
@@ -14,6 +14,7 @@ import os
 import textwrap
 import traceback
 
+import portage
 from portage.util import writemsg_level
 from portage.util._ctypes import find_library, LoadLibrary
 
@@ -25,7 +26,6 @@ locale_categories = (
 	'LC_ADDRESS', 'LC_IDENTIFICATION', 'LC_MEASUREMENT', 'LC_NAME',
 	'LC_PAPER', 'LC_TELEPHONE',
 )
-
 
 _check_locale_cache = {}
 
@@ -103,7 +103,8 @@ def check_locale(silent=False, env=None):
 		try:
 			if env is not None:
 				try:
-					locale.setlocale(locale.LC_CTYPE, mylocale)
+					locale.setlocale(locale.LC_CTYPE,
+						portage._native_string(mylocale))
 				except locale.Error:
 					os._exit(2)
 

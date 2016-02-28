@@ -454,7 +454,7 @@ class RepoConfigLoader(object):
 
 	@staticmethod
 	def _add_repositories(portdir, portdir_overlay, prepos,
-		ignored_map, ignored_location_map, local_config, default_portdir):
+		ignored_map, local_config, default_portdir):
 		"""Add overlays in PORTDIR_OVERLAY as repositories"""
 		overlays = []
 		portdir_orig = None
@@ -524,7 +524,6 @@ class RepoConfigLoader(object):
 							not (base_priority == 0 and
 							old_location == default_portdir):
 							ignored_map.setdefault(repo.name, []).append(old_location)
-							ignored_location_map[old_location] = repo.name
 							if old_location == portdir:
 								portdir = repo.user_location
 
@@ -547,7 +546,7 @@ class RepoConfigLoader(object):
 		return portdir
 
 	@staticmethod
-	def _parse(paths, prepos, ignored_map, ignored_location_map, local_config, portdir, default_opts):
+	def _parse(paths, prepos, local_config, default_opts):
 		"""Parse files in paths to load config"""
 		parser = SafeConfigParser(defaults=default_opts)
 
@@ -621,7 +620,6 @@ class RepoConfigLoader(object):
 		location_map = {}
 		treemap = {}
 		ignored_map = {}
-		ignored_location_map = {}
 		default_opts = {
 			"EPREFIX" : settings["EPREFIX"],
 			"EROOT" : settings["EROOT"],
@@ -644,9 +642,7 @@ class RepoConfigLoader(object):
 			settings.get("PORTAGE_RSYNC_EXTRA_OPTS", None)
 
 		try:
-			self._parse(paths, prepos, ignored_map,
-				ignored_location_map, settings.local_config,
-				portdir, default_opts)
+			self._parse(paths, prepos, settings.local_config, default_opts)
 		except ConfigParserError as e:
 			writemsg(
 				_("!!! Error while reading repo config file: %s\n") % e,
@@ -659,8 +655,6 @@ class RepoConfigLoader(object):
 				{}, local_config=settings.local_config)
 			location_map.clear()
 			treemap.clear()
-			ignored_map.clear()
-			ignored_location_map.clear()
 
 		default_portdir = os.path.join(os.sep,
 			settings['EPREFIX'].lstrip(os.sep), 'usr', 'portage')
@@ -668,7 +662,7 @@ class RepoConfigLoader(object):
 		# If PORTDIR_OVERLAY contains a repo with the same repo_name as
 		# PORTDIR, then PORTDIR is overridden.
 		portdir = self._add_repositories(portdir, portdir_overlay, prepos,
-			ignored_map, ignored_location_map, settings.local_config,
+			ignored_map, settings.local_config,
 			default_portdir)
 		if portdir and portdir.strip():
 			portdir = os.path.realpath(portdir)
