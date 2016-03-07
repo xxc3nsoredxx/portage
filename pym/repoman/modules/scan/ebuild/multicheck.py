@@ -1,4 +1,8 @@
 
+'''multicheck.py
+Perform  multiple different checks on an ebuild
+'''
+
 import io
 
 from portage import _encodings, _unicode_encode
@@ -10,11 +14,22 @@ class MultiCheck(object):
 	'''Class to run multiple different checks on an ebuild'''
 
 	def __init__(self, **kwargs):
+		'''Class init
+
+		@param qatracker: QATracker instance
+		@param options: the run time cli options
+		'''
 		self.qatracker = kwargs.get('qatracker')
 		self.options = kwargs.get('options')
 		checks_init(self.options.experimental_inherit == 'y')
 
 	def check(self, **kwargs):
+		'''Check the ebuild for utf-8 encoding
+
+		@param pkg: Package in which we check (object).
+		@param ebuild: Ebuild which we check (object).
+		@returns: dictionary
+		'''
 		ebuild = kwargs.get('ebuild')
 		pkg = kwargs.get('pkg')
 		try:
@@ -36,4 +51,5 @@ class MultiCheck(object):
 
 	@property
 	def runInEbuilds(self):
+		'''Ebuild level scans'''
 		return (True, [self.check])

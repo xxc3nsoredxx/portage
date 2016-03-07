@@ -2,11 +2,23 @@
 
 
 class DependUnknown(object):
+	'''Perform checks to determine unknown dependencies'''
 
 	def __init__(self, **kwargs):
+		'''Class init
+
+		@param qatracker: QATracker instance
+		'''
 		self.qatracker = kwargs.get('qatracker')
 
 	def check(self, **kwargs):
+		'''Perform unknown dependancy checks
+
+		@param ebuild: Ebuild which we check (object).
+		@param baddepsyntax: boolean
+		@param unknown_pkgs: set of tuples (type, atom.unevaluated_atom)
+		@returns: dictionary
+		'''
 		ebuild = kwargs.get('ebuild')
 		baddepsyntax = kwargs.get('baddepsyntax')
 		unknown_pkgs = kwargs.get('unknown_pkgs')
@@ -23,4 +35,5 @@ class DependUnknown(object):
 
 	@property
 	def runInEbuilds(self):
+		'''Ebuild level scans'''
 		return (True, [self.check])

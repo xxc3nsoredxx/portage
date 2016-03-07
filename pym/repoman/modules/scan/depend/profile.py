@@ -16,8 +16,25 @@ def sort_key(item):
 
 
 class ProfileDependsChecks(object):
+	'''Perform dependency checks for the different profiles'''
 
 	def __init__(self, **kwargs):
+		'''Class init
+
+		@param qatracker: QATracker instance
+		@param repo_settings: repository settings instance
+		@param vcs_settings: VCSSettings instance
+		@param changed: changes dictionary
+		@param checks: checks dictionary
+		@param portdb: portdb instance
+		@param profiles: dictionary
+		@param include_arches: set
+		@param caches: dictionary of our caches
+		@param repoman_incrementals: tuple
+		@param env: the environment
+		@param have: dictionary instance
+		@param dev_keywords: developer profile keywords
+		'''
 		self.qatracker = kwargs.get('qatracker')
 		self.portdb = kwargs.get('portdb')
 		self.profiles = kwargs.get('profiles')
@@ -31,6 +48,15 @@ class ProfileDependsChecks(object):
 		self.dev_keywords = kwargs.get('dev_keywords')
 
 	def check(self, **kwargs):
+		'''Perform profile dependant dependancy checks
+
+		@param arches:
+		@param pkg: Package in which we check (object).
+		@param ebuild: Ebuild which we check (object).
+		@param baddepsyntax: boolean
+		@param unknown_pkgs: set of tuples (type, atom.unevaluated_atom)
+		@returns: dictionary
+		'''
 		arches = kwargs.get('arches')
 		ebuild = kwargs.get('ebuild')
 		pkg = kwargs.get('pkg')
@@ -204,4 +230,5 @@ class ProfileDependsChecks(object):
 
 	@property
 	def runInEbuilds(self):
+		'''Ebuild level scans'''
 		return (True, [self.check])

@@ -6,6 +6,13 @@ class MtimeChecks(object):
 		self.vcs_settings = kwargs.get('vcs_settings')
 
 	def check(self, **kwargs):
+		'''Perform a changelog and untracked checks on the ebuild
+
+		@param pkg: Package in which we check (object).
+		@param ebuild: Ebuild which we check (object).
+		@param changed: dictionary instance
+		@returns: dictionary
+		'''
 		ebuild = kwargs.get('ebuild')
 		changed = kwargs.get('changed')
 		pkg = kwargs.get('pkg')
@@ -17,4 +24,5 @@ class MtimeChecks(object):
 
 	@property
 	def runInEbuilds(self):
+		'''Ebuild level scans'''
 		return (True, [self.check])
