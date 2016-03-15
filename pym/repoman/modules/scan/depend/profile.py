@@ -24,7 +24,6 @@ class ProfileDependsChecks(object):
 		@param qatracker: QATracker instance
 		@param repo_settings: repository settings instance
 		@param vcs_settings: VCSSettings instance
-		@param changed: changes dictionary
 		@param checks: checks dictionary
 		@param portdb: portdb instance
 		@param profiles: dictionary
