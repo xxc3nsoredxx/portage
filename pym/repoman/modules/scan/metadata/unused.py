@@ -11,7 +11,7 @@ class UnusedCheck(object):
 		used_useflags = kwargs.get('used_useflags')
 		# check if there are unused local USE-descriptions in metadata.xml
 		# (unless there are any invalids, to avoid noise)
-		if kwargs.get('allvalid'):
+		if kwargs.get('validity_fuse'):
 			for myflag in muselist.difference(used_useflags):
 				self.qatracker.add_error(
 					"metadata.warning",
