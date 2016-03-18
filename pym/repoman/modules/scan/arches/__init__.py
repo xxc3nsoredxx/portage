@@ -20,7 +20,7 @@ module_spec = {
 			},
 			'mod_kwargs': ['options', 'repo_settings', 'profiles'
 			],
-			'func_kwargs': {'ebuild': ,
+			'func_kwargs': {'ebuild': None,
 			},
 		},
 	}
