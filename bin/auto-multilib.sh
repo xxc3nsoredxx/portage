@@ -269,12 +269,12 @@ _finalize_abi_install() {
 	if [ "${ABI}" != "${first_installed_abi}" ]; then
 		__vecho ">>> Removing installed symlinks $(_get_abi_string)"
 		for i in $(find ${D} -type l) ; do
-			[[ -e "${D%/}".${first_installed_abi}/${i/${D}} ]] && rm -f ${i}
+			[[ -L "${D%/}".${first_installed_abi}/${i/${D}} ]] && rm -f ${i}
 		done
 	fi
 
 	# Create wrapper symlink for *-config files
-	local i= 
+	local i=
 	prep_ml_binaries $(find "${D}"usr/bin "${D}"usr/sbin "${D}"bin "${D}"sbin -type f -name '*-config' 2>/dev/null)
 
 	local noabi=()
