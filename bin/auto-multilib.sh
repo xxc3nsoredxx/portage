@@ -275,7 +275,7 @@ _finalize_abi_install() {
 
 	# Create wrapper symlink for *-config files
 	local i=
-	prep_ml_binaries $(find "${D}"usr/bin "${D}"usr/sbin "${D}"bin "${D}"sbin -type f -name '*-config' 2>/dev/null)
+	prep_ml_binaries $(find "${D}"usr/bin "${D}"usr/sbin "${D}"bin "${D}"sbin "${D}"usr/lib/llvm/*/bin -type f -name '*-config' 2>/dev/null)
 
 	local noabi=()
 	for i in ${MULTILIB_ABIS}; do
@@ -287,8 +287,10 @@ _finalize_abi_install() {
 		done
 	fi
 	local LIBDIR=$(portage-get_abi_var LIBDIR $1)
+	#FIXME: better way then hardcoding llvm to work around /usr/lib/llvm/${LIBDIR}
 	if ( [[ -d "${D}${LIBDIR}" ]] || [[ -d "${D}usr/${LIBDIR}" ]] || [[ -d "${base}" ]] || \
-			(shopt -s nullglob dotglob; f=("${D}"usr/bin/*-config); ((${#f[@]}))) || \
+		(shopt -s nullglob dotglob; f=("${D}"usr/bin/*-config); ((${#f[@]}))) || \
+		(shopt -s nullglob dotglob; f=("${D}"usr/lib/llvm/*/bin/*-config); ((${#f[@]}))) || \
 		( use abiwrapper && \
 			( [[ -d "${D}"usr/bin ]] || \
 				[[ -d "${D}"usr/sbin ]] || [[ -d "${D}"bin ]] || [[ -d "${D}"sbin ]])) ); then
