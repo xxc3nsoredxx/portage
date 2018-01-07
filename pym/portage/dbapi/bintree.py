@@ -532,7 +532,6 @@ class binarytree(object):
 		# prior to performing package moves since it only wants to
 		# operate on local packages (getbinpkgs=0).
 		self._remotepkgs = None
-		self.dbapi.clear()
 
 		self._populating = True
 		try:
@@ -568,7 +567,13 @@ class binarytree(object):
 		self.populated = True
 
 	def _populate_local(self):
+		self.dbapi.clear()
 		_instance_key = self.dbapi._instance_key
+		# In order to minimize disk I/O, we never compute digests here.
+		# Therefore we exclude hashes from the minimum_keys, so that
+		# the Packages file will not be needlessly re-written due to
+		# missing digests.
+		minimum_keys = self._pkgindex_keys.difference(self._pkgindex_hashes)
 		if True:
 			pkg_paths = {}
 			self._pkg_paths = pkg_paths
@@ -631,7 +636,7 @@ class binarytree(object):
 									continue
 							except (KeyError, ValueError):
 								continue
-							if not self._pkgindex_keys.difference(d):
+							if not minimum_keys.difference(d):
 								match = d
 								break
 						if match:
