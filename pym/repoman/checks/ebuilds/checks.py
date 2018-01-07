@@ -417,6 +417,7 @@ class InheritDeprecated(LineCheck):
 		"bash-completion": "bash-completion-r1",
 		"boost-utils": False,
 		"distutils": "distutils-r1",
+		"games": False,
 		"gems": "ruby-fakegem",
 		"mono": "mono-env",
 		"python": "python-r1 / python-single-r1 / python-any-r1",
@@ -920,7 +921,7 @@ def checks_init(experimental_inherit=False):
 			for k, kwargs in _eclass_info.items())))
 
 
-_here_doc_re = re.compile(r'.*\s<<[-]?(\w+)$')
+_here_doc_re = re.compile(r'.*<<[-]?(\w+)\s*(>\s*\S+\s*)?$')
 _ignore_comment_re = re.compile(r'^\s*#')
 
 

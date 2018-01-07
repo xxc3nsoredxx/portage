@@ -163,7 +163,7 @@ class Scanner(object):
 		self.vcs_settings.vcs_is_cvs_or_svn = self.vcs_settings.vcs in ('cvs', 'svn')
 		self.check['changelog'] = not is_echangelog_enabled and self.vcs_settings.vcs_is_cvs_or_svn
 
-		if self.options.mode == "manifest":
+		if self.options.mode == "manifest" or self.options.quiet:
 			pass
 		elif self.options.pretend:
 			print(green("\nRepoMan does a once-over of the neighborhood..."))
@@ -171,7 +171,10 @@ class Scanner(object):
 			print(green("\nRepoMan scours the neighborhood..."))
 
 		self.changed = Changes(self.options)
-		self.changed.scan(self.vcs_settings)
+		# bypass unneeded VCS operations if not needed
+		if (self.options.if_modified == "y" or
+			self.options.mode not in ("manifest", "manifest-check")):
+			self.changed.scan(self.vcs_settings)
 
 		self.have = {
 			'pmasked': False,
