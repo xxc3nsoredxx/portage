@@ -2273,10 +2273,7 @@ def _post_src_install_soname_symlinks(mysettings, out):
 	#image_dir exists (workaround for multilib-portage as this is first called
 	#before all ABIs are done and the image_dir is created)
 	if not os.path.isdir (image_dir):
-		print(image_dir+" does not exist")
 		return
-	else:
-		print(image_dir+" does exist")
 
 	needed_filename = os.path.join(mysettings["PORTAGE_BUILDDIR"],
 		"build-info", "NEEDED.ELF.2")
