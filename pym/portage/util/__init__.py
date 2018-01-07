@@ -1,4 +1,4 @@
-# Copyright 2004-2014 Gentoo Foundation
+# Copyright 2004-2017 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -478,13 +478,20 @@ def grabfile_package(myfilename, compatlevel=0, recursive=0,
 		eapi = read_corresponding_eapi_file(
 			myfilename, default=eapi_default)
 	mybasename = os.path.basename(myfilename)
+	is_packages_file = mybasename == 'packages'
 	atoms = []
 	for pkg, source_file in pkgs:
 		pkg_orig = pkg
 		# for packages and package.mask files
 		if pkg[:1] == "-":
+			if is_packages_file and pkg == '-*':
+				if remember_source_file:
+					atoms.append((pkg, source_file))
+				else:
+					atoms.append(pkg)
+				continue
 			pkg = pkg[1:]
-		if pkg[:1] == '*' and mybasename == 'packages':
+		if pkg[:1] == '*' and is_packages_file:
 			pkg = pkg[1:]
 		try:
 			pkg = Atom(pkg, allow_wildcard=allow_wildcard,
@@ -709,7 +716,7 @@ def getconfig(mycfg, tolerant=False, allow_sourcing=False, expand=True,
 		lex = _getconfig_shlex(instream=content, infile=mycfg, posix=True,
 			portage_tolerant=tolerant)
 		lex.wordchars = portage._native_string(string.digits +
-			string.ascii_letters + "~!@#$%*_\:;?,./-+{}")
+			string.ascii_letters + r"~!@#$%*_\:;?,./-+{}")
 		lex.quotes = portage._native_string("\"'")
 		if allow_sourcing:
 			lex.allow_sourcing(expand_map)

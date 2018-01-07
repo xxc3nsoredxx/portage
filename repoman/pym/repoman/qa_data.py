@@ -67,6 +67,8 @@ qahelp = {
 		"Files in the files directory must be under 20 KiB"),
 	"file.size.fatal": (
 		"Files in the files directory must be under 60 KiB"),
+	"file.empty": (
+		"Empty file in the files directory"),
 	"file.name": (
 		"File/dir name must be composed"
 		" of only the following chars: %s " % allowed_filename_chars),
@@ -115,6 +117,8 @@ qahelp = {
 		"Ebuilds that have a missing or empty HOMEPAGE variable"),
 	"HOMEPAGE.virtual": (
 		"Virtuals that have a non-empty HOMEPAGE variable"),
+	"HOMEPAGE.missingurischeme": (
+		"HOMEPAGE is missing an URI scheme"),
 	"PDEPEND.suspect": (
 		"PDEPEND contains a package that usually only belongs in DEPEND."),
 	"LICENSE.syntax": (
@@ -260,6 +264,7 @@ qawarnings = set((
 	"ebuild.minorsyn",
 	"ebuild.badheader",
 	"ebuild.patches",
+	"file.empty",
 	"file.size",
 	"inherit.unused",
 	"inherit.deprecated",
@@ -299,6 +304,7 @@ suspect_rdepend = frozenset([
 	"dev-lang/swig",
 	"dev-lang/yasm",
 	"dev-perl/extutils-pkgconfig",
+	"dev-qt/linguist-tools",
 	"dev-util/byacc",
 	"dev-util/cmake",
 	"dev-util/ftjam",
@@ -325,6 +331,8 @@ suspect_rdepend = frozenset([
 	"sys-devel/m4",
 	"sys-devel/pmake",
 	"virtual/linux-sources",
+	"virtual/linuxtv-dvb-headers",
+	"virtual/os-headers",
 	"virtual/pkgconfig",
 	"x11-misc/bdftopcf",
 	"x11-misc/imake",

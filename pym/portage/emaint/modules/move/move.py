@@ -123,7 +123,10 @@ class MoveHandler(object):
 				errors.append("'%s' has outdated metadata" % cpv)
 			if onProgress:
 				onProgress(maxval, i+1)
-		return errors
+
+		if errors:
+			return (False, errors)
+		return (True, None)
 
 	def fix(self,  **kwargs):
 		onProgress = kwargs.get('onProgress', None)
@@ -156,15 +159,18 @@ class MoveHandler(object):
 		# Searching for updates in all the metadata is relatively slow, so this
 		# is where the progress bar comes out of indeterminate mode.
 		self._tree.dbapi.update_ents(allupdates, onProgress=onProgress)
-		return errors
+		if errors:
+			return (False, errors)
+		return (True, None)
 
 class MoveInstalled(MoveHandler):
 
 	short_desc = "Perform package move updates for installed packages"
 
+	@staticmethod
 	def name():
 		return "moveinst"
-	name = staticmethod(name)
+
 	def __init__(self):
 		eroot = portage.settings['EROOT']
 		MoveHandler.__init__(self, portage.db[eroot]["vartree"], portage.db[eroot]["porttree"])
@@ -173,9 +179,10 @@ class MoveBinary(MoveHandler):
 
 	short_desc = "Perform package move updates for binary packages"
 
+	@staticmethod
 	def name():
 		return "movebin"
-	name = staticmethod(name)
+
 	def __init__(self):
 		eroot = portage.settings['EROOT']
 		MoveHandler.__init__(self, portage.db[eroot]["bintree"], portage.db[eroot]['porttree'])

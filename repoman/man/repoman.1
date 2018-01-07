@@ -1,4 +1,4 @@
-.TH "REPOMAN" "1" "Jun 2015" "Portage VERSION" "Portage"
+.TH "REPOMAN" "1" "Feb 2017" "Repoman VERSION" "Repoman"
 .SH NAME
 repoman \- Gentoo's program to enforce a minimal level of quality assurance in
 packages added to the portage tree
@@ -170,6 +170,9 @@ Ebuilds that have an unsupported EAPI version (you must upgrade portage)
 .B HOMEPAGE.missing
 Ebuilds that have a missing or empty HOMEPAGE variable
 .TP
+.B HOMEPAGE.missingurischeme
+HOMEPAGE is missing an URI scheme
+.TP
 .B HOMEPAGE.virtual
 Virtuals that have a non-empty HOMEPAGE variable
 .TP
@@ -324,6 +327,9 @@ error or digest verification failure.
 .TP
 .B file.UTF8
 File is not UTF8 compliant
+.TP
+.B file.empty
+Empty file in the files directory
 .TP
 .B file.executable
 Ebuilds, digests, metadata.xml, Manifest, and ChangeLog do not need the

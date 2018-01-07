@@ -6,6 +6,7 @@ import errno
 import io
 import logging
 import platform
+import re
 import signal
 import sys
 import tempfile
@@ -27,6 +28,7 @@ from repoman.copyrights import update_copyright
 from repoman.gpg import gpgsign, need_signature
 from repoman import utilities
 from repoman.modules.vcs.vcs import vcs_files_to_cps
+from repoman import VERSION
 
 bad = create_color_func("BAD")
 
@@ -126,6 +128,11 @@ class Actions(object):
 		myupdates, broken_changelog_manifests = self.changelogs(
 					myupdates, mymanifests, myremoved, mychanged, myautoadd,
 					mynew, commitmessage)
+
+		lines = commitmessage.splitlines()
+		lastline = lines[-1]
+		if len(lines) == 1 or re.match(r'^\S+:\s', lastline) is None:
+			commitmessage += '\n'
 
 		commit_footer = self.get_commit_footer()
 		commitmessage += commit_footer
@@ -336,7 +343,8 @@ class Actions(object):
 			portage_version = "Unknown"
 		# Use new footer only for git (see bug #438364).
 		if self.vcs_settings.vcs in ["git"]:
-			commit_footer = "\n\nPackage-Manager: portage-%s" % portage_version
+			commit_footer = "\nPackage-Manager: Portage-%s, Repoman-%s" % (
+							portage.VERSION, VERSION)
 			if report_options:
 				commit_footer += "\nRepoMan-Options: " + " ".join(report_options)
 			if self.repo_settings.sign_manifests:
@@ -349,7 +357,7 @@ class Actions(object):
 				unameout += platform.processor()
 			else:
 				unameout += platform.machine()
-			commit_footer = "\n\n"
+			commit_footer = "\n"
 			if dco_sob:
 				commit_footer += "Signed-off-by: %s\n" % (dco_sob, )
 			commit_footer += "(Portage version: %s/%s/%s" % \

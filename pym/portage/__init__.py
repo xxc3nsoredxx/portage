@@ -217,7 +217,7 @@ class _unicode_func_wrapper(object):
 	and return values to unicode from bytes. Function calls
 	will raise UnicodeEncodeError if an argument fails to be
 	encoded with the required encoding. Return values that
-	are single strings are decoded with errors='replace'. Return 
+	are single strings are decoded with errors='replace'. Return
 	values that are lists of strings are decoded with errors='strict'
 	and elements that fail to be decoded are omitted from the returned
 	list.
@@ -631,7 +631,7 @@ if VERSION == 'HEAD':
 				return VERSION
 			if os.path.isdir(os.path.join(PORTAGE_BASE_PATH, '.git')):
 				encoding = _encodings['fs']
-				cmd = [BASH_BINARY, "-c", ("cd %s ; git describe --tags || exit $? ; " + \
+				cmd = [BASH_BINARY, "-c", ("cd %s ; git describe --match 'portage-*' || exit $? ; " + \
 					"if [ -n \"`git diff-index --name-only --diff-filter=M HEAD`\" ] ; " + \
 					"then echo modified ; git rev-list --format=%%ct -n 1 HEAD ; fi ; " + \
 					"exit 0") % _shell_quote(PORTAGE_BASE_PATH)]

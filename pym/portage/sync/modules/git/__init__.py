@@ -16,22 +16,22 @@ class CheckGitConfig(CheckSyncConfig):
 		self.checks.append('check_depth')
 
 	def check_depth(self):
-		d = self.repo.sync_depth
-		# default
-		self.repo.sync_depth = 1
+		for attr in ('clone_depth', 'sync_depth'):
+			self._check_depth(attr)
+
+	def _check_depth(self, attr):
+		d = getattr(self.repo, attr)
 
 		if d is not None:
 			try:
 				d = int(d)
 			except ValueError:
 				writemsg_level("!!! %s\n" %
-					_("sync-depth value is not a number: '%s'")
-					% (d),
+					_("%s value is not a number: '%s'")
+					% (attr.replace('_', '-'), d),
 					level=self.logger.ERROR, noiselevel=-1)
 			else:
-				if d == 0:
-					d = None
-				self.repo.sync_depth = d
+				setattr(self.repo, attr, d)
 
 
 module_spec = {

@@ -1,4 +1,4 @@
-# Copyright 2003-2014 Gentoo Foundation
+# Copyright 2003-2017 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import absolute_import, unicode_literals
@@ -210,7 +210,7 @@ def getText(node, format, textfd = None):
 	rValue = textfd.getvalue()
 	if format == "strip":
 		rValue = rValue.strip(" \n\t")
-		rValue = re.sub("[\s]{2,}", " ", rValue)
+		rValue = re.sub(r"[\s]{2,}", " ", rValue)
 	return rValue
 
 def getMultiTagsText(rootnode, tagname, format):
@@ -533,8 +533,8 @@ class Glsa:
 		# <revised count="2">2007-12-30</revised>
 		revisedEl = myroot.getElementsByTagName("revised")[0]
 		self.revised = getText(revisedEl, format="strip")
-		count = revisedEl.attributes.get("count")
-		if count is None:
+		count = revisedEl.getAttribute("count")
+		if not count:
 			if self.revised.find(":") >= 0:
 				(self.revised, count) = self.revised.split(":")
 			else:
@@ -617,8 +617,8 @@ class Glsa:
 			for k in self.packages:
 				pkg = self.packages[k]
 				for path in pkg:
-					vul_vers = "".join(path["vul_vers"])
-					unaff_vers = "".join(path["unaff_vers"])
+					vul_vers = ", ".join(path["vul_vers"])
+					unaff_vers = ", ".join(path["unaff_vers"])
 					outstream.write(_("Affected package:  %s\n") % k)
 					outstream.write(_("Affected archs:    "))
 					if path["arch"] == "*":

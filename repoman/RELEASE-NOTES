@@ -1,6 +1,40 @@
 Release Notes; upgrade information mainly.
 Features/major bugfixes are listed in NEWS
 
+repoman-2.3.2
+==================================
+* Bug Fixes:
+    - Bug 544938 add dev-qt/linguist-tools to RDEPEND.suspect set
+    - Bug 602002 make unused local USE flags an error
+    - Bug 533554 add HOMEPAGE.missingurischeme check
+    - Bug 610414 use regular expression to detect line continuations
+    - Bug 610954 Warn about stale CVS keywords in ebuild header
+    - Bug 611296 Don't update years in non-Gentoo copyright lines
+* Add virtual/linuxtv-dvb-headers to RDEPEND.suspect set
+* Add virtual/os-headers to RDEPEND.suspect set
+* Add gentoo to remote-id type
+* Define long for python3 Fixes: 006b168c1bb6
+* Commit footer improvements
+* Check for empty files in filesdir
+* Deprecate gpe.eclass, confutils.eclass
+
+
+repoman-2.3.1
+==================================
+* Bug Fixes:
+    - Bug 586864 skip QA checks in manifest mode
+    - Bug 591184 fix erroneous LICENSE.syntax
+    - use https to fetch metadata.xsd
+    - update links to https
+    - Make LIVEVCS.* checks fatal
+    - fix _depend_checks baddepsyntax accounting
+    - Fix commitmessage assignment not being done
+    - Add cat/pkg: substtution in the commitsgfile text
+    - Disable SRC_URI.mirror warnings when there is only 1 mirror
+    - Fix version output string to say Repoman, fix live versioning,
+      add portage version to --version output.
+    - Add repoman version to "Package manager:" commit footer
+
 repoman-2.3.0
 ==================================
 * Bug Fixes:
