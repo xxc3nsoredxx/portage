@@ -9,14 +9,6 @@ import warnings
 import sys
 import re
 
-try:
-	from configparser import Error as ConfigParserError
-	if sys.hexversion >= 0x3020000:
-		from configparser import ConfigParser as SafeConfigParser
-	else:
-		from configparser import SafeConfigParser
-except ImportError:
-	from ConfigParser import SafeConfigParser, Error as ConfigParserError
 import portage
 from portage import eclass_cache, os
 from portage.const import (MANIFEST2_HASH_FUNCTIONS, MANIFEST2_REQUIRED_HASH,
@@ -25,6 +17,8 @@ from portage.eapi import eapi_allows_directories_on_profile_level_and_repository
 from portage.env.loaders import KeyValuePairFileLoader
 from portage.util import (normalize_path, read_corresponding_eapi_file, shlex_split,
 	stack_lists, writemsg, writemsg_level, _recursive_file_list)
+from portage.util.configparser import (SafeConfigParser, ConfigParserError,
+	read_configs)
 from portage.util._path import isdir_raise_eaccess
 from portage.util.path import first_existing
 from portage.localization import _
@@ -335,7 +329,7 @@ class RepoConfig(object):
 		if self.disable_manifest:
 			kwds['from_scratch'] = True
 		kwds['find_invalid_path_char'] = self.find_invalid_path_char
-		return manifest.Manifest(*args, **portage._native_kwargs(kwds))
+		return manifest.Manifest(*args, **kwds)
 
 	def update(self, new_repo):
 		"""Update repository with options in another RepoConfig"""
@@ -549,15 +543,6 @@ class RepoConfigLoader(object):
 		"""Parse files in paths to load config"""
 		parser = SafeConfigParser(defaults=default_opts)
 
-		# use read_file/readfp in order to control decoding of unicode
-		try:
-			# Python >=3.2
-			read_file = parser.read_file
-			source_kwarg = 'source'
-		except AttributeError:
-			read_file = parser.readfp
-			source_kwarg = 'filename'
-
 		recursive_paths = []
 		for p in paths:
 			if isinstance(p, basestring):
@@ -565,31 +550,7 @@ class RepoConfigLoader(object):
 			else:
 				recursive_paths.append(p)
 
-		for p in recursive_paths:
-			if isinstance(p, basestring):
-				f = None
-				try:
-					f = io.open(_unicode_encode(p,
-						encoding=_encodings['fs'], errors='strict'),
-						mode='r', encoding=_encodings['repo.content'],
-						errors='replace')
-				except EnvironmentError:
-					pass
-				else:
-					# The 'source' keyword argument is needed since otherwise
-					# ConfigParser in Python <3.3.3 may throw a TypeError
-					# because it assumes that f.name is a native string rather
-					# than binary when constructing error messages.
-					kwargs = {source_kwarg: p}
-					read_file(f, **portage._native_kwargs(kwargs))
-				finally:
-					if f is not None:
-						f.close()
-			elif isinstance(p, io.StringIO):
-				kwargs = {source_kwarg: "<io.StringIO>"}
-				read_file(p, **portage._native_kwargs(kwargs))
-			else:
-				raise TypeError("Unsupported type %r of element %r of 'paths' argument" % (type(p), p))
+		read_configs(parser, recursive_paths)
 
 		prepos['DEFAULT'] = RepoConfig("DEFAULT",
 			parser.defaults(), local_config=local_config)

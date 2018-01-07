@@ -33,7 +33,7 @@ import sys
 x_scripts = {
 	'bin': [
 		'bin/ebuild', 'bin/egencache', 'bin/emerge', 'bin/emerge-webrsync',
-		'bin/emirrordist', 'bin/portageq', 'bin/quickpkg', 'bin/repoman'
+		'bin/emirrordist', 'bin/portageq', 'bin/quickpkg',
 	],
 	'sbin': [
 		'bin/archive-conf', 'bin/dispatch-conf', 'bin/emaint', 'bin/env-update',
@@ -144,7 +144,7 @@ class epydoc(Command):
 			'--url', self.distribution.get_url(),
 			'-qq', '--no-frames', '--show-imports',
 			'--exclude', 'portage.tests',
-			'_emerge', 'portage', 'repoman'],
+			'_emerge', 'portage'],
 			env = process_env)
 		os.remove('epydoc/api-objects.txt')
 
@@ -615,7 +615,7 @@ def get_manpages():
 
 setup(
 	name = 'portage',
-	version = '2.2.28',
+	version = '2.3.0',
 	url = 'https://wiki.gentoo.org/wiki/Project:Portage',
 	author = 'Gentoo Portage Development Team',
 	author_email = 'dev-portage@gentoo.org',

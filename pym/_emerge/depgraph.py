@@ -4175,8 +4175,7 @@ class depgraph(object):
 				pargs, kwargs = item
 				kwargs = kwargs.copy()
 				kwargs['collect_use_changes'] = True
-				if not self._show_unsatisfied_dep(*pargs,
-					**portage._native_kwargs(kwargs)):
+				if not self._show_unsatisfied_dep(*pargs, **kwargs):
 					remaining_items.append(item)
 			if len(remaining_items) != len(self._dynamic_config._unsatisfied_deps_for_display):
 				self._dynamic_config._unsatisfied_deps_for_display = remaining_items
@@ -4327,8 +4326,7 @@ class depgraph(object):
 		not been scheduled for replacement.
 		"""
 		kwargs["trees"] = self._dynamic_config._graph_trees
-		return self._select_atoms_highest_available(*pargs,
-			**portage._native_kwargs(kwargs))
+		return self._select_atoms_highest_available(*pargs, **kwargs)
 
 	def _select_atoms_highest_available(self, root, depstring,
 		myuse=None, parent=None, strict=True, trees=None, priority=None):
@@ -5126,9 +5124,9 @@ class depgraph(object):
 					break
 
 			writemsg("\nemerge: there are no %s to satisfy " %
-                ("binary packages" if
-                 self._frozen_config.myopts.get("--usepkgonly", "y") == True
-                 else "ebuilds") + green(xinfo) + ".\n", noiselevel=-1)
+				("binary packages" if
+				self._frozen_config.myopts.get("--usepkgonly", "y") == True
+				else "ebuilds") + green(xinfo) + ".\n", noiselevel=-1)
 			if isinstance(myparent, AtomArg) and \
 				not cp_exists and \
 				self._frozen_config.myopts.get(
@@ -6937,7 +6935,7 @@ class depgraph(object):
 		for root in implicit_libc_roots:
 			vardb = self._frozen_config.trees[root]["vartree"].dbapi
 			for atom in self._expand_virt_from_graph(root,
- 				portage.const.LIBC_PACKAGE_ATOM):
+				portage.const.LIBC_PACKAGE_ATOM):
 				if atom.blocker:
 					continue
 				for pkg in self._dynamic_config._package_tracker.match(root, atom):
@@ -8511,8 +8509,7 @@ class depgraph(object):
 			writemsg("\n", noiselevel=-1)
 
 		for pargs, kwargs in self._dynamic_config._unsatisfied_deps_for_display:
-			self._show_unsatisfied_dep(*pargs,
-				**portage._native_kwargs(kwargs))
+			self._show_unsatisfied_dep(*pargs, **kwargs)
 
 		if self._dynamic_config._buildpkgonly_deps_unsatisfied:
 			self._show_merge_list()
@@ -8879,8 +8876,7 @@ class depgraph(object):
 		try:
 			for pargs, kwargs in self._dynamic_config._unsatisfied_deps_for_display:
 				self._show_unsatisfied_dep(
-					*pargs, check_autounmask_breakage=True,
-					**portage._native_kwargs(kwargs))
+					*pargs, check_autounmask_breakage=True, **kwargs)
 		except self._autounmask_breakage:
 			return True
 		return False

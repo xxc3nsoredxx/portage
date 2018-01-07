@@ -56,14 +56,14 @@ else:
 
 noiselimit = 0
 
-def initialize_logger(level=logging.WARN):
+def initialize_logger(level=logging.WARNING):
 	"""Sets up basic logging of portage activities
 	Args:
 		level: the level to emit messages at ('info', 'debug', 'warning' ...)
 	Returns:
 		None
 	"""
-	logging.basicConfig(level=logging.WARN, format='[%(levelname)-4s] %(message)s')
+	logging.basicConfig(level=level, format='[%(levelname)-4s] %(message)s')
 
 def writemsg(mystr, noiselevel=0, fd=None):
 	"""Prints out warning and debug messages based on the noiselimit setting"""
@@ -1285,7 +1285,7 @@ class atomic_ofstream(ObjectProxy):
 				object.__setattr__(self, '_file',
 					open_func(_unicode_encode(tmp_name,
 						encoding=_encodings['fs'], errors='strict'),
-						mode=mode, **portage._native_kwargs(kargs)))
+						mode=mode, **kargs))
 				return
 			except IOError as e:
 				if canonical_path == filename:

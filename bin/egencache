@@ -73,7 +73,7 @@ else:
 	except ImportError:
 		pass
 	else:
-		from repoman.metadata import parse_metadata_use
+		from portage.xml.metadata import parse_metadata_use
 
 if sys.hexversion >= 0x3000000:
 	# pylint: disable=W0622
@@ -775,12 +775,16 @@ class GenChangeLogs(object):
 			# This cp has not been added to the repo.
 			return
 
+		lmod = long(lmod)
+
 		try:
-			cmod = os.stat('ChangeLog').st_mtime
+			cmod = os.stat('ChangeLog')[stat.ST_MTIME]
 		except OSError:
 			cmod = 0
 
-		if float(cmod) >= float(lmod):
+		# Use exact comparison, since commit times are
+		# not necessarily ordered.
+		if cmod == lmod:
 			return
 
 		try:
@@ -903,6 +907,7 @@ class GenChangeLogs(object):
 				'\n%s\n\n' % '\n'.join(self._wrapper.fill(x) for x in body))
 
 		output.close()
+		os.utime(self._changelog_output, (lmod, lmod))
 
 	def _task_iter(self):
 		if not os.path.isdir(os.environ.get('GIT_DIR', os.path.join(self._repo_path, '.git'))):
@@ -1165,9 +1170,9 @@ def egencache_main(args):
 	if options.write_timestamp:
 		timestamp_path = os.path.join(repo_path, 'metadata', 'timestamp.chk')
 		try:
-			with open(timestamp_path, 'w') as f:
-				f.write(time.strftime('%s\n' % TIMESTAMP_FORMAT, time.gmtime()))
-		except IOError:
+			portage.util.write_atomic(timestamp_path,
+				time.strftime('%s\n' % TIMESTAMP_FORMAT, time.gmtime()))
+		except (EnvironmentError, portage.exception.PortageException):
 			ret.append(os.EX_IOERR)
 		else:
 			ret.append(os.EX_OK)
