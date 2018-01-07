@@ -432,7 +432,7 @@ if platform.system() in ('FreeBSD',):
 
 			if sys.hexversion < 0x3020000 and sys.hexversion >= 0x3000000:
 				# Python 3.1 _execvp throws TypeError for non-absolute executable
-				# path passed as bytes (see http://bugs.python.org/issue8513).
+				# path passed as bytes (see https://bugs.python.org/issue8513).
 				fullname = process.find_binary(cmd[0])
 				if fullname is None:
 					raise exception.CommandNotFound(cmd[0])
@@ -645,12 +645,12 @@ if VERSION == 'HEAD':
 					output_lines = output.splitlines()
 					if output_lines:
 						version_split = output_lines[0].split('-')
-						if version_split:
-							VERSION = version_split[0].lstrip('v')
+						if len(version_split) > 1:
+							VERSION = version_split[1]
 							patchlevel = False
-							if len(version_split) > 1:
+							if len(version_split) > 2:
 								patchlevel = True
-								VERSION = "%s_p%s" % (VERSION, version_split[1])
+								VERSION = "%s_p%s" % (VERSION, version_split[2])
 							if len(output_lines) > 1 and output_lines[1] == 'modified':
 								head_timestamp = None
 								if len(output_lines) > 3:
