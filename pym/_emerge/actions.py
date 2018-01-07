@@ -1644,8 +1644,18 @@ def action_info(settings, trees, myopts, myfiles):
 
 	for repo in repos:
 		last_sync = portage.grabfile(os.path.join(repo.location, "metadata", "timestamp.chk"))
+		head_commit = None
 		if last_sync:
 			append("Timestamp of repository %s: %s" % (repo.name, last_sync[0]))
+		if repo.sync_type:
+			sync = portage.sync.module_controller.get_class(repo.sync_type)()
+			options = { 'repo': repo }
+			try:
+				head_commit = sync.retrieve_head(options=options)
+			except NotImplementedError:
+				head_commit = (1, False)
+		if head_commit and head_commit[0] == os.EX_OK:
+			append("Head commit of repository %s: %s" % (repo.name, head_commit[1]))
 
 	# Searching contents for the /bin/sh provider is somewhat
 	# slow. Therefore, use the basename of the symlink target
@@ -2869,6 +2879,11 @@ def run_action(emerge_config):
 			writemsg_level(bad("!!! http://git.overlays.gentoo.org/gitweb/?p=proj/multilib-portage.git;a=blob;f=doc/portage-multilib-instructions\n"),level=logging.ERROR, noiselevel=-1)
 			writemsg_level(bad("!!! has some basic instructions for the setup\n"),level=logging.ERROR, noiselevel=-1)
 			return 1
+	if ("--autounmask-continue" in emerge_config.opts and
+		emerge_config.opts.get("--autounmask") == "n"):
+		writemsg_level(
+			" %s --autounmask-continue has been disabled by --autounmask=n\n" %
+			warn("*"), level=logging.WARNING, noiselevel=-1)
 
 	for fmt in emerge_config.target_config.settings.get("PORTAGE_BINPKG_FORMAT", "").split():
 		if not fmt in portage.const.SUPPORTED_BINPKG_FORMATS:
