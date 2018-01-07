@@ -1,7 +1,9 @@
 # check for missing calls to gnome2-utils regen functions
 
 gnome2_icon_cache_check() {
-	local d f all_files=() find_args missing
+	type -P gtk-update-icon-cache &>/dev/null || return
+
+	local d f all_files=() missing
 	for d in usr/share/icons/*/; do
 		# gnome2_icon_cache_update updates only themes with an index
 		[[ -f ${d}/index.theme ]] || continue
@@ -24,8 +26,6 @@ gnome2_icon_cache_check() {
 
 		# if any files were found, update the db to avoid repeating
 		# the warning for subsequent packages
-		# (note: yes, it will eagerly repeat the update for next dirs
-		# but that's a minor issue)
 		if [[ ${files[@]} ]]; then
 			all_files+=("${files[@]}")
 			addwrite "${d}"
@@ -35,7 +35,7 @@ gnome2_icon_cache_check() {
 
 	# The eqatag call is prohibitively expensive if the cache is
 	# missing and there are a large number of files.
-	if [[ -z missing && ${all_files[@]} ]]; then
+	if [[ -z ${missing} && ${all_files[@]} ]]; then
 		eqawarn "QA Notice: new icons were found installed but GTK+ icon cache"
 		eqawarn "has not been updated:"
 		eqatag -v gnome2-utils.icon-cache "${all_files[@]/#//}"
