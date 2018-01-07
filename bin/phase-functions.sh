@@ -285,8 +285,13 @@ __dyn_clean() {
 		chflags -R nosunlnk,nouunlnk "${PORTAGE_BUILDDIR}" 2>/dev/null
 	fi
 
-	rm -rf "${PORTAGE_BUILDDIR}"/image* "${PORTAGE_BUILDDIR}/homedir"
-	rm -f "${PORTAGE_BUILDDIR}"/.installed*
+	# Some kernels, such as Solaris, return EINVAL when an attempt
+	# is made to remove the current working directory.
+	cd "${PORTAGE_PYM_PATH}" || \
+		die "PORTAGE_PYM_PATH does not exist: '${PORTAGE_PYM_PATH}'"
+
+	rm -rf "${PORTAGE_BUILDDIR}/image" "${PORTAGE_BUILDDIR}/homedir"
+	rm -f "${PORTAGE_BUILDDIR}/.installed"
 
 	if [[ $EMERGE_FROM = binary ]] || \
 		! has keeptemp $FEATURES && ! has keepwork $FEATURES ; then
@@ -313,9 +318,6 @@ __dyn_clean() {
 	# result in it wiping the users distfiles directory (bad).
 	rm -rf "${PORTAGE_BUILDDIR}/distdir"
 
-	# Some kernels, such as Solaris, return EINVAL when an attempt
-	# is made to remove the current working directory.
-	cd "$PORTAGE_BUILDDIR"/../..
 	rmdir "$PORTAGE_BUILDDIR" 2>/dev/null
 
 	true
