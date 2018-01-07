@@ -306,8 +306,9 @@ __dyn_clean() {
 			"$PORTAGE_BUILDDIR"/.ipc_{in,out,lock} \
 			"$PORTAGE_BUILDDIR"/.exit_status
 
-		rm -rf "${PORTAGE_BUILDDIR}"/{build-info,abi-code}
-		rm -rf "${WORKDIR}"*
+		rm -rf "${PORTAGE_BUILDDIR}/{build-info,abi-code}"
+		rm -rf "${WORKDIR}"
+		rm -f "${PORTAGE_BUILDDIR}/files"
 	fi
 
 	if [ -f "${PORTAGE_BUILDDIR}/.unpacked" ]; then

@@ -88,7 +88,9 @@ class DigraphTest(TestCase):
 		g.add("D", "A", 2)
 
 		f = g.clone()
-		for x in g, f:
+		h = digraph()
+		h.update(f)
+		for x in g, f, h:
 			self.assertEqual(bool(x), True)
 			self.assertEqual(x.contains("A"), True)
 			self.assertEqual(x.firstzero(), None)
@@ -133,6 +135,8 @@ class DigraphTest(TestCase):
 		for x in g, f:
 			self.assertEqual(bool(x), True)
 			self.assertEqual(x.contains("A"), True)
+			self.assertEqual(x.has_edge("B", "A"), True)
+			self.assertEqual(x.has_edge("A", "B"), False)
 			self.assertEqual(x.firstzero(), "B")
 			self.assertRaises(KeyError, x.remove, "Z")
 			x.delnode("Z")

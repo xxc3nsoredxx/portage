@@ -22,6 +22,12 @@ try:
 except ImportError:
 	import dummy_threading as threading
 
+import portage
+portage.proxy.lazyimport.lazyimport(globals(),
+	'portage.util.futures.futures:_EventLoopFuture',
+)
+
+from portage import OrderedDict
 from portage.util import writemsg_level
 from ..SlotObject import SlotObject
 from .PollConstants import PollConstants
@@ -54,6 +60,38 @@ class EventLoop(object):
 		__slots__ = ("args", "function", "calling", "interval", "source_id",
 			"timestamp")
 
+	class _handle(object):
+		"""
+		A callback wrapper object, compatible with asyncio.Handle.
+		"""
+		__slots__ = ("_callback_id", "_loop")
+
+		def __init__(self, callback_id, loop):
+			self._callback_id = callback_id
+			self._loop = loop
+
+		def cancel(self):
+			"""
+			Cancel the call. If the callback is already canceled or executed,
+			this method has no effect.
+			"""
+			self._loop.source_remove(self._callback_id)
+
+	class _call_soon_callback(object):
+		"""
+		Wraps a call_soon callback, and always returns False, since these
+		callbacks are only supposed to run once.
+		"""
+		__slots__ = ("_args", "_callback")
+
+		def __init__(self, callback, args):
+			self._callback = callback
+			self._args = args
+
+		def __call__(self):
+			self._callback(*self._args)
+			return False
+
 	def __init__(self, main=True):
 		"""
 		@param main: If True then this is a singleton instance for use
@@ -70,7 +108,18 @@ class EventLoop(object):
 		self._poll_event_handler_ids = {}
 		# Increment id for each new handler.
 		self._event_handler_id = 0
-		self._idle_callbacks = {}
+		# New call_soon callbacks must have an opportunity to
+		# execute before it's safe to wait on self._thread_condition
+		# without a timeout, since delaying its execution indefinitely
+		# could lead to a deadlock. The following attribute stores the
+		# event handler id of the most recently added call_soon callback.
+		# If this attribute has changed since the last time that the
+		# call_soon callbacks have been called, then it's not safe to
+		# wait on self._thread_condition without a timeout.
+		self._call_soon_id = 0
+		# Use OrderedDict in order to emulate the FIFO queue behavior
+		# of the AbstractEventLoop.call_soon method.
+		self._idle_callbacks = OrderedDict()
 		self._timeout_handlers = {}
 		self._timeout_interval = None
 
@@ -121,6 +170,15 @@ class EventLoop(object):
 		self._sigchld_write = None
 		self._sigchld_src_id = None
 		self._pid = os.getpid()
+
+	def create_future(self):
+		"""
+		Create a Future object attached to the loop. This returns
+		an instance of _EventLoopFuture, because EventLoop is currently
+		missing some of the asyncio.AbstractEventLoop methods that
+		asyncio.Future requires.
+		"""
+		return _EventLoopFuture(loop=self)
 
 	def _new_source_id(self):
 		"""
@@ -201,10 +259,15 @@ class EventLoop(object):
 
 		if not event_handlers:
 			with self._thread_condition:
+				prev_call_soon_id = self._call_soon_id
 				if self._run_timeouts():
 					events_handled += 1
 				timeouts_checked = True
-				if not event_handlers and not events_handled and may_block:
+
+				call_soon = prev_call_soon_id != self._call_soon_id
+
+				if (not call_soon and not event_handlers
+					and not events_handled and may_block):
 					# Block so that we don't waste cpu time by looping too
 					# quickly. This makes EventLoop useful for code that needs
 					# to wait for timeout callbacks regardless of whether or
@@ -399,13 +462,16 @@ class EventLoop(object):
 		automatically removed from the list of event sources and will
 		not be called again. This method is thread-safe.
 
+		The idle_add method is deprecated. Use the call_soon and
+		call_soon_threadsafe methods instead.
+
 		@type callback: callable
 		@param callback: a function to call
 		@rtype: int
 		@return: an integer ID
 		"""
 		with self._thread_condition:
-			source_id = self._new_source_id()
+			source_id = self._call_soon_id = self._new_source_id()
 			self._idle_callbacks[source_id] = self._idle_callback_class(
 				args=args, callback=callback, source_id=source_id)
 			self._thread_condition.notify()
@@ -591,6 +657,33 @@ class EventLoop(object):
 			self.iteration()
 
 		return future.result()
+
+	def call_soon(self, callback, *args):
+		"""
+		Arrange for a callback to be called as soon as possible. The callback
+		is called after call_soon() returns, when control returns to the event
+		loop.
+
+		This operates as a FIFO queue, callbacks are called in the order in
+		which they are registered. Each callback will be called exactly once.
+
+		Any positional arguments after the callback will be passed to the
+		callback when it is called.
+
+		An object compatible with asyncio.Handle is returned, which can
+		be used to cancel the callback.
+
+		@type callback: callable
+		@param callback: a function to call
+		@return: a handle which can be used to cancel the callback
+		@rtype: asyncio.Handle (or compatible)
+		"""
+		return self._handle(self.idle_add(
+			self._call_soon_callback(callback, args)), self)
+
+	# The call_soon method inherits thread safety from the idle_add method.
+	call_soon_threadsafe = call_soon
+
 
 _can_poll_device = None
 
