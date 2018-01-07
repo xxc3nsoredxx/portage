@@ -4453,7 +4453,11 @@ class depgraph(object):
 				# _UNREACHABLE_DEPTH for complete mode.
 				virt_depth = parent.depth
 
-			chosen_atom_ids = frozenset(id(atom) for atom in mycheck[1])
+			chosen_atom_ids = frozenset(chain(
+				(id(atom) for atom in mycheck[1]),
+				(id(atom._orig_atom) for atom in mycheck[1]
+					if hasattr(atom, '_orig_atom')),
+			))
 			selected_atoms = OrderedDict()
 			node_stack = [(parent, None, None)]
 			traversed_nodes = set()
@@ -6067,8 +6071,15 @@ class depgraph(object):
 					# will always end with a break statement below
 					# this point.
 					if find_existing_node:
-						e_pkg = next(self._dynamic_config._package_tracker.match(
-							root, pkg.slot_atom, installed=False), None)
+						# Use reversed iteration in order to get
+						# descending order here, so that the highest
+						# version involved in a slot conflict is
+						# selected. This is needed for correct operation
+						# of conflict_downgrade logic in the dep_zapdeps
+						# function (see bug 554070).
+						e_pkg = next(reversed(list(
+							self._dynamic_config._package_tracker.match(
+							root, pkg.slot_atom, installed=False))), None)
 
 						if not e_pkg:
 							break
@@ -8236,6 +8247,12 @@ class depgraph(object):
 									child.endswith("~"):
 									continue
 								stack.append(os.path.join(p, child))
+			# If the directory is empty add a file with name
+			# pattern file_name.default
+			if last_file_path is None:
+				last_file_path = os.path.join(file_path, file_path, "zz-autounmask")
+				with open(last_file_path, "a+") as default:
+					default.write("# " + file_name)
 
 			return last_file_path
 
