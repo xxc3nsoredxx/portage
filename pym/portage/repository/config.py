@@ -1,4 +1,4 @@
-# Copyright 2010-2017 Gentoo Foundation
+# Copyright 2010-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -86,6 +86,7 @@ class RepoConfig(object):
 		'sync_type', 'sync_umask', 'sync_uri', 'sync_user', 'thin_manifest',
 		'update_changelog', '_eapis_banned', '_eapis_deprecated',
 		'_masters_orig', 'module_specific_options', 'manifest_required_hashes',
+		'sync_openpgp_key_path',
 		)
 
 	def __init__(self, name, repo_opts, local_config=True):
@@ -181,6 +182,9 @@ class RepoConfig(object):
 
 		self.strict_misc_digests = repo_opts.get(
 			'strict-misc-digests', 'true').lower() == 'true'
+
+		self.sync_openpgp_key_path = repo_opts.get(
+			'sync-openpgp-key-path', None)
 
 		self.module_specific_options = {}
 
@@ -518,6 +522,7 @@ class RepoConfigLoader(object):
 							'clone_depth', 'eclass_overrides',
 							'force', 'masters', 'priority', 'strict_misc_digests',
 							'sync_depth', 'sync_hooks_only_on_change',
+							'sync_openpgp_key_path',
 							'sync_type', 'sync_umask', 'sync_uri', 'sync_user',
 							'module_specific_options'):
 							v = getattr(repos_conf_opts, k, None)
@@ -940,7 +945,7 @@ class RepoConfigLoader(object):
 	def config_string(self):
 		bool_keys = ("strict_misc_digests",)
 		str_or_int_keys = ("auto_sync", "clone_depth", "format", "location",
-			"main_repo", "priority", "sync_depth",
+			"main_repo", "priority", "sync_depth", "sync_openpgp_key_path",
 			"sync_type", "sync_umask", "sync_uri", 'sync_user')
 		str_tuple_keys = ("aliases", "eclass_overrides", "force")
 		repo_config_tuple_keys = ("masters",)

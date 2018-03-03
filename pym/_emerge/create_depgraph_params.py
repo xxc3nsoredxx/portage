@@ -28,6 +28,7 @@ def create_depgraph_params(myopts, myaction):
 	#   failures, or cause packages to be rebuilt or replaced.
 	# with_test_deps: pull in test deps for packages matched by arguments
 	# changed_deps: rebuild installed packages with outdated deps
+	# changed_deps_report: report installed packages with outdated deps
 	# binpkg_changed_deps: reject binary packages with outdated deps
 	myparams = {"recurse" : True}
 
@@ -45,9 +46,9 @@ def create_depgraph_params(myopts, myaction):
 	myparams["ignore_soname_deps"] = myopts.get(
 		"--ignore-soname-deps", "y")
 
-	dynamic_deps = myopts.get("--dynamic-deps")
-	if dynamic_deps is not None:
-		myparams["dynamic_deps"] = dynamic_deps
+	dynamic_deps = myopts.get("--dynamic-deps", "y") != "n"
+	if dynamic_deps:
+		myparams["dynamic_deps"] = True
 
 	if myaction == "remove":
 		myparams["remove"] = True
@@ -125,6 +126,10 @@ def create_depgraph_params(myopts, myaction):
 	changed_deps = myopts.get('--changed-deps')
 	if changed_deps is not None:
 		myparams['changed_deps'] = changed_deps
+
+	changed_deps_report = myopts.get('--changed-deps-report', 'n') == 'y'
+	if changed_deps_report:
+		myparams['changed_deps_report'] = True
 
 	if myopts.get("--selective") == "n":
 		# --selective=n can be used to remove selective

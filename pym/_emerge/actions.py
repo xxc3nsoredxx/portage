@@ -2418,15 +2418,16 @@ class _emerge_config(SlotObject):
 	def __len__(self):
 		return 3
 
-def load_emerge_config(emerge_config=None, **kargs):
+def load_emerge_config(emerge_config=None, env=None, **kargs):
 
 	if emerge_config is None:
 		emerge_config = _emerge_config(**kargs)
 
-	kwargs = {}
+	env = os.environ if env is None else env
+	kwargs = {'env': env}
 	for k, envvar in (("config_root", "PORTAGE_CONFIGROOT"), ("target_root", "ROOT"),
 			("eprefix", "EPREFIX")):
-		v = os.environ.get(envvar, None)
+		v = env.get(envvar)
 		if v and v.strip():
 			kwargs[k] = v
 	emerge_config.trees = portage.create_trees(trees=emerge_config.trees,

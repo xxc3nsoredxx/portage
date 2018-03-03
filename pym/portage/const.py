@@ -186,6 +186,7 @@ SUPPORTED_FEATURES       = frozenset([
 	"split-elog",
 	"split-log",
 	"strict",
+	"strict-keepdir",
 	"stricter",
 	"suidctl",
 	"test",
@@ -208,8 +209,8 @@ EAPI                     = 6
 
 HASHING_BLOCKSIZE        = 32768
 
-MANIFEST2_HASH_DEFAULTS = frozenset(["SHA256", "SHA512", "WHIRLPOOL"])
-MANIFEST2_HASH_DEFAULT  = "SHA512"
+MANIFEST2_HASH_DEFAULTS = frozenset(["BLAKE2B", "SHA512"])
+MANIFEST2_HASH_DEFAULT  = "BLAKE2B"
 
 MANIFEST2_IDENTIFIERS    = ("AUX", "MISC", "DIST", "EBUILD")
 

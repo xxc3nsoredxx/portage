@@ -1,4 +1,4 @@
-# Copyright 1999-2015 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 import sys
@@ -13,6 +13,7 @@ import tempfile
 import portage
 from portage import os
 from portage import _unicode_decode
+from portage.exception import CommandNotFound
 from portage.util import writemsg_level
 from portage.output import create_color_func, yellow, blue, bold
 good = create_color_func("GOOD")
@@ -82,6 +83,16 @@ class RsyncSync(NewBase):
 			self.extra_rsync_opts.extend(portage.util.shlex_split(
 				self.repo.module_specific_options['sync-rsync-extra-opts']))
 
+		# Process GLEP74 verification options.
+		# Default verification to 'no'; it's enabled for ::gentoo
+		# via default repos.conf though.
+		self.verify_metamanifest = (
+				self.repo.module_specific_options.get(
+					'sync-rsync-verify-metamanifest', 'no') in ('yes', 'true'))
+		# Support overriding job count.
+		self.verify_jobs = self.repo.module_specific_options.get(
+				'sync-rsync-verify-jobs', None)
+
 		# Real local timestamp file.
 		self.servertimestampfile = os.path.join(
 			self.repo.location, "metadata", "timestamp.chk")
@@ -112,7 +123,7 @@ class RsyncSync(NewBase):
 		if syncuri.startswith("file://"):
 			self.proto = "file"
 			dosyncuri = syncuri[7:]
-			is_synced, exitcode, updatecache_flg = self._do_rsync(
+			unchanged, is_synced, exitcode, updatecache_flg = self._do_rsync(
 				dosyncuri, timestamp, opts)
 			self._process_exitcode(exitcode, dosyncuri, out, 1)
 			return (exitcode, updatecache_flg)
@@ -208,6 +219,7 @@ class RsyncSync(NewBase):
 		if effective_maxretries < 0:
 			effective_maxretries = len(uris) - 1
 
+		local_state_unchanged = True
 		while (1):
 			if uris:
 				dosyncuri = uris.pop()
@@ -244,8 +256,10 @@ class RsyncSync(NewBase):
 			if dosyncuri.startswith('ssh://'):
 				dosyncuri = dosyncuri[6:].replace('/', ':/', 1)
 
-			is_synced, exitcode, updatecache_flg = self._do_rsync(
+			unchanged, is_synced, exitcode, updatecache_flg = self._do_rsync(
 				dosyncuri, timestamp, opts)
+			if not unchanged:
+				local_state_unchanged = False
 			if is_synced:
 				break
 
@@ -259,6 +273,21 @@ class RsyncSync(NewBase):
 				exitcode = EXCEEDED_MAX_RETRIES
 				break
 		self._process_exitcode(exitcode, dosyncuri, out, maxretries)
+
+		# if synced successfully, verify now
+		if exitcode == 0 and not local_state_unchanged and self.verify_metamanifest:
+			command = ['gemato', 'verify', '-s', self.repo.location]
+			if self.repo.sync_openpgp_key_path is not None:
+				command += ['-K', self.repo.sync_openpgp_key_path]
+			if self.verify_jobs is not None:
+				command += ['-j', self.verify_jobs]
+			try:
+				exitcode = portage.process.spawn(command, **self.spawn_kwargs)
+			except CommandNotFound as e:
+				writemsg_level("!!! Command not found: %s\n" % (command[0],),
+					level=logging.ERROR, noiselevel=-1)
+				exitcode = 127
+
 		return (exitcode, updatecache_flg)
 
 
@@ -411,6 +440,7 @@ class RsyncSync(NewBase):
 		if "--debug" in opts:
 			print(rsynccommand)
 
+		local_state_unchanged = False
 		exitcode = os.EX_OK
 		servertimestamp = 0
 		# Even if there's no timestamp available locally, fetch the
@@ -495,6 +525,7 @@ class RsyncSync(NewBase):
 
 		if exitcode == os.EX_OK:
 			if (servertimestamp != 0) and (servertimestamp == timestamp):
+				local_state_unchanged = True
 				is_synced = True
 				self.logger(self.xterm_titles,
 					">>> Cancelling sync -- Already current.")
@@ -506,7 +537,6 @@ class RsyncSync(NewBase):
 				print(">>> In order to force sync, remove '%s'." % self.servertimestampfile)
 				print(">>>")
 				print()
-				return is_synced, exitcode, updatecache_flg
 			elif (servertimestamp != 0) and (servertimestamp < timestamp):
 				self.logger(self.xterm_titles,
 					">>> Server out of date: %s" % syncuri)
@@ -573,4 +603,5 @@ class RsyncSync(NewBase):
 			# --prune-empty-directories.  Retry for a server that supports
 			# at least rsync protocol version 29 (>=rsync-2.6.4).
 			pass
-		return is_synced, exitcode, updatecache_flg
+
+		return local_state_unchanged, is_synced, exitcode, updatecache_flg
