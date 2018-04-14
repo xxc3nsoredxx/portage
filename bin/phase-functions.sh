@@ -806,20 +806,18 @@ __dyn_install() {
 		>> DEBUGBUILD
 	fi
 
-	else
-		if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
-			cd "${PORTAGE_BUILDDIR}"
-			if [[ $EMERGE_FROM = binary ]] || ! has keepwork $FEATURES; then
-				rm -f "$PORTAGE_BUILDDIR"/.{ebuild_changed,exit_status,logid,unpacked,prepared} \
-					"$PORTAGE_BUILDDIR"/.{configured,compiled,tested,packaged} \
-					"$PORTAGE_BUILDDIR"/.die_hooks
+	if [[ " ${FEATURES} " == *" force-multilib "* ]]; then
+		cd "${PORTAGE_BUILDDIR}"
+		if [[ $EMERGE_FROM = binary ]] || ! has keepwork $FEATURES; then
+			rm -f "$PORTAGE_BUILDDIR"/.{ebuild_changed,exit_status,logid,unpacked,prepared} \
+				"$PORTAGE_BUILDDIR"/.{configured,compiled,tested,packaged} \
+				"$PORTAGE_BUILDDIR"/.die_hooks
 
-				rm -rf "${WORKDIR}"
-			fi
+			rm -rf "${WORKDIR}"
+		fi
 
-			if [ -f "${PORTAGE_BUILDDIR}/.unpacked" ]; then
-				find "${PORTAGE_BUILDDIR}" -type d ! -regex "^${WORKDIR}" | sort -r | tr "\n" "\0" | $XARGS -0 rmdir &>/dev/null
-			fi
+		if [ -f "${PORTAGE_BUILDDIR}/.unpacked" ]; then
+			find "${PORTAGE_BUILDDIR}" -type d ! -regex "^${WORKDIR}" | sort -r | tr "\n" "\0" | $XARGS -0 rmdir &>/dev/null
 		fi
 	fi
 	trap - SIGINT SIGQUIT
