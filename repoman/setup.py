@@ -467,7 +467,7 @@ def get_manpages():
 
 setup(
 	name = 'repoman',
-	version = '2.3.6',
+	version = '2.3.9',
 	url = 'https://wiki.gentoo.org/wiki/Project:Portage',
 	author = 'Gentoo Portage Development Team',
 	author_email = 'dev-portage@gentoo.org',
@@ -479,6 +479,12 @@ setup(
 
 	data_files = list(get_manpages()) + [
 		['$docdir', ['NEWS', 'RELEASE-NOTES']],
+		['share/repoman/qa_data', ['cnf/qa_data/qa_data.yaml']],
+		['share/repoman/linechecks', ['cnf/linechecks/linechecks.yaml']],
+		['share/repoman/repository', [
+			'cnf/repository/linechecks.yaml',
+			'cnf/repository/qa_data.yaml',
+			'cnf/repository/repository.yaml']],
 	],
 
 	cmdclass = {

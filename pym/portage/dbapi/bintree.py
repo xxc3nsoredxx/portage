@@ -1,4 +1,4 @@
-# Copyright 1998-2016 Gentoo Foundation
+# Copyright 1998-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -85,9 +85,9 @@ class bindbapi(fakedbapi):
 		self.move_ent = mybintree.move_ent
 		# Selectively cache metadata in order to optimize dep matching.
 		self._aux_cache_keys = set(
-			["BUILD_ID", "BUILD_TIME", "CHOST", "DEFINED_PHASES",
+			["BDEPEND", "BUILD_ID", "BUILD_TIME", "CHOST", "DEFINED_PHASES",
 			"DEPEND", "EAPI", "HDEPEND", "IUSE", "KEYWORDS",
-			"LICENSE", "MD5", "PDEPEND", "PROPERTIES", "PROVIDE",
+			"LICENSE", "MD5", "PDEPEND", "PROPERTIES",
 			"PROVIDES", "RDEPEND", "repository", "REQUIRES", "RESTRICT",
 			"SIZE", "SLOT", "USE", "_mtime_"
 			])
@@ -312,16 +312,16 @@ class binarytree(object):
 			self._pkgindex_keys = self.dbapi._aux_cache_keys.copy()
 			self._pkgindex_keys.update(["CPV", "SIZE"])
 			self._pkgindex_aux_keys = \
-				["BASE_URI", "BUILD_ID", "BUILD_TIME", "CHOST",
+				["BASE_URI", "BDEPEND", "BUILD_ID", "BUILD_TIME", "CHOST",
 				"DEFINED_PHASES", "DEPEND", "DESCRIPTION", "EAPI",
 				"HDEPEND", "IUSE", "KEYWORDS", "LICENSE", "PDEPEND",
-				"PKGINDEX_URI", "PROPERTIES", "PROVIDE", "PROVIDES",
+				"PKGINDEX_URI", "PROPERTIES", "PROVIDES",
 				"RDEPEND", "repository", "REQUIRES", "RESTRICT",
 				"SIZE", "SLOT", "USE"]
 			self._pkgindex_aux_keys = list(self._pkgindex_aux_keys)
 			self._pkgindex_use_evaluated_keys = \
-				("DEPEND", "HDEPEND", "LICENSE", "RDEPEND",
-				"PDEPEND", "PROPERTIES", "PROVIDE", "RESTRICT")
+				("BDEPEND", "DEPEND", "HDEPEND", "LICENSE", "RDEPEND",
+				"PDEPEND", "PROPERTIES", "RESTRICT")
 			self._pkgindex_header_keys = set([
 				"ACCEPT_KEYWORDS", "ACCEPT_LICENSE",
 				"ACCEPT_PROPERTIES", "ACCEPT_RESTRICT", "CBUILD",
@@ -330,6 +330,7 @@ class binarytree(object):
 				"USE_EXPAND", "USE_EXPAND_HIDDEN", "USE_EXPAND_IMPLICIT",
 				"USE_EXPAND_UNPREFIXED"])
 			self._pkgindex_default_pkg_data = {
+				"BDEPEND" : "",
 				"BUILD_ID"           : "",
 				"BUILD_TIME"         : "",
 				"DEFINED_PHASES"     : "",
@@ -342,7 +343,6 @@ class binarytree(object):
 				"PATH"    : "",
 				"PDEPEND" : "",
 				"PROPERTIES" : "",
-				"PROVIDE" : "",
 				"PROVIDES": "",
 				"RDEPEND" : "",
 				"REQUIRES": "",

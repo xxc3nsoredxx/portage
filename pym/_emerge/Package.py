@@ -1,4 +1,4 @@
-# Copyright 1999-2014 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -42,15 +42,16 @@ class Package(Task):
 		"_validated_atoms", "_visible")
 
 	metadata_keys = [
+		"BDEPEND",
 		"BUILD_ID", "BUILD_TIME", "CHOST", "COUNTER", "DEFINED_PHASES",
 		"DEPEND", "EAPI", "HDEPEND", "INHERITED", "IUSE", "KEYWORDS",
-		"LICENSE", "MD5", "PDEPEND", "PROVIDE", "PROVIDES",
+		"LICENSE", "MD5", "PDEPEND", "PROVIDES",
 		"RDEPEND", "repository", "REQUIRED_USE",
 		"PROPERTIES", "REQUIRES", "RESTRICT", "SIZE",
 		"SLOT", "USE", "_mtime_"]
 
-	_dep_keys = ('DEPEND', 'HDEPEND', 'PDEPEND', 'RDEPEND')
-	_buildtime_keys = ('DEPEND', 'HDEPEND')
+	_dep_keys = ('BDEPEND', 'DEPEND', 'HDEPEND', 'PDEPEND', 'RDEPEND')
+	_buildtime_keys = ('BDEPEND', 'DEPEND', 'HDEPEND')
 	_runtime_keys = ('PDEPEND', 'RDEPEND')
 	_use_conditional_misc_keys = ('LICENSE', 'PROPERTIES', 'RESTRICT')
 	UNKNOWN_REPO = _unknown_repo
@@ -172,17 +173,7 @@ class Package(Task):
 
 	@property
 	def provided_cps(self):
-
-		if self._provided_cps is None:
-			provided_cps = [self.cp]
-			for atom in self._metadata["PROVIDE"].split():
-				try:
-					provided_cps.append(Atom(atom).cp)
-				except InvalidAtom:
-					pass
-			self._provided_cps = tuple(provided_cps)
-
-		return self._provided_cps
+		return (self.cp,)
 
 	@property
 	def restrict(self):
@@ -356,15 +347,6 @@ class Package(Task):
 
 		self._validated_atoms = tuple(set(atom for atom in
 			validated_atoms if isinstance(atom, Atom)))
-
-		k = 'PROVIDE'
-		v = self._metadata.get(k)
-		if v:
-			try:
-				use_reduce(v, eapi=dep_eapi, matchall=True,
-					is_valid_flag=dep_valid_flag, token_class=Atom)
-			except InvalidDependString as e:
-				self._invalid_metadata("PROVIDE.syntax", "%s: %s" % (k, e))
 
 		for k in self._use_conditional_misc_keys:
 			v = self._metadata.get(k)
@@ -906,7 +888,7 @@ class _PackageMetadataWrapper(_PackageMetadataWrapperBase):
 	_wrapped_keys = frozenset(
 		["COUNTER", "INHERITED", "USE", "_mtime_"])
 	_use_conditional_keys = frozenset(
-		['LICENSE', 'PROPERTIES', 'PROVIDE', 'RESTRICT',])
+		['LICENSE', 'PROPERTIES', 'RESTRICT',])
 
 	def __init__(self, pkg, metadata):
 		_PackageMetadataWrapperBase.__init__(self)

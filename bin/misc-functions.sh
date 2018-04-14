@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 1999-2014 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 #
 # Miscellaneous shell functions that make use of the ebuild env but don't need
@@ -89,7 +89,7 @@ prepcompress() {
 	# Canonicalize path names and check for their existence.
 	real_d=$(canonicalize "${ED}")
 	for (( i = 0; i < ${#PORTAGE_DOCOMPRESS[@]}; i++ )); do
-		real_f=$(canonicalize "${ED}${PORTAGE_DOCOMPRESS[i]}")
+		real_f=$(canonicalize "${ED%/}/${PORTAGE_DOCOMPRESS[i]#/}")
 		f=${real_f#"${real_d}"}
 		if [[ ${real_f} != "${f}" ]] && [[ -d ${real_f} || -f ${real_f} ]]
 		then
@@ -100,7 +100,7 @@ prepcompress() {
 		fi
 	done
 	for (( i = 0; i < ${#PORTAGE_DOCOMPRESS_SKIP[@]}; i++ )); do
-		real_f=$(canonicalize "${ED}${PORTAGE_DOCOMPRESS_SKIP[i]}")
+		real_f=$(canonicalize "${ED%/}/${PORTAGE_DOCOMPRESS_SKIP[i]#/}")
 		f=${real_f#"${real_d}"}
 		if [[ ${real_f} != "${f}" ]] && [[ -d ${real_f} || -f ${real_f} ]]
 		then
@@ -149,7 +149,7 @@ prepcompress() {
 
 	# Split the include list into directories and files
 	for f in "${include[@]}"; do
-		if [[ -d ${ED}${f} ]]; then
+		if [[ -d ${ED%/}/${f#/} ]]; then
 			incl_d[${#incl_d[@]}]=${f}
 		else
 			incl_f[${#incl_f[@]}]=${f}
@@ -159,7 +159,7 @@ prepcompress() {
 	# Queue up for compression.
 	# ecompress{,dir} doesn't like to be called with empty argument lists.
 	[[ ${#incl_d[@]} -gt 0 ]] && ecompressdir --limit ${PORTAGE_DOCOMPRESS_SIZE_LIMIT:-0} --queue "${incl_d[@]}"
-	[[ ${#incl_f[@]} -gt 0 ]] && ecompress --queue "${incl_f[@]/#/${ED}}"
+	[[ ${#incl_f[@]} -gt 0 ]] && ecompress --queue "${incl_f[@]/#/${ED%/}}"
 	[[ ${#exclude[@]} -gt 0 ]] && ecompressdir --ignore "${exclude[@]}"
 	return 0
 }
@@ -227,6 +227,12 @@ install_qa_check() {
 	ecompressdir --dequeue
 	ecompress --dequeue
 
+	if ___eapi_has_dostrip; then
+		"${PORTAGE_BIN_PATH}"/estrip --queue "${PORTAGE_DOSTRIP[@]}"
+		"${PORTAGE_BIN_PATH}"/estrip --ignore "${PORTAGE_DOSTRIP_SKIP[@]}"
+		"${PORTAGE_BIN_PATH}"/estrip --dequeue
+	fi
+
 	# Create NEEDED.ELF.2 regardless of RESTRICT=binchecks, since this info is
 	# too useful not to have (it's required for things like preserve-libs), and
 	# it's tempting for ebuild authors to set RESTRICT=binchecks for packages
@@ -256,7 +262,7 @@ install_qa_check() {
 	fi
 
 	# Portage regenerates this on the installed system.
-	rm -f "${ED}"/usr/share/info/dir{,.gz,.bz2} || die "rm failed!"
+	rm -f "${ED%/}"/usr/share/info/dir{,.gz,.bz2} || die "rm failed!"
 }
 
 preinst_qa_check() {
@@ -320,78 +326,27 @@ postinst_qa_check() {
 	done < <(printf "%s\0" "${qa_checks[@]}" | LC_ALL=C sort -u -z)
 }
 
-install_mask() {
-	local root="$1"
-	shift
-	local install_mask="$*"
-
-	# We think of $install_mask as a space-separated list of
-	# globs. We don't want globbing in the "for" loop; that is, we
-	# want to keep the asterisks in the indivual entries.
-	local shopts=$-
-	set -o noglob
-	local no_inst
-	for no_inst in ${install_mask}; do
-		# Here, $no_inst is a single "entry" potentially
-		# containing a glob. From now on, we *do* want to
-		# expand it.
-		set +o noglob
-
-		# The standard case where $no_inst is something that
-		# the shell could expand on its own.
-		if [[ -e "${root}"/${no_inst} || -L "${root}"/${no_inst} ||
-			"${root}"/${no_inst} != $(echo "${root}"/${no_inst}) ]] ; then
-			__quiet_mode || einfo "Removing ${no_inst}"
-			rm -Rf "${root}"/${no_inst} >&/dev/null
-		fi
-
-		# We also want to allow the user to specify a "bare
-		# glob." For example, $no_inst="*.a" should prevent
-		# ALL files ending in ".a" from being installed,
-		# regardless of their location/depth. We achieve this
-		# by passing the pattern to `find`.
-		find "${root}" \( -path "${no_inst}" -or -name "${no_inst}" \) \
-			-print0 2> /dev/null \
-		| LC_ALL=C sort -z \
-		| while read -r -d ''; do
-			__quiet_mode || einfo "Removing /${REPLY#${root}}"
-			rm -Rf "${REPLY}" >&/dev/null
-		done
-
-	done
-	# set everything back the way we found it
-	set +o noglob
-	set -${shopts}
-}
-
 preinst_mask() {
-	if [ -z "${D}" ]; then
-		 eerror "${FUNCNAME}: D is unset"
-		 return 1
-	fi
-
-	if ! ___eapi_has_prefix_variables; then
-		local ED=${D}
-	fi
-
-	# Make sure $PWD is not ${D} so that we don't leave gmon.out files
-	# in there in case any tools were built with -pg in CFLAGS.
-	cd "${T}"
-
-	# remove man pages, info pages, docs if requested
-	local f
+	# Remove man pages, info pages, docs if requested. This is
+	# implemented in bash in order to respect INSTALL_MASK settings
+	# from bashrc.
+	local f x
 	for f in man info doc; do
-		if has no${f} $FEATURES; then
-			INSTALL_MASK="${INSTALL_MASK} /usr/share/${f}"
+		if has no${f} ${FEATURES}; then
+			INSTALL_MASK+=" /usr/share/${f}"
 		fi
 	done
 
-	install_mask "${ED}" "${INSTALL_MASK}"
+	# Store modified variables in build-info.
+	cd "${PORTAGE_BUILDDIR}"/build-info || die
+	set -f
 
-	# remove share dir if unnessesary
-	if has nodoc $FEATURES || has noman $FEATURES || has noinfo $FEATURES; then
-		rmdir "${ED}usr/share" &> /dev/null
-	fi
+	IFS=$' \t\n\r'
+	for f in INSTALL_MASK; do
+		x=$(echo -n ${!f})
+		[[ -n ${x} ]] && echo "${x}" > "${f}"
+	done
+	set +f
 }
 
 preinst_sfperms() {
@@ -410,11 +365,11 @@ preinst_sfperms() {
 		find "${ED}" -type f -perm -4000 -print0 | \
 		while read -r -d $'\0' i ; do
 			if [ -n "$(find "$i" -perm -2000)" ] ; then
-				ebegin ">>> SetUID and SetGID: [chmod o-r] /${i#${ED}}"
+				ebegin ">>> SetUID and SetGID: [chmod o-r] ${i#${ED%/}}"
 				chmod o-r "$i"
 				eend $?
 			else
-				ebegin ">>> SetUID: [chmod go-r] /${i#${ED}}"
+				ebegin ">>> SetUID: [chmod go-r] ${i#${ED%/}}"
 				chmod go-r "$i"
 				eend $?
 			fi
@@ -426,7 +381,7 @@ preinst_sfperms() {
 				# by the SetUID check above.
 				true
 			else
-				ebegin ">>> SetGID: [chmod o-r] /${i#${ED}}"
+				ebegin ">>> SetGID: [chmod o-r] ${i#${ED%/}}"
 				chmod o-r "$i"
 				eend $?
 			fi
@@ -455,7 +410,7 @@ preinst_suid_scan() {
 		__vecho ">>> Performing suid scan in ${ED}"
 		for i in $(find "${ED}" -type f \( -perm -4000 -o -perm -2000 \) ); do
 			if [ -s "${sfconf}" ]; then
-				install_path=/${i#${ED}}
+				install_path=${i#${ED%/}}
 				if grep -q "^${install_path}\$" "${sfconf}" ; then
 					__vecho "- ${install_path} is an approved suid file"
 				else
@@ -465,7 +420,7 @@ preinst_suid_scan() {
 					chmod ugo-s "${i}"
 					grep "^#${install_path}$" "${sfconf}" > /dev/null || {
 						__vecho ">>> Appending commented out entry to ${sfconf} for ${PF}"
-						echo "## ${ls_ret%${ED}*}${install_path}" >> "${sfconf}"
+						echo "## ${ls_ret%${ED%/}*}${install_path}" >> "${sfconf}"
 						echo "#${install_path}" >> "${sfconf}"
 						# no delwrite() eh?
 						# delwrite ${sconf}
@@ -508,30 +463,14 @@ preinst_selinux_labels() {
 }
 
 __dyn_package() {
-	local PROOT
 
 	if ! ___eapi_has_prefix_variables; then
-		local EPREFIX= ED=${D}
+		local EPREFIX=
 	fi
 
 	# Make sure $PWD is not ${D} so that we don't leave gmon.out files
 	# in there in case any tools were built with -pg in CFLAGS.
-
 	cd "${T}" || die
-
-	if [[ -n ${PKG_INSTALL_MASK} ]] ; then
-		PROOT=${T}/packaging/
-		# make a temporary copy of ${D} so that any modifications we do that
-		# are binpkg specific, do not influence the actual installed image.
-		rm -rf "${PROOT}" || die "failed removing stale package tree"
-		cp -pPR $(cp --help | grep -qs -e-l && echo -l) \
-			"${D}" "${PROOT}" \
-			|| die "failed creating packaging tree"
-
-		install_mask "${PROOT%/}${EPREFIX}/" "${PKG_INSTALL_MASK}"
-	else
-		PROOT=${D}
-	fi
 
 	local tar_options=""
 	[[ $PORTAGE_VERBOSE = 1 ]] && tar_options+=" -v"
@@ -544,7 +483,7 @@ __dyn_package() {
 	mkdir -p "${PORTAGE_BINPKG_TMPFILE%/*}" || die "mkdir failed"
 	[ -z "${PORTAGE_COMPRESSION_COMMAND}" ] && \
         die "PORTAGE_COMPRESSION_COMMAND is unset"
-	tar $tar_options -cf - $PORTAGE_BINPKG_TAR_OPTS -C "${PROOT}" . | \
+	tar $tar_options -cf - $PORTAGE_BINPKG_TAR_OPTS -C "${D}" . | \
 		$PORTAGE_COMPRESSION_COMMAND -c > "$PORTAGE_BINPKG_TMPFILE"
 	assert "failed to pack binary package: '$PORTAGE_BINPKG_TMPFILE'"
 	PYTHONPATH=${PORTAGE_PYTHONPATH:-${PORTAGE_PYM_PATH}} \
@@ -566,8 +505,6 @@ __dyn_package() {
 		echo ${md5_hash} > "${PORTAGE_BUILDDIR}"/build-info/BINPKGMD5
 	__vecho ">>> Done."
 
-	# cleanup our temp tree
-	[[ -n ${PKG_INSTALL_MASK} ]] && rm -rf "${PROOT}"
 	cd "${PORTAGE_BUILDDIR}"
 	>> "$PORTAGE_BUILDDIR/.packaged" || \
 		die "Failed to create $PORTAGE_BUILDDIR/.packaged"

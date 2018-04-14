@@ -1,4 +1,4 @@
-# Copyright 1999-2017 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import print_function
@@ -136,6 +136,7 @@ def insert_optional_args(args):
 		'--binpkg-changed-deps'  : y_or_n,
 		'--buildpkg'             : y_or_n,
 		'--changed-deps'         : y_or_n,
+		'--changed-slot'         : y_or_n,
 		'--changed-deps-report'  : y_or_n,
 		'--complete-graph'       : y_or_n,
 		'--deep'       : valid_integers,
@@ -146,6 +147,7 @@ def insert_optional_args(args):
 		'--fuzzy-search'         : y_or_n,
 		'--getbinpkg'            : y_or_n,
 		'--getbinpkgonly'        : y_or_n,
+		'--ignore-world'         : y_or_n,
 		'--jobs'       : valid_integers,
 		'--keep-going'           : y_or_n,
 		'--load-average'         : valid_floats,
@@ -415,6 +417,12 @@ def parse_opts(tmpcmdline, silent=False):
 			"choices" : true_y_or_n
 		},
 
+		"--changed-slot": {
+			"help"    : ("replace installed packages with "
+				"outdated SLOT metadata"),
+			"choices" : true_y_or_n
+		},
+
 		"--config-root": {
 			"help":"specify the location for portage configuration files",
 			"action":"store"
@@ -501,6 +509,11 @@ def parse_opts(tmpcmdline, silent=False):
 				"exist for binary and installed packages built with "
 				"older versions of portage.",
 			"choices": y_or_n
+		},
+
+		"--ignore-world": {
+			"help"    : "ignore the @world package set and its dependencies",
+			"choices" : true_y_or_n
 		},
 
 		"--jobs": {
@@ -846,6 +859,12 @@ def parse_opts(tmpcmdline, silent=False):
 		else:
 			myoptions.changed_deps_report = 'n'
 
+	if myoptions.changed_slot is not None:
+		if myoptions.changed_slot in true_y:
+			myoptions.changed_slot = True
+		else:
+			myoptions.changed_slot = None
+
 	if myoptions.changed_use is not False:
 		myoptions.reinstall = "changed-use"
 		myoptions.changed_use = False
@@ -918,6 +937,9 @@ def parse_opts(tmpcmdline, silent=False):
 		myoptions.getbinpkgonly = True
 	else:
 		myoptions.getbinpkgonly = None
+
+	if myoptions.ignore_world in true_y:
+		myoptions.ignore_world = True
 
 	if myoptions.keep_going in true_y:
 		myoptions.keep_going = True

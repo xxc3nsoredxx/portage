@@ -1,4 +1,4 @@
-# Copyright 1999-2016 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import division
@@ -9,7 +9,6 @@ import os
 import select
 import signal
 import sys
-import time
 
 try:
 	import fcntl
@@ -25,10 +24,12 @@ except ImportError:
 import portage
 portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.util.futures.futures:_EventLoopFuture',
+	'portage.util.futures.executor.fork:ForkExecutor',
 )
 
 from portage import OrderedDict
 from portage.util import writemsg_level
+from portage.util.monotonic import monotonic
 from ..SlotObject import SlotObject
 from .PollConstants import PollConstants
 from .PollSelectAdapter import PollSelectAdapter
@@ -122,6 +123,7 @@ class EventLoop(object):
 		self._idle_callbacks = OrderedDict()
 		self._timeout_handlers = {}
 		self._timeout_interval = None
+		self._default_executor = None
 
 		self._poll_obj = None
 		try:
@@ -515,7 +517,7 @@ class EventLoop(object):
 			self._timeout_handlers[source_id] = \
 				self._timeout_handler_class(
 					interval=interval, function=function, args=args,
-					source_id=source_id, timestamp=time.time())
+					source_id=source_id, timestamp=self.time())
 			if self._timeout_interval is None or \
 				self._timeout_interval > interval:
 				self._timeout_interval = interval
@@ -538,7 +540,7 @@ class EventLoop(object):
 				return bool(calls)
 
 			ready_timeouts = []
-			current_time = time.time()
+			current_time = self.time()
 			for x in self._timeout_handlers.values():
 				elapsed_seconds = current_time - x.timestamp
 				# elapsed_seconds < 0 means the system clock has been adjusted
@@ -558,7 +560,7 @@ class EventLoop(object):
 				calls += 1
 				x.calling = True
 				try:
-					x.timestamp = time.time()
+					x.timestamp = self.time()
 					if not x.function(*x.args):
 						self.source_remove(x.source_id)
 				finally:
@@ -684,6 +686,83 @@ class EventLoop(object):
 	# The call_soon method inherits thread safety from the idle_add method.
 	call_soon_threadsafe = call_soon
 
+	def time(self):
+		"""Return the time according to the event loop's clock.
+
+		This is a float expressed in seconds since an epoch, but the
+		epoch, precision, accuracy and drift are unspecified and may
+		differ per event loop.
+		"""
+		return monotonic()
+
+	def call_later(self, delay, callback, *args):
+		"""
+		Arrange for the callback to be called after the given delay seconds
+		(either an int or float).
+
+		An instance of asyncio.Handle is returned, which can be used to cancel
+		the callback.
+
+		callback will be called exactly once per call to call_later(). If two
+		callbacks are scheduled for exactly the same time, it is undefined
+		which will be called first.
+
+		The optional positional args will be passed to the callback when
+		it is called. If you want the callback to be called with some named
+		arguments, use a closure or functools.partial().
+
+		Use functools.partial to pass keywords to the callback.
+
+		@type delay: int or float
+		@param delay: delay seconds
+		@type callback: callable
+		@param callback: a function to call
+		@return: a handle which can be used to cancel the callback
+		@rtype: asyncio.Handle (or compatible)
+		"""
+		return self._handle(self.timeout_add(
+			delay * 1000, self._call_soon_callback(callback, args)), self)
+
+	def run_in_executor(self, executor, func, *args):
+		"""
+		Arrange for a func to be called in the specified executor.
+
+		The executor argument should be an Executor instance. The default
+		executor is used if executor is None.
+
+		Use functools.partial to pass keywords to the *func*.
+
+		@param executor: executor
+		@type executor: concurrent.futures.Executor or None
+		@param func: a function to call
+		@type func: callable
+		@return: a Future
+		@rtype: asyncio.Future (or compatible)
+		"""
+		if executor is None:
+			executor = self._default_executor
+			if executor is None:
+				executor = ForkExecutor(loop=self)
+				self._default_executor = executor
+		return executor.submit(func, *args)
+
+	def close(self):
+		"""Close the event loop.
+
+		This clears the queues and shuts down the executor,
+		and waits for it to finish.
+		"""
+		executor = self._default_executor
+		if executor is not None:
+			self._default_executor = None
+			executor.shutdown(wait=True)
+
+		if self._poll_obj is not None:
+			close = getattr(self._poll_obj, 'close')
+			if close is not None:
+				close()
+			self._poll_obj = None
+
 
 _can_poll_device = None
 
@@ -745,10 +824,11 @@ class _epoll_adapter(object):
 	that is associated with an epoll instance will close automatically when
 	it is garbage collected, so it's not necessary to close it explicitly.
 	"""
-	__slots__ = ('_epoll_obj',)
+	__slots__ = ('_epoll_obj', 'close')
 
 	def __init__(self, epoll_obj):
 		self._epoll_obj = epoll_obj
+		self.close = epoll_obj.close
 
 	def register(self, fd, *args):
 		self._epoll_obj.register(fd, *args)

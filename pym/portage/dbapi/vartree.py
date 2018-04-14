@@ -1,4 +1,4 @@
-# Copyright 1998-2017 Gentoo Foundation
+# Copyright 1998-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import division, unicode_literals
@@ -32,6 +32,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 		'grabdict,normalize_path,new_protect_filename',
 	'portage.util.digraph:digraph',
 	'portage.util.env_update:env_update',
+	'portage.util.install_mask:install_mask_dir,InstallMask',
 	'portage.util.listdir:dircache,listdir',
 	'portage.util.movefile:movefile',
 	'portage.util.path:first_existing,iter_parents',
@@ -176,10 +177,10 @@ class vardbapi(dbapi):
 			vartree = portage.db[settings['EROOT']]['vartree']
 		self.vartree = vartree
 		self._aux_cache_keys = set(
-			["BUILD_TIME", "CHOST", "COUNTER", "DEPEND", "DESCRIPTION",
-			"EAPI", "HDEPEND", "HOMEPAGE",
+			["BDEPEND", "BUILD_TIME", "CHOST", "COUNTER", "DEPEND",
+			"DESCRIPTION", "EAPI", "HDEPEND", "HOMEPAGE",
 			"BUILD_ID", "IUSE", "KEYWORDS",
-			"LICENSE", "PDEPEND", "PROPERTIES", "PROVIDE", "RDEPEND",
+			"LICENSE", "PDEPEND", "PROPERTIES", "RDEPEND",
 			"repository", "RESTRICT" , "SLOT", "USE", "DEFINED_PHASES",
 			"PROVIDES", "REQUIRES"
 			])
@@ -1475,40 +1476,10 @@ class vartree(object):
 		return
 
 	def get_provide(self, mycpv):
-		myprovides = []
-		mylines = None
-		try:
-			mylines, myuse = self.dbapi.aux_get(mycpv, ["PROVIDE", "USE"])
-			if mylines:
-				myuse = myuse.split()
-				mylines = use_reduce(mylines, uselist=myuse, flat=True)
-				for myprovide in mylines:
-					mys = catpkgsplit(myprovide)
-					if not mys:
-						mys = myprovide.split("/")
-					myprovides += [mys[0] + "/" + mys[1]]
-			return myprovides
-		except SystemExit as e:
-			raise
-		except Exception as e:
-			mydir = self.dbapi.getpath(mycpv)
-			writemsg(_("\nParse Error reading PROVIDE and USE in '%s'\n") % mydir,
-				noiselevel=-1)
-			if mylines:
-				writemsg(_("Possibly Invalid: '%s'\n") % str(mylines),
-					noiselevel=-1)
-			writemsg(_("Exception: %s\n\n") % str(e), noiselevel=-1)
-			return []
+		return []
 
 	def get_all_provides(self):
-		myprovides = {}
-		for node in self.getallcpv():
-			for mykey in self.get_provide(node):
-				if mykey in myprovides:
-					myprovides[mykey] += [node]
-				else:
-					myprovides[mykey] = [node]
-		return myprovides
+		return {}
 
 	def dep_bestmatch(self, mydep, use_cache=1):
 		"compatibility method -- all matches, not just visible ones"
@@ -3777,13 +3748,6 @@ class dblink(object):
 		is_binpkg = self.settings.get("EMERGE_FROM") == "binary"
 		slot = ''
 		for var_name in ('CHOST', 'SLOT'):
-			if var_name == 'CHOST' and self.cat == 'virtual':
-				try:
-					os.unlink(os.path.join(inforoot, var_name))
-				except OSError:
-					pass
-				continue
-
 			try:
 				with io.open(_unicode_encode(
 					os.path.join(inforoot, var_name),
@@ -3887,6 +3851,22 @@ class dblink(object):
 			scheduler=self._scheduler, settings=self.settings)
 		phase.start()
 		phase.wait()
+		try:
+			with io.open(_unicode_encode(os.path.join(inforoot, "INSTALL_MASK"),
+				encoding=_encodings['fs'], errors='strict'),
+				mode='r', encoding=_encodings['repo.content'],
+				errors='replace') as f:
+				install_mask = InstallMask(f.read())
+		except EnvironmentError:
+			install_mask = None
+
+		if install_mask:
+			install_mask_dir(self.settings["ED"], install_mask)
+			if any(x in self.settings.features for x in ('nodoc', 'noman', 'noinfo')):
+				try:
+					os.rmdir(os.path.join(self.settings["ED"], 'usr', 'share'))
+				except OSError:
+					pass
 
 		# We check for unicode encoding issues after src_install. However,
 		# the check must be repeated here for binary packages (it's

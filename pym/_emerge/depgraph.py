@@ -1,4 +1,4 @@
-# Copyright 1999-2017 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import division, print_function, unicode_literals
@@ -163,7 +163,10 @@ class _frozen_depgraph_config(object):
 				self.trees[myroot]["bintree"] = DummyTree(
 					DbapiProvidesIndex(trees[myroot]["bintree"].dbapi))
 
-		self._required_set_names = set(["world"])
+		if params.get("ignore_world", False):
+			self._required_set_names = set()
+		else:
+			self._required_set_names = set(["world"])
 
 		atoms = ' '.join(myopts.get("--exclude", [])).split()
 		self.excluded_pkgs = _wildcard_set(atoms)
@@ -353,6 +356,13 @@ class _rebuild_config(object):
 				need_restart = True
 
 		return need_restart
+
+
+class _use_changes(tuple):
+	def __new__(cls, new_use, new_changes, required_use_satisfied=True):
+		obj = tuple.__new__(cls, [new_use, new_changes])
+		obj.required_use_satisfied = required_use_satisfied
+		return obj
 
 
 class _dynamic_depgraph_config(object):
@@ -1539,9 +1549,11 @@ class depgraph(object):
 		explored_nodes = set()
 
 		while unexplored:
-			# Handle all unexplored packages.
-			while unexplored:
-				node = unexplored.pop()
+			while True:
+				try:
+					node = unexplored.pop()
+				except KeyError:
+					break
 				for child in conflict_graph.child_nodes(node):
 					# Don't explore a node more than once, in order
 					# to avoid infinite recursion. The forced set
@@ -2655,6 +2667,10 @@ class depgraph(object):
 
 		return changed
 
+	def _changed_slot(self, pkg):
+		ebuild = self._equiv_ebuild(pkg)
+		return ebuild is not None and (ebuild.slot, ebuild.sub_slot) != (pkg.slot, pkg.sub_slot)
+
 	def _create_graph(self, allow_unsatisfied=False):
 		dep_stack = self._dynamic_config._dep_stack
 		dep_disjunctive_stack = self._dynamic_config._dep_disjunctive_stack
@@ -3289,16 +3305,18 @@ class depgraph(object):
 			# Removal actions never traverse ignored buildtime
 			# dependencies, so it's safe to discard them early.
 			edepend["DEPEND"] = ""
+			edepend["BDEPEND"] = ""
 			edepend["HDEPEND"] = ""
 			ignore_build_time_deps = True
 
 		ignore_depend_deps = ignore_build_time_deps
+		ignore_bdepend_deps = ignore_build_time_deps
 		ignore_hdepend_deps = ignore_build_time_deps
 
 		if removal_action:
 			depend_root = myroot
 		else:
-			if eapi_attrs.hdepend:
+			if eapi_attrs.bdepend or eapi_attrs.hdepend:
 				depend_root = myroot
 			else:
 				depend_root = self._frozen_config._running_root.root
@@ -3315,6 +3333,8 @@ class depgraph(object):
 		if not self._rebuild.rebuild:
 			if ignore_depend_deps:
 				edepend["DEPEND"] = ""
+			if ignore_bdepend_deps:
+				edepend["BDEPEND"] = ""
 			if ignore_hdepend_deps:
 				edepend["HDEPEND"] = ""
 
@@ -3335,6 +3355,10 @@ class depgraph(object):
 				self._priority(buildtime=True,
 				optional=(pkg.built or ignore_hdepend_deps),
 				ignored=ignore_hdepend_deps)),
+			(self._frozen_config._running_root.root, edepend["BDEPEND"],
+				self._priority(buildtime=True,
+				optional=(pkg.built or ignore_bdepend_deps),
+				ignored=ignore_bdepend_deps)),
 		)
 
 		debug = "--debug" in self._frozen_config.myopts
@@ -6120,22 +6144,25 @@ class depgraph(object):
 
 		if new_changes != old_changes:
 			#Don't do the change if it violates REQUIRED_USE.
+			required_use_satisfied = True
 			required_use = pkg._metadata.get("REQUIRED_USE")
 			if required_use and check_required_use(required_use, old_use,
 				pkg.iuse.is_valid_flag, eapi=pkg.eapi) and \
 				not check_required_use(required_use, new_use,
 				pkg.iuse.is_valid_flag, eapi=pkg.eapi):
-				return old_use
+				required_use_satisfied = False
 
 			if any(x in pkg.use.mask for x in new_changes) or \
 				any(x in pkg.use.force for x in new_changes):
 				return old_use
 
-			self._dynamic_config._needed_use_config_changes[pkg] = (new_use, new_changes)
+			changes = _use_changes(new_use, new_changes,
+				required_use_satisfied=required_use_satisfied)
+			self._dynamic_config._needed_use_config_changes[pkg] = changes
 			backtrack_infos = self._dynamic_config._backtrack_infos
 			backtrack_infos.setdefault("config", {})
 			backtrack_infos["config"].setdefault("needed_use_config_changes", [])
-			backtrack_infos["config"]["needed_use_config_changes"].append((pkg, (new_use, new_changes)))
+			backtrack_infos["config"]["needed_use_config_changes"].append((pkg, changes))
 			if want_restart_for_use_change(pkg, new_use):
 				self._dynamic_config._need_restart = True
 		return new_use
@@ -6451,6 +6478,13 @@ class depgraph(object):
 						modified_use=self._pkg_use_enabled(pkg))):
 						if myeb and "--newrepo" in self._frozen_config.myopts and myeb.repo != pkg.repo:
 							break
+						elif self._dynamic_config.myparams.get("changed_slot") and self._changed_slot(pkg):
+							if installed:
+								break
+							else:
+								# Continue searching for a binary package
+								# with the desired SLOT metadata.
+								continue
 						elif reinstall_use or (not installed and respect_use):
 							iuses = pkg.iuse.all
 							old_use = self._pkg_use_enabled(pkg)
@@ -7095,7 +7129,7 @@ class depgraph(object):
 							# matches (this can happen if an atom lacks a
 							# category).
 							show_invalid_depstring_notice(
-								pkg, depstr, "%s" % (e,))
+								pkg, "%s" % (e,))
 							del e
 							raise
 						if not success:
@@ -7108,7 +7142,7 @@ class depgraph(object):
 								# annoy the user too much (otherwise they'd be
 								# forced to manually unmerge it first).
 								continue
-							show_invalid_depstring_notice(pkg, depstr, atoms)
+							show_invalid_depstring_notice(pkg, atoms)
 							return False
 						blocker_atoms = [myatom for myatom in atoms \
 							if myatom.blocker]
@@ -7126,7 +7160,7 @@ class depgraph(object):
 						except portage.exception.InvalidAtom as e:
 							depstr = " ".join(vardb.aux_get(pkg.cpv, dep_keys))
 							show_invalid_depstring_notice(
-								pkg, depstr, "Invalid Atom: %s" % (e,))
+								pkg, "Invalid Atom: %s" % (e,))
 							return False
 				for cpv in stale_cache:
 					del blocker_cache[cpv]
@@ -7544,6 +7578,7 @@ class depgraph(object):
 		ignored_uninstall_tasks = set()
 		have_uninstall_task = False
 		complete = "complete" in self._dynamic_config.myparams
+		ignore_world = self._dynamic_config.myparams.get("ignore_world", False)
 		asap_nodes = []
 
 		def get_nodes(**kwargs):
@@ -7636,11 +7671,13 @@ class depgraph(object):
 				return True
 			if node not in mergeable_nodes:
 				return False
-			if node == replacement_portage and \
-				mygraph.child_nodes(node,
-				ignore_priority=priority_range.ignore_medium_soft):
-				# Make sure that portage always has all of it's
-				# RDEPENDs installed first.
+			if node == replacement_portage and any(
+				getattr(rdep, 'operation', None) != 'uninstall'
+				for rdep in mygraph.child_nodes(node,
+				ignore_priority=priority_range.ignore_medium_soft)):
+				# Make sure that portage always has all of its
+				# RDEPENDs installed first, but ignore uninstalls
+				# (these occur when new portage blocks older repoman).
 				return False
 			selected_nodes.add(node)
 			for child in mygraph.child_nodes(node,
@@ -7961,7 +7998,7 @@ class depgraph(object):
 					# detected as early as possible, which makes it possible
 					# to avoid calling self._complete_graph() when it is
 					# unnecessary due to blockers triggering an abortion.
-					if not complete:
+					if not (complete or ignore_world):
 						# For packages in the world set, go ahead an uninstall
 						# when necessary, as long as the atom will be satisfied
 						# in the final state.
@@ -9374,6 +9411,10 @@ class depgraph(object):
 		return self._dynamic_config._need_config_reload
 
 	def autounmask_breakage_detected(self):
+		# Check for REQUIRED_USE violations.
+		for changes in self._dynamic_config._needed_use_config_changes.values():
+			if getattr(changes, 'required_use_satisfied', None) is False:
+				return True
 		try:
 			for pargs, kwargs in self._dynamic_config._unsatisfied_deps_for_display:
 				self._show_unsatisfied_dep(

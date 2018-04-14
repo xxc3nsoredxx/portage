@@ -1,9 +1,14 @@
 #!/bin/bash
-# Copyright 1999-2017 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
-export DESTTREE=/usr
-export INSDESTTREE=""
+if ___eapi_has_DESTTREE_INSDESTTREE; then
+	export DESTTREE=/usr
+	export INSDESTTREE=""
+else
+	export _E_DESTTREE_=/usr
+	export _E_INSDESTTREE_=""
+fi
 export _E_EXEDESTTREE_=""
 export _E_DOCDESTTREE_=""
 export INSOPTIONS="-m0644"
@@ -15,17 +20,20 @@ export MOPREFIX=${PN}
 export PORTAGE_DOCOMPRESS_SIZE_LIMIT="128"
 declare -a PORTAGE_DOCOMPRESS=( /usr/share/{doc,info,man} )
 declare -a PORTAGE_DOCOMPRESS_SKIP=( /usr/share/doc/${PF}/html )
+declare -a PORTAGE_DOSTRIP=( / )
+has strip ${RESTRICT} && PORTAGE_DOSTRIP=()
+declare -a PORTAGE_DOSTRIP_SKIP=()
 
 into() {
 	if [ "$1" == "/" ]; then
-		export DESTTREE=""
+		export _E_DESTTREE_=""
 	else
-		export DESTTREE=$1
+		export _E_DESTTREE_=$1
 		if ! ___eapi_has_prefix_variables; then
 			local ED=${D}
 		fi
-		if [ ! -d "${ED}${DESTTREE}" ]; then
-			install -d "${ED}${DESTTREE}"
+		if [ ! -d "${ED%/}/${_E_DESTTREE_#/}" ]; then
+			install -d "${ED%/}/${_E_DESTTREE_#/}"
 			local ret=$?
 			if [[ $ret -ne 0 ]] ; then
 				__helpers_die "${FUNCNAME[0]} failed"
@@ -33,24 +41,32 @@ into() {
 			fi
 		fi
 	fi
+
+	if ___eapi_has_DESTTREE_INSDESTTREE; then
+		export DESTTREE=${_E_DESTTREE_}
+	fi
 }
 
 insinto() {
 	if [ "$1" == "/" ]; then
-		export INSDESTTREE=""
+		export _E_INSDESTTREE_=""
 	else
-		export INSDESTTREE=$1
+		export _E_INSDESTTREE_=$1
 		if ! ___eapi_has_prefix_variables; then
 			local ED=${D}
 		fi
-		if [ ! -d "${ED}${INSDESTTREE}" ]; then
-			install -d "${ED}${INSDESTTREE}"
+		if [ ! -d "${ED%/}/${_E_INSDESTTREE_#/}" ]; then
+			install -d "${ED%/}/${_E_INSDESTTREE_#/}"
 			local ret=$?
 			if [[ $ret -ne 0 ]] ; then
 				__helpers_die "${FUNCNAME[0]} failed"
 				return $ret
 			fi
 		fi
+	fi
+
+	if ___eapi_has_DESTTREE_INSDESTTREE; then
+		export INSDESTTREE=${_E_INSDESTTREE_}
 	fi
 }
 
@@ -62,8 +78,8 @@ exeinto() {
 		if ! ___eapi_has_prefix_variables; then
 			local ED=${D}
 		fi
-		if [ ! -d "${ED}${_E_EXEDESTTREE_}" ]; then
-			install -d "${ED}${_E_EXEDESTTREE_}"
+		if [ ! -d "${ED%/}/${_E_EXEDESTTREE_#/}" ]; then
+			install -d "${ED%/}/${_E_EXEDESTTREE_#/}"
 			local ret=$?
 			if [[ $ret -ne 0 ]] ; then
 				__helpers_die "${FUNCNAME[0]} failed"
@@ -81,8 +97,8 @@ docinto() {
 		if ! ___eapi_has_prefix_variables; then
 			local ED=${D}
 		fi
-		if [ ! -d "${ED}usr/share/doc/${PF}/${_E_DOCDESTTREE_}" ]; then
-			install -d "${ED}usr/share/doc/${PF}/${_E_DOCDESTTREE_}"
+		if [ ! -d "${ED%/}/usr/share/doc/${PF}/${_E_DOCDESTTREE_#/}" ]; then
+			install -d "${ED%/}/usr/share/doc/${PF}/${_E_DOCDESTTREE_#/}"
 			local ret=$?
 			if [[ $ret -ne 0 ]] ; then
 				__helpers_die "${FUNCNAME[0]} failed"
@@ -111,6 +127,10 @@ exeopts() {
 }
 
 libopts() {
+	if ! ___eapi_has_dolib_libopts; then
+		die "'${FUNCNAME}' has been banned for EAPI '$EAPI'"
+	fi
+
 	export LIBOPTIONS="$@"
 
 	# `install` should never be called with '-s' ...
@@ -139,6 +159,32 @@ docompress() {
 				[[ ${f} = "${g}" ]] && continue 2
 			done
 			PORTAGE_DOCOMPRESS[${#PORTAGE_DOCOMPRESS[@]}]=${f}
+		done
+	fi
+}
+
+dostrip() {
+	___eapi_has_dostrip || die "'${FUNCNAME}' not supported in this EAPI"
+
+	local f g
+	if [[ $1 = "-x" ]]; then
+		shift
+		for f; do
+			f=$(__strip_duplicate_slashes "${f}"); f=${f%/}
+			[[ ${f:0:1} = / ]] || f="/${f}"
+			for g in "${PORTAGE_DOSTRIP_SKIP[@]}"; do
+				[[ ${f} = "${g}" ]] && continue 2
+			done
+			PORTAGE_DOSTRIP_SKIP+=( "${f}" )
+		done
+	else
+		for f; do
+			f=$(__strip_duplicate_slashes "${f}"); f=${f%/}
+			[[ ${f:0:1} = / ]] || f="/${f}"
+			for g in "${PORTAGE_DOSTRIP[@]}"; do
+				[[ ${f} = "${g}" ]] && continue 2
+			done
+			PORTAGE_DOSTRIP+=( "${f}" )
 		done
 	fi
 }
@@ -691,30 +737,30 @@ einstall() {
 	fi
 	unset LIBDIR_VAR
 	if [ -n "${CONF_LIBDIR}" ] && [ "${CONF_PREFIX:+set}" = set ]; then
-		EI_DESTLIBDIR="${D}/${CONF_PREFIX}/${CONF_LIBDIR}"
+		EI_DESTLIBDIR="${D%/}/${CONF_PREFIX}/${CONF_LIBDIR}"
 		EI_DESTLIBDIR="$(__strip_duplicate_slashes "${EI_DESTLIBDIR}")"
 		LOCAL_EXTRA_EINSTALL="libdir=${EI_DESTLIBDIR} ${LOCAL_EXTRA_EINSTALL}"
 		unset EI_DESTLIBDIR
 	fi
 
-	if [ -f ./[mM]akefile -o -f ./GNUmakefile ] ; then
+	if [[ -f Makefile || -f GNUmakefile || -f makefile ]] ; then
 		if [ "${PORTAGE_DEBUG}" == "1" ]; then
-			${MAKE:-make} -n prefix="${ED}usr" \
-				datadir="${ED}usr/share" \
-				infodir="${ED}usr/share/info" \
-				localstatedir="${ED}var/lib" \
-				mandir="${ED}usr/share/man" \
-				sysconfdir="${ED}etc" \
+			${MAKE:-make} -n prefix="${ED%/}/usr" \
+				datadir="${ED%/}/usr/share" \
+				infodir="${ED%/}/usr/share/info" \
+				localstatedir="${ED%/}/var/lib" \
+				mandir="${ED%/}/usr/share/man" \
+				sysconfdir="${ED%/}/etc" \
 				${LOCAL_EXTRA_EINSTALL} \
 				${MAKEOPTS} -j1 \
 				"$@" ${EXTRA_EMAKE} install
 		fi
-		if ! ${MAKE:-make} prefix="${ED}usr" \
-			datadir="${ED}usr/share" \
-			infodir="${ED}usr/share/info" \
-			localstatedir="${ED}var/lib" \
-			mandir="${ED}usr/share/man" \
-			sysconfdir="${ED}etc" \
+		if ! ${MAKE:-make} prefix="${ED%/}/usr" \
+			datadir="${ED%/}/usr/share" \
+			infodir="${ED%/}/usr/share/info" \
+			localstatedir="${ED%/}/var/lib" \
+			mandir="${ED%/}/usr/share/man" \
+			sysconfdir="${ED%/}/etc" \
 			${LOCAL_EXTRA_EINSTALL} \
 			${MAKEOPTS} -j1 \
 			"$@" ${EXTRA_EMAKE} install
@@ -811,7 +857,7 @@ __eapi4_src_install() {
 
 __eapi6_src_prepare() {
 	if [[ $(declare -p PATCHES 2>/dev/null) == "declare -a"* ]]; then
-		[[ -n ${PATCHES[@]} ]] && eapply "${PATCHES[@]}"
+		[[ ${#PATCHES[@]} -gt 0 ]] && eapply "${PATCHES[@]}"
 	elif [[ -n ${PATCHES} ]]; then
 		eapply ${PATCHES}
 	fi
@@ -966,7 +1012,7 @@ if ___eapi_has_einstalldocs; then
 					[[ -f ${d} && -s ${d} ]] && docinto / && dodoc "${d}"
 				done
 			elif [[ $(declare -p DOCS) == "declare -a"* ]] ; then
-				[[ ${DOCS[@]} ]] && docinto / && dodoc -r "${DOCS[@]}"
+				[[ ${#DOCS[@]} -gt 0 ]] && docinto / && dodoc -r "${DOCS[@]}"
 			else
 				[[ ${DOCS} ]] && docinto / && dodoc -r ${DOCS}
 			fi
@@ -974,7 +1020,7 @@ if ___eapi_has_einstalldocs; then
 
 		(
 			if [[ $(declare -p HTML_DOCS 2>/dev/null) == "declare -a"* ]] ; then
-				[[ ${HTML_DOCS[@]} ]] && \
+				[[ ${#HTML_DOCS[@]} -gt 0 ]] && \
 					docinto html && dodoc -r "${HTML_DOCS[@]}"
 			else
 				[[ ${HTML_DOCS} ]] && \
@@ -1041,7 +1087,7 @@ if ___eapi_has_eapply; then
 			done
 		fi
 
-		if [[ -z ${files[@]} ]]; then
+		if [[ ${#files[@]} -eq 0 ]]; then
 			die "eapply: no files specified"
 		fi
 
@@ -1063,7 +1109,7 @@ if ___eapi_has_eapply; then
 
 				local files=()
 				_eapply_get_files "${f}"
-				[[ -z ${files[@]} ]] && die "No *.{patch,diff} files in directory ${f}"
+				[[ ${#files[@]} -eq 0 ]] && die "No *.{patch,diff} files in directory ${f}"
 
 				einfo "Applying patches from ${f} ..."
 				local f2

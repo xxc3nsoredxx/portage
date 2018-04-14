@@ -1,4 +1,4 @@
-# Copyright 1999-2016 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import division, print_function, unicode_literals
@@ -816,8 +816,7 @@ def calc_depclean(settings, trees, ldpath_mtimes,
 						protected_set.add("=" + pkg.cpv)
 						continue
 				except portage.exception.InvalidDependString as e:
-					show_invalid_depstring_notice(pkg,
-						pkg._metadata["PROVIDE"], _unicode(e))
+					show_invalid_depstring_notice(pkg, _unicode(e))
 					del e
 					protected_set.add("=" + pkg.cpv)
 					continue
@@ -870,8 +869,7 @@ def calc_depclean(settings, trees, ldpath_mtimes,
 					protected_set.add("=" + pkg.cpv)
 					continue
 			except portage.exception.InvalidDependString as e:
-				show_invalid_depstring_notice(pkg,
-					pkg._metadata["PROVIDE"], _unicode(e))
+				show_invalid_depstring_notice(pkg, _unicode(e))
 				del e
 				protected_set.add("=" + pkg.cpv)
 				continue
@@ -888,8 +886,7 @@ def calc_depclean(settings, trees, ldpath_mtimes,
 				if excluded_set.findAtomForPackage(pkg):
 					required_sets['__excluded__'].add("=" + pkg.cpv)
 			except portage.exception.InvalidDependString as e:
-				show_invalid_depstring_notice(pkg,
-					pkg._metadata["PROVIDE"], _unicode(e))
+				show_invalid_depstring_notice(pkg, _unicode(e))
 				del e
 				required_sets['__excluded__'].add("=" + pkg.cpv)
 
@@ -1325,6 +1322,7 @@ def calc_depclean(settings, trees, ldpath_mtimes,
 		priority_map = {
 			"RDEPEND": runtime,
 			"PDEPEND": runtime_post,
+			"BDEPEND": buildtime,
 			"HDEPEND": buildtime,
 			"DEPEND": buildtime,
 		}
@@ -1817,8 +1815,8 @@ def action_info(settings, trees, myopts, myfiles):
 		myvars = list(settings)
 	else:
 		myvars = ['GENTOO_MIRRORS', 'CONFIG_PROTECT', 'CONFIG_PROTECT_MASK',
-		          'DISTDIR', 'PKGDIR', 'PORTAGE_TMPDIR',
-		          'PORTAGE_BUNZIP2_COMMAND',
+		          'DISTDIR', 'ENV_UNSET', 'PKGDIR', 'PORTAGE_TMPDIR',
+		          'PORTAGE_BINHOST', 'PORTAGE_BUNZIP2_COMMAND',
 		          'PORTAGE_BZIP2_COMMAND',
 		          'USE', 'CHOST', 'CFLAGS', 'CXXFLAGS',
 		          'ACCEPT_KEYWORDS', 'ACCEPT_LICENSE', 'FEATURES',

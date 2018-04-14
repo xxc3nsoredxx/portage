@@ -57,10 +57,10 @@ from portage.data import portage_gid, portage_uid, secpass, \
 from portage.dbapi.porttree import _parse_uri_map
 from portage.dep import Atom, check_required_use, \
 	human_readable_required_use, paren_enclose, use_reduce
-from portage.eapi import eapi_exports_KV, eapi_exports_merge_type, \
-	eapi_exports_replace_vars, eapi_exports_REPOSITORY, \
-	eapi_has_required_use, eapi_has_src_prepare_and_src_configure, \
-	eapi_has_pkg_pretend, _get_eapi_attrs
+from portage.eapi import (eapi_exports_KV, eapi_exports_merge_type,
+	eapi_exports_replace_vars, eapi_exports_REPOSITORY,
+	eapi_has_required_use, eapi_has_src_prepare_and_src_configure,
+	eapi_has_pkg_pretend, _get_eapi_attrs)
 from portage.elog import elog_process, _preload_elog_modules
 from portage.elog.messages import eerror, eqawarn
 from portage.exception import (DigestException, FileNotFound,
@@ -135,7 +135,7 @@ _phase_func_map = {
 }
 
 _vdb_use_conditional_keys = Package._dep_keys + \
-	('LICENSE', 'PROPERTIES', 'PROVIDE', 'RESTRICT',)
+	('LICENSE', 'PROPERTIES', 'RESTRICT',)
 
 def _doebuild_spawn(phase, settings, actionmap=None, **kwargs):
 	"""
@@ -1354,11 +1354,6 @@ def _spawn_actionmap(settings):
 		("usersandbox" not in features) and \
 		"userpriv" not in restrict and \
 		"nouserpriv" not in restrict)
-	if nosandbox and ("userpriv" not in features or \
-		"userpriv" in restrict or \
-		"nouserpriv" in restrict):
-		nosandbox = ("sandbox" not in features and \
-			"usersandbox" not in features)
 
 	if not portage.process.sandbox_capable:
 		nosandbox = True
@@ -1939,13 +1934,10 @@ def _post_src_install_write_metadata(settings):
 		if v is not None:
 			write_atomic(os.path.join(build_info_dir, k), v + '\n')
 
-	# The following variables are irrelevant for virtual packages.
-	if settings.get('CATEGORY') != 'virtual':
-
-		for k in ('CHOST',):
-			v = settings.get(k)
-			if v is not None:
-				write_atomic(os.path.join(build_info_dir, k), v + '\n')
+	for k in ('CHOST',):
+		v = settings.get(k)
+		if v is not None:
+			write_atomic(os.path.join(build_info_dir, k), v + '\n')
 
 	with io.open(_unicode_encode(os.path.join(build_info_dir,
 		'BUILD_TIME'), encoding=_encodings['fs'], errors='strict'),

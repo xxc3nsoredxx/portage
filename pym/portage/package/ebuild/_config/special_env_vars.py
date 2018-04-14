@@ -1,4 +1,4 @@
-# Copyright 2010-2014 Gentoo Foundation
+# Copyright 2010-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -14,7 +14,8 @@ import re
 # to enter the config instance from the external environment or
 # configuration files.
 env_blacklist = frozenset((
-	"A", "AA", "CATEGORY", "DEPEND", "DESCRIPTION", "DOCS", "EAPI",
+	"A", "AA", "BDEPEND", "CATEGORY", "DEPEND", "DESCRIPTION",
+	"DOCS", "EAPI",
 	"EBUILD_FORCE_TEST", "EBUILD_PHASE",
 	"EBUILD_PHASE_FUNC", "EBUILD_SKIP_MANIFEST",
 	"ED", "EMERGE_FROM", "EPREFIX", "EROOT",
@@ -26,7 +27,7 @@ env_blacklist = frozenset((
 	"PORTAGE_BUILT_USE", "PORTAGE_CONFIGROOT",
 	"PORTAGE_INTERNAL_CALLER", "PORTAGE_IUSE",
 	"PORTAGE_NONFATAL", "PORTAGE_PIPE_FD", "PORTAGE_REPO_NAME",
-	"PORTAGE_USE", "PROPERTIES", "PROVIDE", "RDEPEND", "REPOSITORY",
+	"PORTAGE_USE", "PROPERTIES", "RDEPEND", "REPOSITORY",
 	"REQUIRED_USE", "RESTRICT", "ROOT", "SLOT", "SRC_URI", "_"
 ))
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 1999-2015 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 # Prevent aliases from causing portage to act inappropriately.
@@ -63,7 +63,7 @@ else
 	# These dummy functions are for things that are likely to be called
 	# in global scope, even though they are completely useless during
 	# the "depend" phase.
-	funcs="diropts docompress exeopts get_KV insopts
+	funcs="diropts docompress dostrip exeopts get_KV insopts
 		KV_major KV_micro KV_minor KV_to_int
 		libopts register_die_hook register_success_hook
 		__strip_duplicate_slashes
@@ -141,6 +141,12 @@ shift $#
 
 # Unset some variables that break things.
 unset GZIP BZIP BZIP2 CDPATH GREP_OPTIONS GREP_COLOR GLOBIGNORE
+if ___eapi_has_ENV_UNSET; then
+	for x in ${ENV_UNSET}; do
+		unset "${x}"
+	done
+	unset x
+fi
 
 [[ $PORTAGE_QUIET != "" ]] && export PORTAGE_QUIET
 
@@ -236,7 +242,7 @@ debug-print-section() {
 declare -ix ECLASS_DEPTH=0
 inherit() {
 	ECLASS_DEPTH=$(($ECLASS_DEPTH + 1))
-	if [[ ${ECLASS_DEPTH} > 1 ]]; then
+	if [[ ${ECLASS_DEPTH} -gt 1 ]]; then
 		debug-print "*** Multiple Inheritence (Level: ${ECLASS_DEPTH})"
 	fi
 
@@ -262,6 +268,7 @@ inherit() {
 	local B_RDEPEND
 	local B_PDEPEND
 	local B_HDEPEND
+	local B_BDEPEND
 	while [ "$1" ]; do
 		location=""
 		potential_location=""
@@ -305,14 +312,17 @@ inherit() {
 			set -f
 
 			# Retain the old data and restore it later.
-			unset B_IUSE B_REQUIRED_USE B_DEPEND B_RDEPEND B_PDEPEND B_HDEPEND
+			unset B_IUSE B_REQUIRED_USE B_DEPEND B_RDEPEND B_PDEPEND
+			unset B_HDEPEND B_BDEPEND
 			[ "${IUSE+set}"       = set ] && B_IUSE="${IUSE}"
 			[ "${REQUIRED_USE+set}" = set ] && B_REQUIRED_USE="${REQUIRED_USE}"
 			[ "${DEPEND+set}"     = set ] && B_DEPEND="${DEPEND}"
 			[ "${RDEPEND+set}"    = set ] && B_RDEPEND="${RDEPEND}"
 			[ "${PDEPEND+set}"    = set ] && B_PDEPEND="${PDEPEND}"
 			[ "${HDEPEND+set}"    = set ] && B_HDEPEND="${HDEPEND}"
+			[ "${BDEPEND+set}"    = set ] && B_BDEPEND="${BDEPEND}"
 			unset IUSE REQUIRED_USE DEPEND RDEPEND PDEPEND HDEPEND
+			unset BDEPEND
 			#turn on glob expansion
 			set +f
 		fi
@@ -331,6 +341,7 @@ inherit() {
 			[ "${RDEPEND+set}"      = set ] && E_RDEPEND+="${E_RDEPEND:+ }${RDEPEND}"
 			[ "${PDEPEND+set}"      = set ] && E_PDEPEND+="${E_PDEPEND:+ }${PDEPEND}"
 			[ "${HDEPEND+set}"      = set ] && E_HDEPEND+="${E_HDEPEND:+ }${HDEPEND}"
+			[ "${BDEPEND+set}"      = set ] && E_BDEPEND+="${E_BDEPEND:+ }${BDEPEND}"
 
 			[ "${B_IUSE+set}"     = set ] && IUSE="${B_IUSE}"
 			[ "${B_IUSE+set}"     = set ] || unset IUSE
@@ -349,6 +360,9 @@ inherit() {
 
 			[ "${B_HDEPEND+set}"  = set ] && HDEPEND="${B_HDEPEND}"
 			[ "${B_HDEPEND+set}"  = set ] || unset HDEPEND
+
+			[ "${B_BDEPEND+set}"  = set ] && BDEPEND="${B_BDEPEND}"
+			[ "${B_BDEPEND+set}"  = set ] || unset BDEPEND
 
 			#turn on glob expansion
 			set +f
@@ -616,9 +630,10 @@ if ! has "$EBUILD_PHASE" clean cleanrm ; then
 		# In order to ensure correct interaction between ebuilds and
 		# eclasses, they need to be unset before this process of
 		# interaction begins.
-		unset EAPI DEPEND RDEPEND PDEPEND HDEPEND INHERITED IUSE REQUIRED_USE \
-			ECLASS E_IUSE E_REQUIRED_USE E_DEPEND E_RDEPEND E_PDEPEND \
-			E_HDEPEND PROVIDES_EXCLUDE REQUIRES_EXCLUDE
+		unset EAPI DEPEND RDEPEND PDEPEND HDEPEND BDEPEND
+		unset INHERITED IUSE REQUIRED_USE ECLASS E_IUSE E_REQUIRED_USE
+		unset E_DEPEND E_RDEPEND E_PDEPEND E_HDEPEND E_BDEPEND
+		unset PROVIDES_EXCLUDE REQUIRES_EXCLUDE
 
 		if [[ $PORTAGE_DEBUG != 1 || ${-/x/} != $- ]] ; then
 			source "$EBUILD" || die "error sourcing ebuild"
@@ -654,10 +669,11 @@ if ! has "$EBUILD_PHASE" clean cleanrm ; then
 		RDEPEND+="${RDEPEND:+ }${E_RDEPEND}"
 		PDEPEND+="${PDEPEND:+ }${E_PDEPEND}"
 		HDEPEND+="${HDEPEND:+ }${E_HDEPEND}"
+		BDEPEND+="${BDEPEND:+ }${E_BDEPEND}"
 		REQUIRED_USE+="${REQUIRED_USE:+ }${E_REQUIRED_USE}"
 		
-		unset ECLASS E_IUSE E_REQUIRED_USE E_DEPEND E_RDEPEND E_PDEPEND E_HDEPEND \
-			__INHERITED_QA_CACHE
+		unset ECLASS E_IUSE E_REQUIRED_USE E_DEPEND E_RDEPEND E_PDEPEND
+		unset E_HDEPEND E_BDEPEND __INHERITED_QA_CACHE
 
 		# alphabetically ordered by $EBUILD_PHASE value
 		case ${EAPI} in
@@ -708,12 +724,6 @@ if ! has "$EBUILD_PHASE" clean cleanrm ; then
 	fi
 fi
 
-# unset USE_EXPAND variables that contain only the special "*" token
-for x in ${USE_EXPAND} ; do
-	[ "${!x}" == "*" ] && unset ${x}
-done
-unset x
-
 if has nostrip ${FEATURES} ${RESTRICT} || has strip ${RESTRICT}
 then
 	export DEBUGBUILD=1
@@ -732,12 +742,15 @@ if [[ $EBUILD_PHASE = depend ]] ; then
 	fi
 
 	auxdbkeys="DEPEND RDEPEND SLOT SRC_URI RESTRICT HOMEPAGE LICENSE
-		DESCRIPTION KEYWORDS INHERITED IUSE REQUIRED_USE PDEPEND PROVIDE EAPI
-		PROPERTIES DEFINED_PHASES HDEPEND UNUSED_04
+		DESCRIPTION KEYWORDS INHERITED IUSE REQUIRED_USE PDEPEND BDEPEND
+		EAPI PROPERTIES DEFINED_PHASES HDEPEND UNUSED_04
 		UNUSED_03 UNUSED_02 UNUSED_01"
 
 	if ! ___eapi_has_HDEPEND; then
 		unset HDEPEND
+	fi
+	if ! ___eapi_has_BDEPEND; then
+		unset BDEPEND
 	fi
 
 	# The extra $(echo) commands remove newlines.

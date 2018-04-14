@@ -87,6 +87,11 @@ class RepoConfig(object):
 		'update_changelog', '_eapis_banned', '_eapis_deprecated',
 		'_masters_orig', 'module_specific_options', 'manifest_required_hashes',
 		'sync_openpgp_key_path',
+		'sync_openpgp_key_refresh_retry_count',
+		'sync_openpgp_key_refresh_retry_delay_max',
+		'sync_openpgp_key_refresh_retry_delay_exp_base',
+		'sync_openpgp_key_refresh_retry_delay_mult',
+		'sync_openpgp_key_refresh_retry_overall_timeout',
 		)
 
 	def __init__(self, name, repo_opts, local_config=True):
@@ -186,6 +191,13 @@ class RepoConfig(object):
 		self.sync_openpgp_key_path = repo_opts.get(
 			'sync-openpgp-key-path', None)
 
+		for k in ('sync_openpgp_key_refresh_retry_count',
+			'sync_openpgp_key_refresh_retry_delay_max',
+			'sync_openpgp_key_refresh_retry_delay_exp_base',
+			'sync_openpgp_key_refresh_retry_delay_mult',
+			'sync_openpgp_key_refresh_retry_overall_timeout'):
+			setattr(self, k, repo_opts.get(k.replace('_', '-'), None))
+
 		self.module_specific_options = {}
 
 		# Not implemented.
@@ -264,7 +276,7 @@ class RepoConfig(object):
 				self.missing_repo_name = False
 
 			for value in ('allow-missing-manifest',
-				'allow-provide-virtual', 'cache-formats',
+				'cache-formats',
 				'create-manifest', 'disable-manifest', 'manifest-hashes',
 				'manifest-required-hashes', 'profile-formats',
 				'sign-commit', 'sign-manifest', 'thin-manifest', 'update-changelog'):
@@ -523,6 +535,11 @@ class RepoConfigLoader(object):
 							'force', 'masters', 'priority', 'strict_misc_digests',
 							'sync_depth', 'sync_hooks_only_on_change',
 							'sync_openpgp_key_path',
+							'sync_openpgp_key_refresh_retry_count',
+							'sync_openpgp_key_refresh_retry_delay_max',
+							'sync_openpgp_key_refresh_retry_delay_exp_base',
+							'sync_openpgp_key_refresh_retry_delay_mult',
+							'sync_openpgp_key_refresh_retry_overall_timeout',
 							'sync_type', 'sync_umask', 'sync_uri', 'sync_user',
 							'module_specific_options'):
 							v = getattr(repos_conf_opts, k, None)
@@ -946,6 +963,11 @@ class RepoConfigLoader(object):
 		bool_keys = ("strict_misc_digests",)
 		str_or_int_keys = ("auto_sync", "clone_depth", "format", "location",
 			"main_repo", "priority", "sync_depth", "sync_openpgp_key_path",
+			"sync_openpgp_key_refresh_retry_count",
+			"sync_openpgp_key_refresh_retry_delay_max",
+			"sync_openpgp_key_refresh_retry_delay_exp_base",
+			"sync_openpgp_key_refresh_retry_delay_mult",
+			"sync_openpgp_key_refresh_retry_overall_timeout",
 			"sync_type", "sync_umask", "sync_uri", 'sync_user')
 		str_tuple_keys = ("aliases", "eclass_overrides", "force")
 		repo_config_tuple_keys = ("masters",)
@@ -1011,9 +1033,6 @@ def parse_layout_conf(repo_location, repo_name=None):
 		masters = tuple(masters.split())
 	data['masters'] = masters
 	data['aliases'] = tuple(layout_data.get('aliases', '').split())
-
-	data['allow-provide-virtual'] = \
-		layout_data.get('allow-provide-virtuals', 'false').lower() == 'true'
 
 	data['eapis-banned'] = tuple(layout_data.get('eapis-banned', '').split())
 	data['eapis-deprecated'] = tuple(layout_data.get('eapis-deprecated', '').split())
