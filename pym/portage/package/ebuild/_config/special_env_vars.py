@@ -14,7 +14,7 @@ import re
 # to enter the config instance from the external environment or
 # configuration files.
 env_blacklist = frozenset((
-	"A", "AA", "BDEPEND", "CATEGORY", "DEPEND", "DESCRIPTION",
+	"A", "AA", "BDEPEND", "BROOT", "CATEGORY", "DEPEND", "DESCRIPTION",
 	"DOCS", "EAPI",
 	"EBUILD_FORCE_TEST", "EBUILD_PHASE",
 	"EBUILD_PHASE_FUNC", "EBUILD_SKIP_MANIFEST",
@@ -42,11 +42,11 @@ environ_whitelist = []
 # environment in order to prevent sandbox from sourcing /etc/profile
 # in it's bashrc (causing major leakage).
 environ_whitelist += [
-	"ACCEPT_LICENSE", "BASH_ENV", "BUILD_PREFIX", "COLUMNS", "D",
+	"ACCEPT_LICENSE", "BASH_ENV", "BROOT", "BUILD_PREFIX", "COLUMNS", "D",
 	"DISTDIR", "DOC_SYMLINKS_DIR", "EAPI", "EBUILD",
 	"EBUILD_FORCE_TEST",
 	"EBUILD_PHASE", "EBUILD_PHASE_FUNC", "ECLASSDIR", "ECLASS_DEPTH", "ED",
-	"EMERGE_FROM", "EPREFIX", "EROOT",
+	"EMERGE_FROM", "EPREFIX", "EROOT", "ESYSROOT",
 	"FEATURES", "FILESDIR", "HOME", "MERGE_TYPE", "NOCOLOR", "PATH",
 	"PKGDIR",
 	"PKGUSE", "PKG_LOGDIR", "PKG_TMPDIR",
@@ -77,7 +77,7 @@ environ_whitelist += [
 	"PORTAGE_VERBOSE", "PORTAGE_WORKDIR_MODE", "PORTAGE_XATTR_EXCLUDE",
 	"PORTDIR", "PORTDIR_OVERLAY", "PREROOTPATH", "PYTHONDONTWRITEBYTECODE",
 	"REPLACING_VERSIONS", "REPLACED_BY_VERSION",
-	"ROOT", "ROOTPATH", "T", "TMP", "TMPDIR",
+	"ROOT", "ROOTPATH", "SYSROOT", "T", "TMP", "TMPDIR",
 	"USE_EXPAND", "USE_ORDER", "WORKDIR",
 	"XARGS", "__PORTAGE_TEST_HARDLINK_LOCKS",
 ]

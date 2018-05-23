@@ -82,7 +82,7 @@ COWSAY_MOO = r"""
  -----------------------
         \   ^__^
          \  (oo)\_______
-            (__)\       )\/\\
+            (__)\       )\/\
                 ||----w |
                 ||     ||
 
@@ -732,6 +732,11 @@ def parse_opts(tmpcmdline, silent=False):
 			"action" : "append",
 		},
 
+		"--sysroot": {
+			"help":"specify the location for build dependencies specified in DEPEND",
+			"action":"store"
+		},
+
 		"--use-ebuild-visibility": {
 			"help"     : "use unbuilt ebuild metadata for visibility checks on built packages",
 			"choices"  : true_y_or_n
@@ -1201,6 +1206,8 @@ def emerge_main(args=None):
 		os.environ["PORTAGE_DEBUG"] = "1"
 	if "--config-root" in myopts:
 		os.environ["PORTAGE_CONFIGROOT"] = myopts["--config-root"]
+	if "--sysroot" in myopts:
+		os.environ["SYSROOT"] = myopts["--sysroot"]
 	if "--root" in myopts:
 		os.environ["ROOT"] = myopts["--root"]
 	if "--prefix" in myopts:
@@ -1268,10 +1275,6 @@ def emerge_main(args=None):
 		locale.setlocale(locale.LC_ALL, "")
 	except locale.Error as e:
 		writemsg_level("setlocale: %s\n" % e, level=logging.WARN)
-
-	rval = profile_check(emerge_config.trees, emerge_config.action)
-	if rval != os.EX_OK:
-		return rval
 
 	tmpcmdline = []
 	if "--ignore-default-opts" not in myopts:

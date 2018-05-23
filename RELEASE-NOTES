@@ -1,6 +1,98 @@
 Release Notes; upgrade information mainly.
 Features/major bugfixes are listed in NEWS
 
+portage-2.3.38
+==================================
+* Bug Fixes:
+    - Bug 655656 signal wakeup fd BlockingIOError messages
+
+
+portage-2.3.37
+==================================
+* repos.conf: Use openpgp-keys-* as key provider for gemato
+* Bug Fixes:
+    - Bug 654390 use asyncio's default event loop
+    - Bug 655414 fix has/best_version for cross-prefix portageq
+    - Bug 655860 fix ROOT overrides for has/best_version
+
+
+portage-2.3.36
+==================================
+* Bug Fixes:
+    - Bug 654782 autounmask fails on non satisfiable REQUIRED_USE
+    - Bug 654812 category directory left after successful merge
+    - Bug 654838 ecompress spurious imageusr directory in EAPI 7
+
+
+portage-2.3.35
+==================================
+* Bug Fixes:
+    - Bug 317337 fix normalization of empty SYSROOT setting
+
+
+portage-2.3.34
+==================================
+* Bug Fixes:
+    - Bug 654600 SYSROOT=/ setting breaks eautoconf for firefox
+    - Bug 654664 silence emerge --sync --quiet signature info
+
+
+portage-2.3.33
+==================================
+* Bug Fixes:
+    - Bug 317337 fix best/has_version -b for cross-prefix
+    - Bug 654456 allow empty BINPKG_COMPRESS to disable compression
+
+
+portage-2.3.32
+==================================
+* Bug Fixes:
+    - Bug 317337 cross BDEPEND, BROOT, SYSROOT, etc
+    - Bug 403697 waitpid TypeError: an integer is required
+    - Bug 614104 AbstractPollTask._unregister_if.. event loop recursion
+    - Bug 614108 _LockProcess.unlock event loop recursion
+    - Bug 614110 BinpkgFetcher.lock event loop recursion
+    - Bug 614112 EbuildBuildDir.lock event loop recursion
+    - Bug 649276 surface key refresh exceptions early
+    - Bug 653638 emerge --config exit status is 0 after pkg_config calls die
+    - Bug 653810 EbuildFetcher._get_uri_map() event loop recursion
+    - Bug 653844 EbuildBuild._start() event loop recursion
+    - Bug 653848 EbuildMerge._merge_exit event loop recursion
+    - Bug 653856 use run_until_complete for asyncio compat
+    - Bug 653946 ManifestScheduler._iter_tasks() event loop recursion
+    - Bug 654038 FetchIterator.__iter__ event loop recursion
+    - Bug 654224 Larry's tail looks wrong
+    - Bug 654276 AbstractChildWatcher.add_child_handler asyncio compat
+    - Bug 654382 AbstractEventLoop add_reader/writer asyncio compat
+    - Bug 654472 Please implement EAPI 7
+
+
+portage-2.3.31
+==================================
+* Bug Fixes:
+    - Bug 653508 AssertionError: idle callback recursion
+    - Bug 640318 emerge --usepkgonly: propagate implicit IUSE and USE_EXPAND
+
+
+portage-2.3.30
+==================================
+* Bug Fixes:
+    - Bug 653372 emerge --search AttributeError: '_pkg_str' object has
+      no attribute '_db'
+
+
+portage-2.3.29
+==================================
+* Bug Fixes:
+    - Bug 649588 asyncio.AbstractEventLoop implementation based on
+      internal event loop
+    - Bug 652938 binary packages built against older subslot trigger
+      downgrade of installed package
+    - Bug 653230 app-portage/porthole PORTDIR KeyError
+    - Bug 650696 default to sync-rsync-verify-jobs = 1
+    - Bug 653352 Stripping of files broken with >=sys-apps/file-5.33
+
+
 portage-2.3.28
 ==================================
 * Bug Fixes:

@@ -1,6 +1,13 @@
 # Copyright 2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
+___all___ = (
+	'ALL_COMPLETED',
+	'FIRST_COMPLETED',
+	'FIRST_EXCEPTION',
+	'wait',
+)
+
 try:
 	from asyncio import ALL_COMPLETED, FIRST_COMPLETED, FIRST_EXCEPTION
 except ImportError:
@@ -8,7 +15,13 @@ except ImportError:
 	FIRST_COMPLETED ='FIRST_COMPLETED'
 	FIRST_EXCEPTION = 'FIRST_EXCEPTION'
 
-from portage.util._eventloop.global_event_loop import global_event_loop
+import portage
+portage.proxy.lazyimport.lazyimport(globals(),
+	'portage.util.futures:asyncio',
+)
+from portage.util._eventloop.global_event_loop import (
+	global_event_loop as _global_event_loop,
+)
 
 
 def wait(futures, loop=None, timeout=None, return_when=ALL_COMPLETED):
@@ -30,7 +43,7 @@ def wait(futures, loop=None, timeout=None, return_when=ALL_COMPLETED):
 	@return: tuple of (done, pending).
 	@rtype: asyncio.Future (or compatible)
 	"""
-	loop = loop or global_event_loop()
+	loop = asyncio._wrap_loop(loop)
 	result_future = loop.create_future()
 	_Waiter(futures, timeout, return_when, result_future, loop)
 	return result_future
@@ -89,4 +102,4 @@ class _Waiter(object):
 			else:
 				pending.append(future)
 				future.remove_done_callback(self._done_callback)
-		self._result_future.set_result((done, pending))
+		self._result_future.set_result((set(done), set(pending)))

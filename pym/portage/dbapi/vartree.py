@@ -466,7 +466,8 @@ class vardbapi(dbapi):
 					cpv = "%s/%s" % (mysplit[0], x)
 					metadata = dict(zip(self._aux_cache_keys,
 						self.aux_get(cpv, self._aux_cache_keys)))
-					returnme.append(_pkg_str(cpv, metadata=metadata))
+					returnme.append(_pkg_str(cpv, metadata=metadata,
+						settings=self.settings, db=self))
 		self._cpv_sort_ascending(returnme)
 		if use_cache:
 			self.cpcache[mycp] = [mystat, returnme[:]]
@@ -520,7 +521,7 @@ class vardbapi(dbapi):
 				subpath = x + "/" + y
 				# -MERGING- should never be a cpv, nor should files.
 				try:
-					subpath = _pkg_str(subpath)
+					subpath = _pkg_str(subpath, db=self)
 				except InvalidData:
 					self.invalidentry(self.getpath(subpath))
 					continue
@@ -2080,7 +2081,7 @@ class dblink(object):
 				builddir_lock = EbuildBuildDir(
 					scheduler=scheduler,
 					settings=self.settings)
-				builddir_lock.lock()
+				scheduler.run_until_complete(builddir_lock.async_lock())
 				prepare_build_dirs(settings=self.settings, cleanup=True)
 				log_path = self.settings.get("PORTAGE_LOG_FILE")
 
@@ -2198,7 +2199,8 @@ class dblink(object):
 						retval = phase.wait()
 			finally:
 					if builddir_lock is not None:
-						builddir_lock.unlock()
+						scheduler.run_until_complete(
+							builddir_lock.async_unlock())
 
 		if log_path is not None:
 

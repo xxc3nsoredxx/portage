@@ -60,7 +60,7 @@ class IpcDaemonTestCase(TestCase):
 			build_dir = EbuildBuildDir(
 				scheduler=event_loop,
 				settings=env)
-			build_dir.lock()
+			event_loop.run_until_complete(build_dir.async_lock())
 			ensure_dirs(env['PORTAGE_BUILDDIR'])
 
 			input_fifo = os.path.join(env['PORTAGE_BUILDDIR'], '.ipc_in')
@@ -137,7 +137,7 @@ class IpcDaemonTestCase(TestCase):
 
 		finally:
 			if build_dir is not None:
-				build_dir.unlock()
+				event_loop.run_until_complete(build_dir.async_unlock())
 			shutil.rmtree(tmpdir)
 
 	def _timeout_callback(self, task_scheduler):
@@ -157,6 +157,6 @@ class IpcDaemonTestCase(TestCase):
 		try:
 			task_scheduler.start()
 			event_loop.run_until_complete(self._run_done)
-			task_scheduler.wait()
+			event_loop.run_until_complete(task_scheduler.async_wait())
 		finally:
 			timeout_handle.cancel()

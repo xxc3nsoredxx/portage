@@ -50,7 +50,7 @@ from portage.util.digraph import digraph
 from portage.util._async.TaskScheduler import TaskScheduler
 from portage.util._eventloop.EventLoop import EventLoop
 from portage.util._eventloop.global_event_loop import global_event_loop
-from portage.versions import catpkgsplit
+from portage.versions import _pkg_str, catpkgsplit
 
 from _emerge.AtomArg import AtomArg
 from _emerge.Blocker import Blocker
@@ -2571,17 +2571,23 @@ class depgraph(object):
 					isinstance(dep.parent, Package) and dep.parent.built):
 					continue
 
+				# If the parent is not installed, check if it needs to be
+				# rebuilt against an installed instance, since otherwise
+				# it could trigger downgrade of an installed instance as
+				# in bug #652938.
+				want_update_probe = dep.want_update or not dep.parent.installed
+
 				# Check for slot update first, since we don't want to
 				# trigger reinstall of the child package when a newer
 				# slot will be used instead.
-				if rebuild_if_new_slot and dep.want_update:
+				if rebuild_if_new_slot and want_update_probe:
 					new_dep = self._slot_operator_update_probe(dep,
 						new_child_slot=True)
 					if new_dep is not None:
 						self._slot_operator_update_backtrack(dep,
 							new_child_slot=new_dep.child)
 
-				if dep.want_update:
+				if want_update_probe:
 					if self._slot_operator_update_probe(dep):
 						self._slot_operator_update_backtrack(dep)
 
@@ -3003,6 +3009,10 @@ class depgraph(object):
 					{"myparent" : dep.parent, "show_req_use" : pkg}))
 				self._dynamic_config._required_use_unsatisfied = True
 				self._dynamic_config._skip_restart = True
+				# Add pkg to digraph in order to enable autounmask messages
+				# for this package, which is useful when autounmask USE
+				# changes have violated REQUIRED_USE.
+				self._dynamic_config.digraph.add(pkg, dep.parent, priority=priority)
 				return 0
 
 		if not pkg.onlydeps:
@@ -3316,8 +3326,10 @@ class depgraph(object):
 		if removal_action:
 			depend_root = myroot
 		else:
-			if eapi_attrs.bdepend or eapi_attrs.hdepend:
+			if eapi_attrs.hdepend:
 				depend_root = myroot
+			elif eapi_attrs.bdepend:
+				depend_root = pkg.root_config.settings["ESYSROOT"]
 			else:
 				depend_root = self._frozen_config._running_root.root
 				root_deps = self._frozen_config.myopts.get("--root-deps")
@@ -6975,6 +6987,15 @@ class depgraph(object):
 			except KeyError:
 				raise portage.exception.PackageNotFound(cpv)
 
+			# Ensure that this cpv is linked to the correct db, since the
+			# caller might have passed in a cpv from a different db, in
+			# order get an instance from this db with the same cpv.
+			# If db has a _db attribute, use that instead, in order to
+			# to use the underlying db of DbapiProvidesIndex or similar.
+			db = getattr(db, '_db', db)
+			if getattr(cpv, '_db', None) is not db:
+				cpv = _pkg_str(cpv, db=db)
+
 			pkg = Package(built=(type_name != "ebuild"), cpv=cpv,
 				installed=installed, metadata=metadata, onlydeps=onlydeps,
 				root_config=root_config, type_name=type_name)
@@ -9411,10 +9432,6 @@ class depgraph(object):
 		return self._dynamic_config._need_config_reload
 
 	def autounmask_breakage_detected(self):
-		# Check for REQUIRED_USE violations.
-		for changes in self._dynamic_config._needed_use_config_changes.values():
-			if getattr(changes, 'required_use_satisfied', None) is False:
-				return True
 		try:
 			for pargs, kwargs in self._dynamic_config._unsatisfied_deps_for_display:
 				self._show_unsatisfied_dep(

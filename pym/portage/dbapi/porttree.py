@@ -36,7 +36,8 @@ from portage import _encodings
 from portage import _unicode_encode
 from portage import OrderedDict
 from portage.util._eventloop.EventLoop import EventLoop
-from portage.util._eventloop.global_event_loop import global_event_loop
+from portage.util.futures import asyncio
+from portage.util.futures.iter_completed import iter_gather
 from _emerge.EbuildMetadataPhase import EbuildMetadataPhase
 
 import os as _os
@@ -324,8 +325,8 @@ class portdbapi(dbapi):
 	@property
 	def _event_loop(self):
 		if portage._internal_caller:
-			# For internal portage usage, the global_event_loop is safe.
-			return global_event_loop()
+			# For internal portage usage, asyncio._wrap_loop() is safe.
+			return asyncio._wrap_loop()
 		else:
 			# For external API consumers, use a local EventLoop, since
 			# we don't want to assume that it's safe to override the
@@ -610,7 +611,7 @@ class portdbapi(dbapi):
 		# to simultaneous instantiation of multiple event loops here.
 		# Callers of this method certainly want the same event loop to
 		# be used for all calls.
-		loop = loop or global_event_loop()
+		loop = asyncio._wrap_loop(loop)
 		future = loop.create_future()
 		cache_me = False
 		if myrepo is not None:
@@ -727,25 +728,65 @@ class portdbapi(dbapi):
 			URIs.
 		@rtype: dict
 		"""
+		loop = self._event_loop
+		return loop.run_until_complete(
+			self.async_fetch_map(mypkg, useflags=useflags,
+				mytree=mytree, loop=loop))
 
-		try:
-			eapi, myuris = self.aux_get(mypkg,
-				["EAPI", "SRC_URI"], mytree=mytree)
-		except KeyError:
-			# Convert this to an InvalidDependString exception since callers
-			# already handle it.
-			raise portage.exception.InvalidDependString(
-				"getFetchMap(): aux_get() error reading "+mypkg+"; aborting.")
+	def async_fetch_map(self, mypkg, useflags=None, mytree=None, loop=None):
+		"""
+		Asynchronous form of getFetchMap.
 
-		if not eapi_is_supported(eapi):
-			# Convert this to an InvalidDependString exception
-			# since callers already handle it.
-			raise portage.exception.InvalidDependString(
-				"getFetchMap(): '%s' has unsupported EAPI: '%s'" % \
-				(mypkg, eapi))
+		@param mypkg: cpv for an ebuild
+		@type mypkg: String
+		@param useflags: a collection of enabled USE flags, for evaluation of
+			conditionals
+		@type useflags: set, or None to enable all conditionals
+		@param mytree: The canonical path of the tree in which the ebuild
+			is located, or None for automatic lookup
+		@type mypkg: String
+		@param loop: event loop (defaults to global event loop)
+		@type loop: EventLoop
+		@return: A future that results in a dict which maps each file name to
+			a set of alternative URIs.
+		@rtype: asyncio.Future (or compatible)
+		"""
+		loop = asyncio._wrap_loop(loop)
+		result = loop.create_future()
 
-		return _parse_uri_map(mypkg, {'EAPI':eapi,'SRC_URI':myuris},
-			use=useflags)
+		def aux_get_done(aux_get_future):
+			if result.cancelled():
+				return
+			if aux_get_future.exception() is not None:
+				if isinstance(aux_get_future.exception(), PortageKeyError):
+					# Convert this to an InvalidDependString exception since
+					# callers already handle it.
+					result.set_exception(portage.exception.InvalidDependString(
+						"getFetchMap(): aux_get() error reading "
+						+ mypkg + "; aborting."))
+				else:
+					result.set_exception(future.exception())
+				return
+
+			eapi, myuris = aux_get_future.result()
+
+			if not eapi_is_supported(eapi):
+				# Convert this to an InvalidDependString exception
+				# since callers already handle it.
+				result.set_exception(portage.exception.InvalidDependString(
+					"getFetchMap(): '%s' has unsupported EAPI: '%s'" % \
+					(mypkg, eapi)))
+				return
+
+			result.set_result(_parse_uri_map(mypkg,
+				{'EAPI':eapi,'SRC_URI':myuris}, use=useflags))
+
+		aux_get_future = self.async_aux_get(
+			mypkg, ["EAPI", "SRC_URI"], mytree=mytree, loop=loop)
+		result.add_done_callback(lambda result:
+			aux_get_future.cancel() if result.cancelled() else None)
+		aux_get_future.add_done_callback(aux_get_done)
+		return result
 
 	def getfetchsizes(self, mypkg, useflags=None, debug=0, myrepo=None):
 		# returns a filename:size dictionnary of remaining downloads
@@ -945,7 +986,7 @@ class portdbapi(dbapi):
 						writemsg(_("\nInvalid ebuild version: %s\n") % \
 							os.path.join(oroot, mycp, x), noiselevel=-1)
 						continue
-					d[_pkg_str(mysplit[0]+"/"+pf)] = None
+					d[_pkg_str(mysplit[0]+"/"+pf, db=self)] = None
 		if invalid_category and d:
 			writemsg(_("\n!!! '%s' has a category that is not listed in " \
 				"%setc/portage/categories\n") % \
@@ -1070,7 +1111,7 @@ class portdbapi(dbapi):
 
 					try:
 						pkg_str = _pkg_str(cpv, metadata=metadata,
-							settings=self.settings)
+							settings=self.settings, db=self)
 					except InvalidData:
 						continue
 
@@ -1350,6 +1391,74 @@ class FetchlistDict(Mapping):
 
 	if sys.hexversion >= 0x3000000:
 		keys = __iter__
+
+
+def _async_manifest_fetchlist(portdb, repo_config, cp, cpv_list=None,
+	max_jobs=None, max_load=None, loop=None):
+	"""
+	Asynchronous form of FetchlistDict, with max_jobs and max_load
+	parameters in order to control async_aux_get concurrency.
+
+	@param portdb: portdbapi instance
+	@type portdb: portdbapi
+	@param repo_config: repository configuration for a Manifest
+	@type repo_config: RepoConfig
+	@param cp: cp for a Manifest
+	@type cp: str
+	@param cpv_list: list of ebuild cpv values for a Manifest
+	@type cpv_list: list
+	@param max_jobs: max number of futures to process concurrently (default
+		is multiprocessing.cpu_count())
+	@type max_jobs: int
+	@param max_load: max load allowed when scheduling a new future,
+		otherwise schedule no more than 1 future at a time (default
+		is multiprocessing.cpu_count())
+	@type max_load: int or float
+	@param loop: event loop
+	@type loop: EventLoop
+	@return: a Future resulting in a Mapping compatible with FetchlistDict
+	@rtype: asyncio.Future (or compatible)
+	"""
+	loop = asyncio._wrap_loop(loop)
+	result = loop.create_future()
+	cpv_list = (portdb.cp_list(cp, mytree=repo_config.location)
+		if cpv_list is None else cpv_list)
+
+	def gather_done(gather_result):
+		# All exceptions must be consumed from gather_result before this
+		# function returns, in order to avoid triggering the event loop's
+		# exception handler.
+		e = None
+		if not gather_result.cancelled():
+			for future in gather_result.result():
+				if (future.done() and not future.cancelled() and
+					future.exception() is not None):
+					e = future.exception()
+
+		if result.cancelled():
+			return
+		elif e is None:
+			result.set_result(dict((k, list(v.result()))
+				for k, v in zip(cpv_list, gather_result.result())))
+		else:
+			result.set_exception(e)
+
+	gather_result = iter_gather(
+		# Use a generator expression for lazy evaluation, so that iter_gather
+		# controls the number of concurrent async_fetch_map calls.
+		(portdb.async_fetch_map(cpv, mytree=repo_config.location, loop=loop)
+			for cpv in cpv_list),
+		max_jobs=max_jobs,
+		max_load=max_load,
+		loop=loop,
+	)
+
+	gather_result.add_done_callback(gather_done)
+	result.add_done_callback(lambda result:
+		gather_result.cancel() if result.cancelled() else None)
+
+	return result
+
 
 def _parse_uri_map(cpv, metadata, use=None):
 

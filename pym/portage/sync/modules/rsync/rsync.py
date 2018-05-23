@@ -25,7 +25,8 @@ warn = create_color_func("WARN")
 from portage.const import VCS_DIRS, TIMESTAMP_FORMAT, RSYNC_PACKAGE_ATOM
 from portage.util._eventloop.global_event_loop import global_event_loop
 from portage.util import writemsg, writemsg_stdout
-from portage.util.futures.futures import TimeoutError
+from portage.util.futures import asyncio
+from portage.util.futures.executor.fork import ForkExecutor
 from portage.sync.getaddrinfo_validate import getaddrinfo_validate
 from _emerge.UserQuery import UserQuery
 from portage.sync.syncbase import NewBase
@@ -66,7 +67,8 @@ class RsyncSync(NewBase):
 		opts = self.options.get('emerge_config').opts
 		self.usersync_uid = self.options.get('usersync_uid', None)
 		enter_invalid = '--ask-enter-invalid' in opts
-		out = portage.output.EOutput()
+		quiet = '--quiet' in opts
+		out = portage.output.EOutput(quiet=quiet)
 		syncuri = self.repo.sync_uri
 		if self.repo.module_specific_options.get(
 			'sync-rsync-vcs-ignore', 'false').lower() == 'true':
@@ -107,12 +109,17 @@ class RsyncSync(NewBase):
 		if self.verify_jobs is not None:
 			try:
 				self.verify_jobs = int(self.verify_jobs)
-				if self.verify_jobs <= 0:
+				if self.verify_jobs < 0:
 					raise ValueError(self.verify_jobs)
 			except ValueError:
 				writemsg_level("!!! sync-rsync-verify-jobs not a positive integer: %s\n" % (self.verify_jobs,),
 					level=logging.WARNING, noiselevel=-1)
 				self.verify_jobs = None
+			else:
+				if self.verify_jobs == 0:
+					# Use the apparent number of processors if gemato
+					# supports it.
+					self.verify_jobs = None
 		# Support overriding max age.
 		self.max_age = self.repo.module_specific_options.get(
 				'sync-rsync-verify-max-age', '')
@@ -152,13 +159,30 @@ class RsyncSync(NewBase):
 					if retry_decorator is None:
 						openpgp_env.refresh_keys()
 					else:
+						def noisy_refresh_keys():
+							"""
+							Since retry does not help for some types of
+							errors, display errors as soon as they occur.
+							"""
+							try:
+								openpgp_env.refresh_keys()
+							except Exception as e:
+								writemsg_level("%s\n" % (e,),
+									level=logging.ERROR, noiselevel=-1)
+								raise # retry
+
+						# The ThreadPoolExecutor that asyncio uses by default
+						# does not support cancellation of tasks, therefore
+						# use ForkExecutor for task cancellation support, in
+						# order to enforce timeouts.
 						loop = global_event_loop()
-						func_coroutine = functools.partial(loop.run_in_executor,
-							None, openpgp_env.refresh_keys)
-						decorated_func = retry_decorator(func_coroutine)
-						loop.run_until_complete(decorated_func())
+						with ForkExecutor(loop=loop) as executor:
+							func_coroutine = functools.partial(loop.run_in_executor,
+								executor, noisy_refresh_keys)
+							decorated_func = retry_decorator(func_coroutine, loop=loop)
+							loop.run_until_complete(decorated_func())
 					out.eend(0)
-				except (GematoException, TimeoutError) as e:
+				except (GematoException, asyncio.TimeoutError) as e:
 					writemsg_level("!!! Manifest verification impossible due to keyring problem:\n%s\n"
 							% (e,),
 							level=logging.ERROR, noiselevel=-1)
@@ -368,10 +392,12 @@ class RsyncSync(NewBase):
 							raise RuntimeError('Timestamp not found in Manifest')
 						if (self.max_age != 0 and
 								(datetime.datetime.utcnow() - ts.ts).days > self.max_age):
+							out.quiet = False
 							out.ewarn('Manifest is over %d days old, this is suspicious!' % (self.max_age,))
 							out.ewarn('You may want to try using another mirror and/or reporting this one:')
 							out.ewarn('  %s' % (dosyncuri,))
 							out.ewarn('')
+							out.quiet = quiet
 
 						out.einfo('Manifest timestamp: %s UTC' % (ts.ts,))
 						out.einfo('Valid OpenPGP signature found:')

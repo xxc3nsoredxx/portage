@@ -450,8 +450,10 @@ def doebuild_environment(myebuild, mydo, myroot=None, settings=None,
 		if hasattr(mydbapi, "getFetchMap") and \
 			("A" not in mysettings.configdict["pkg"] or \
 			"AA" not in mysettings.configdict["pkg"]):
-			src_uri, = mydbapi.aux_get(mysettings.mycpv,
-				["SRC_URI"], mytree=mytree)
+			src_uri = mysettings.configdict["pkg"].get("SRC_URI")
+			if src_uri is None:
+				src_uri, = mydbapi.aux_get(mysettings.mycpv,
+					["SRC_URI"], mytree=mytree)
 			metadata = {
 				"EAPI"    : eapi,
 				"SRC_URI" : src_uri,
@@ -532,7 +534,11 @@ def doebuild_environment(myebuild, mydo, myroot=None, settings=None,
 		try:
 			compression = _compressors[binpkg_compression]
 		except KeyError as e:
-			writemsg("Warning: Invalid or unsupported compression method: %s" % e.args[0])
+			if binpkg_compression:
+				writemsg("Warning: Invalid or unsupported compression method: %s" % e.args[0])
+			else:
+				# Empty BINPKG_COMPRESS disables compression.
+				mysettings['PORTAGE_COMPRESSION_COMMAND'] = 'cat'
 		else:
 			try:
 				compression_binary = shlex_split(varexpand(compression["compress"], mydict=settings))[0]
@@ -813,13 +819,15 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 					scheduler=(portage._internal_caller and
 						global_event_loop() or EventLoop(main=False)),
 					settings=mysettings)
-				builddir_lock.lock()
+				builddir_lock.scheduler.run_until_complete(
+					builddir_lock.async_lock())
 			try:
 				return _spawn_phase(mydo, mysettings,
 					fd_pipes=fd_pipes, returnpid=returnpid)
 			finally:
 				if builddir_lock is not None:
-					builddir_lock.unlock()
+					builddir_lock.scheduler.run_until_complete(
+						builddir_lock.async_unlock())
 
 		# get possible slot information from the deps file
 		if mydo == "depend":
@@ -938,12 +946,14 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 							scheduler=(portage._internal_caller and
 								global_event_loop() or EventLoop(main=False)),
 							settings=mysettings)
-						builddir_lock.lock()
+						builddir_lock.scheduler.run_until_complete(
+							builddir_lock.async_lock())
 					try:
 						_spawn_phase("clean", mysettings)
 					finally:
 						if builddir_lock is not None:
-							builddir_lock.unlock()
+							builddir_lock.scheduler.run_until_complete(
+								builddir_lock.async_unlock())
 							builddir_lock = None
 				else:
 					writemsg_stdout(_(">>> WORKDIR is up-to-date, keeping...\n"))
@@ -961,7 +971,8 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 					scheduler=(portage._internal_caller and
 						global_event_loop() or EventLoop(main=False)),
 					settings=mysettings)
-				builddir_lock.lock()
+				builddir_lock.scheduler.run_until_complete(
+					builddir_lock.async_lock())
 			mystatus = prepare_build_dirs(myroot, mysettings, cleanup)
 			if mystatus:
 				return mystatus
@@ -1243,7 +1254,8 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 	finally:
 
 		if builddir_lock is not None:
-			builddir_lock.unlock()
+			builddir_lock.scheduler.run_until_complete(
+				builddir_lock.async_unlock())
 		if tmpdir:
 			mysettings["PORTAGE_TMPDIR"] = tmpdir_orig
 			shutil.rmtree(tmpdir)

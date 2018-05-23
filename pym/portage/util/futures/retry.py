@@ -9,8 +9,7 @@ __all__ = (
 import functools
 
 from portage.exception import PortageException
-from portage.util._eventloop.global_event_loop import global_event_loop
-from portage.util.futures.futures import TimeoutError
+from portage.util.futures import asyncio
 
 
 class RetryError(PortageException):
@@ -50,12 +49,12 @@ def retry(try_max=None, try_timeout=None, overall_timeout=None,
 		overall_timeout, delay_func, reraise)
 
 
-def _retry_wrapper(loop, try_max, try_timeout, overall_timeout, delay_func,
-	reraise, func):
+def _retry_wrapper(_loop, try_max, try_timeout, overall_timeout, delay_func,
+	reraise, func, loop=None):
 	"""
 	Create and return a decorated function.
 	"""
-	return functools.partial(_retry, loop, try_max, try_timeout,
+	return functools.partial(_retry, loop or _loop, try_max, try_timeout,
 		overall_timeout, delay_func, reraise, func)
 
 
@@ -67,7 +66,7 @@ def _retry(loop, try_max, try_timeout, overall_timeout, delay_func,
 	@return: func return value
 	@rtype: asyncio.Future (or compatible)
 	"""
-	loop = loop or global_event_loop()
+	loop = asyncio._wrap_loop(loop)
 	future = loop.create_future()
 	_Retry(future, loop, try_max, try_timeout, overall_timeout, delay_func,
 		reraise, functools.partial(func, *args, **kwargs))
@@ -170,7 +169,7 @@ class _Retry(object):
 
 	def _retry_error(self):
 		if self._previous_result is None or self._previous_result.cancelled():
-			cause = TimeoutError()
+			cause = asyncio.TimeoutError()
 		else:
 			cause = self._previous_result.exception()
 
