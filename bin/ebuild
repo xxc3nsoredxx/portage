@@ -42,7 +42,7 @@ import io
 import os
 from os import path as osp
 if osp.isfile(osp.join(osp.dirname(osp.dirname(osp.realpath(__file__))), ".portage_not_installed")):
-	sys.path.insert(0, osp.join(osp.dirname(osp.dirname(osp.realpath(__file__))), "pym"))
+	sys.path.insert(0, osp.join(osp.dirname(osp.dirname(osp.realpath(__file__))), "lib"))
 import portage
 portage._internal_caller = True
 from portage import os
@@ -104,6 +104,12 @@ if not opts.ignore_default_opts:
 debug = opts.debug
 force = opts.force
 
+if debug:
+	# Ensure that all config instances have this setting,
+	# including the one that's used by portdbapi for aux_get.
+	os.environ['PORTAGE_DEBUG'] = '1'
+	portage._reset_legacy_globals()
+
 # do this _after_ 'import portage' to prevent unnecessary tracing
 if debug and "python-trace" in portage.features:
 	import portage.debug
@@ -143,7 +149,7 @@ if not os.path.isabs(ebuild):
 		mycwd = portage.normalize_path(pwd)
 	ebuild = os.path.join(mycwd, ebuild)
 ebuild = portage.normalize_path(ebuild)
-# portdbapi uses the canonical path for the base of the portage tree, but
+# portdbapi uses the canonical path for the base of the ebuild repository, but
 # subdirectories of the base can be built from symlinks (like crossdev does).
 ebuild_portdir = os.path.realpath(
 	os.path.dirname(os.path.dirname(os.path.dirname(ebuild))))
