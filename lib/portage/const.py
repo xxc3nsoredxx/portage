@@ -1,5 +1,5 @@
 # portage: Constants
-# Copyright 1998-2018 Gentoo Foundation
+# Copyright 1998-2018 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -123,6 +123,8 @@ EBUILD_PHASES            = (
 )
 SUPPORTED_FEATURES       = frozenset([
 	"assume-digests",
+	"binpkg-docompress",
+	"binpkg-dostrip",
 	"binpkg-logs",
 	"binpkg-multi-instance",
 	"buildpkg",
@@ -160,6 +162,7 @@ SUPPORTED_FEATURES       = frozenset([
 	"merge-sync",
 	"metadata-transfer",
 	"mirror",
+	"mount-sandbox",
 	"multilib-strict",
 	"network-sandbox",
 	"network-sandbox-proxy",
@@ -173,6 +176,7 @@ SUPPORTED_FEATURES       = frozenset([
 	"notitles",
 	"parallel-fetch",
 	"parallel-install",
+	"pid-sandbox",
 	"prelink-checksums",
 	"preserve-libs",
 	"protect-owned",
