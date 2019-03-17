@@ -165,8 +165,8 @@ addwrite()   { __sb_append_var WRITE   "$@" ; }
 adddeny()    { __sb_append_var DENY    "$@" ; }
 addpredict() { __sb_append_var PREDICT "$@" ; }
 
-addwrite "${PORTAGE_TMPDIR}"
-addread "/:${PORTAGE_TMPDIR}"
+addwrite "${PORTAGE_TMPDIR}/portage"
+addread "/:${PORTAGE_TMPDIR}/portage"
 [[ -n ${PORTAGE_GPG_DIR} ]] && addpredict "${PORTAGE_GPG_DIR}"
 
 # Avoid sandbox violations in temporary directories.
@@ -244,24 +244,22 @@ inherit() {
 	ECLASS_DEPTH=$(($ECLASS_DEPTH + 1))
 	if [[ ${ECLASS_DEPTH} -gt 1 ]]; then
 		debug-print "*** Multiple Inheritence (Level: ${ECLASS_DEPTH})"
+
+		# Since ECLASS_DEPTH > 1, the following variables are locals from the
+		# previous inherit call in the call stack.
+		if [[ -n ${ECLASS} && -n ${!__export_funcs_var} ]] ; then
+			eqawarn "QA Notice: EXPORT_FUNCTIONS is called before inherit in ${ECLASS}.eclass."
+			eqawarn "For compatibility with <=portage-2.1.6.7, only call EXPORT_FUNCTIONS"
+			eqawarn "after inherit(s)."
+		fi
 	fi
 
-	if [[ -n $ECLASS && -n ${!__export_funcs_var} ]] ; then
-		echo "QA Notice: EXPORT_FUNCTIONS is called before inherit in" \
-			"$ECLASS.eclass. For compatibility with <=portage-2.1.6.7," \
-			"only call EXPORT_FUNCTIONS after inherit(s)." \
-			| fmt -w 75 | while read -r ; do eqawarn "$REPLY" ; done
-	fi
-
+	local -x ECLASS
+	local __export_funcs_var
 	local repo_location
 	local location
 	local potential_location
 	local x
-
-	# These variables must be restored before returning.
-	local PECLASS=$ECLASS
-	local prev_export_funcs_var=$__export_funcs_var
-
 	local B_IUSE
 	local B_REQUIRED_USE
 	local B_DEPEND
@@ -273,7 +271,7 @@ inherit() {
 		location=""
 		potential_location=""
 
-		export ECLASS="$1"
+		ECLASS="$1"
 		__export_funcs_var=__export_functions_$ECLASS_DEPTH
 		unset $__export_funcs_var
 
@@ -383,12 +381,6 @@ inherit() {
 		shift
 	done
 	((--ECLASS_DEPTH)) # Returns 1 when ECLASS_DEPTH reaches 0.
-	if (( ECLASS_DEPTH > 0 )) ; then
-		export ECLASS=$PECLASS
-		__export_funcs_var=$prev_export_funcs_var
-	else
-		unset ECLASS __export_funcs_var
-	fi
 	return 0
 }
 
@@ -480,7 +472,7 @@ __try_source() {
 		# If $- contains x, then tracing has already been enabled
 		# elsewhere for some reason. We preserve it's state so as
 		# not to interfere.
-		if [[ ${qa} ]]; then
+		if ! ${qa} ; then
 			source "${1}"
 		else
 			__qa_source "${1}"

@@ -10,6 +10,7 @@ from portage import os
 from portage import shutil
 from portage.const import (GLOBAL_CONFIG_PATH, PORTAGE_BASE_PATH,
 	USER_CONFIG_PATH)
+from portage.process import find_binary
 from portage.dep import Atom, _repo_separator
 from portage.package.ebuild.config import config
 from portage.package.ebuild.digestgen import digestgen
@@ -76,6 +77,54 @@ class ResolverPlayground(object):
 		self.debug = debug
 		if eprefix is None:
 			self.eprefix = normalize_path(tempfile.mkdtemp())
+
+			# EPREFIX/bin is used by fake true_binaries. Real binaries goes into EPREFIX/usr/bin
+			eubin = os.path.join(self.eprefix, "usr", "bin")
+			ensure_dirs(eubin)
+			essential_binaries = (
+				"awk",
+				"basename",
+				"bzip2",
+				"cat",
+				"chgrp",
+				"chmod",
+				"chown",
+				"cp",
+				"egrep",
+				"env",
+				"find",
+				"grep",
+				"head",
+				"install",
+				"ln",
+				"mkdir",
+				"mktemp",
+				"mv",
+				"readlink",
+				"rm",
+				"sed",
+				"sort",
+				"tar",
+				"tr",
+				"uname",
+				"uniq",
+				"xargs",
+			)
+			# Exclude internal wrappers from PATH lookup.
+			orig_path = os.environ['PATH']
+			included_paths = []
+			for path in orig_path.split(':'):
+				if path and not fnmatch.fnmatch(path, '*/portage/*/ebuild-helpers*'):
+					included_paths.append(path)
+			try:
+				os.environ['PATH'] = ':'.join(included_paths)
+				for x in essential_binaries:
+					path = find_binary(x)
+					if path is None:
+						raise portage.exception.CommandNotFound(x)
+					os.symlink(path, os.path.join(eubin, x))
+			finally:
+				os.environ['PATH'] = orig_path
 		else:
 			self.eprefix = normalize_path(eprefix)
 

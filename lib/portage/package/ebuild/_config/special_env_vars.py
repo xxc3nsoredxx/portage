@@ -1,4 +1,4 @@
-# Copyright 2010-2018 Gentoo Foundation
+# Copyright 2010-2019 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -176,7 +176,7 @@ environ_filter += [
 	"PORTAGE_RSYNC_EXTRA_OPTS", "PORTAGE_RSYNC_OPTS",
 	"PORTAGE_RSYNC_RETRIES", "PORTAGE_SSH_OPTS", "PORTAGE_SYNC_STALE",
 	"PORTAGE_USE",
-	"PORT_LOGDIR", "PORT_LOGDIR_CLEAN",
+	"PORTAGE_LOGDIR", "PORTAGE_LOGDIR_CLEAN",
 	"QUICKPKG_DEFAULT_OPTS", "REPOMAN_DEFAULT_OPTS",
 	"RESUMECOMMAND", "RESUMECOMMAND_FTP",
 	"RESUMECOMMAND_HTTP", "RESUMECOMMAND_HTTPS",
@@ -199,7 +199,6 @@ global_only_vars = frozenset([
 ])
 
 default_globals = {
-	'ACCEPT_LICENSE':           '* -@EULA',
 	'ACCEPT_PROPERTIES':        '*',
 	'PORTAGE_BZIP2_COMMAND':    'bzip2',
 }

@@ -112,6 +112,7 @@ EBUILD_PHASES            = (
 	"test",
 	"install",
 	"package",
+	"instprep",
 	"preinst",
 	"postinst",
 	"prerm",

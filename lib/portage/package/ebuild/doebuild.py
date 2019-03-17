@@ -1,4 +1,4 @@
-# Copyright 2010-2018 Gentoo Authors
+# Copyright 2010-2019 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -82,6 +82,7 @@ from portage.util import ( apply_recursive_permissions,
 from portage.util.cpuinfo import get_cpu_count
 from portage.util.lafilefixer import rewrite_lafile
 from portage.util.compression_probe import _compressors
+from portage.util.path import first_existing
 from portage.util.socks5 import get_socks5_proxy
 from portage.versions import _pkgsplit
 from _emerge.BinpkgEnvExtractor import BinpkgEnvExtractor
@@ -108,6 +109,10 @@ _ipc_phases = frozenset([
 	"setup", "pretend", "config", "info",
 	"preinst", "postinst", "prerm", "postrm",
 ])
+
+# phases which execute in the global PID namespace
+_global_pid_phases = frozenset([
+	'config', 'depend', 'preinst', 'prerm', 'postinst', 'postrm'])
 
 # phases in which networking access is allowed
 _networked_phases = frozenset([
@@ -152,7 +157,8 @@ def _doebuild_spawn(phase, settings, actionmap=None, **kwargs):
 	kwargs['networked'] = 'network-sandbox' not in settings.features or \
 		phase in _networked_phases or \
 		'network-sandbox' in settings['PORTAGE_RESTRICT'].split()
-	kwargs['pidns'] = 'pid-sandbox' in settings.features
+	kwargs['pidns'] = ('pid-sandbox' in settings.features and
+		phase not in _global_pid_phases)
 
 	if phase == 'depend':
 		kwargs['droppriv'] = 'userpriv' in settings.features
@@ -211,7 +217,6 @@ def _doebuild_path(settings, eapi=None):
 	if portage_bin_path[0] != portage.const.PORTAGE_BIN_PATH:
 		# Add a fallback path for restarting failed builds (bug 547086)
 		portage_bin_path.append(portage.const.PORTAGE_BIN_PATH)
-	eprefix = portage.const.EPREFIX
 	prerootpath = [x for x in settings.get("PREROOTPATH", "").split(":") if x]
 	rootpath = [x for x in settings.get("ROOTPATH", "").split(":") if x]
 	rootpath_set = frozenset(rootpath)
@@ -219,9 +224,10 @@ def _doebuild_path(settings, eapi=None):
 		"__PORTAGE_TEST_PATH_OVERRIDE", "").split(":") if x]
 
 	prefixes = []
-	if eprefix:
-		prefixes.append(eprefix)
-	prefixes.append("/")
+	# settings["EPREFIX"] should take priority over portage.const.EPREFIX
+	if portage.const.EPREFIX != settings["EPREFIX"] and settings["ROOT"] == os.sep:
+		prefixes.append(settings["EPREFIX"])
+	prefixes.append(portage.const.EPREFIX)
 
 	path = overrides
 
@@ -245,6 +251,7 @@ def _doebuild_path(settings, eapi=None):
 	path.extend(prerootpath)
 
 	for prefix in prefixes:
+		prefix = prefix if prefix else "/"
 		for x in ("usr/local/sbin", "usr/local/bin", "usr/sbin", "usr/bin", "sbin", "bin"):
 			# Respect order defined in ROOTPATH
 			x_abs = os.path.join(prefix, x)
@@ -510,8 +517,8 @@ def doebuild_environment(myebuild, mydo, myroot=None, settings=None,
 						mysettings["PATH"] = p + ":" + mysettings["PATH"]
 						break
 				else:
-					writemsg(("Warning: %s requested but no masquerade dir"
-						+ "can be found in /usr/lib*/%s/bin\n") % (m, m))
+					writemsg(("Warning: %s requested but no masquerade dir "
+						"can be found in /usr/lib*/%s/bin\n") % (m, m))
 					mysettings.features.remove(feature)
 
 		if 'MAKEOPTS' not in mysettings:
@@ -1295,31 +1302,7 @@ def _check_temp_dir(settings):
 	# as some people use a separate PORTAGE_TMPDIR mount
 	# we prefer that as the checks below would otherwise be pointless
 	# for those people.
-	tmpdir = os.path.realpath(settings["PORTAGE_TMPDIR"])
-	if os.path.exists(os.path.join(tmpdir, "portage")):
-		checkdir = os.path.realpath(os.path.join(tmpdir, "portage"))
-		if ("sandbox" in settings.features or
-			"usersandox" in settings.features) and \
-			not checkdir.startswith(tmpdir + os.sep):
-			msg = _("The 'portage' subdirectory of the directory "
-			"referenced by the PORTAGE_TMPDIR variable appears to be "
-			"a symlink. In order to avoid sandbox violations (see bug "
-			"#378379), you must adjust PORTAGE_TMPDIR instead of using "
-			"the symlink located at '%s'. A suitable PORTAGE_TMPDIR "
-			"setting would be '%s'.") % \
-			(os.path.join(tmpdir, "portage"), checkdir)
-			lines = []
-			lines.append("")
-			lines.append("")
-			lines.extend(wrap(msg, 72))
-			lines.append("")
-			for line in lines:
-				if line:
-					line = "!!! %s" % (line,)
-				writemsg("%s\n" % (line,), noiselevel=-1)
-			return 1
-	else:
-		checkdir = tmpdir
+	checkdir = first_existing(os.path.join(settings["PORTAGE_TMPDIR"], "portage"))
 
 	if not os.access(checkdir, os.W_OK):
 		writemsg(_("%s is not writable.\n"

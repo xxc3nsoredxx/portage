@@ -1,11 +1,12 @@
 # portage.py -- core Portage functionality
-# Copyright 1998-2018 Gentoo Authors
+# Copyright 1998-2019 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 
 import atexit
 import errno
 import fcntl
+import multiprocessing
 import platform
 import signal
 import socket
@@ -219,8 +220,8 @@ spawned_pids = _dummy_list()
 def cleanup():
 	pass
 
-def spawn(mycommand, env={}, opt_name=None, fd_pipes=None, returnpid=False,
-          uid=None, gid=None, groups=None, umask=None, logfile=None,
+def spawn(mycommand, env=None, opt_name=None, fd_pipes=None, returnpid=False,
+          uid=None, gid=None, groups=None, umask=None, cwd=None, logfile=None,
           path_lookup=True, pre_exec=None,
           close_fds=(sys.version_info < (3, 4)), unshare_net=False,
           unshare_ipc=False, unshare_mount=False, unshare_pid=False,
@@ -230,8 +231,10 @@ def spawn(mycommand, env={}, opt_name=None, fd_pipes=None, returnpid=False,
 	
 	@param mycommand: the command to execute
 	@type mycommand: String or List (Popen style list)
-	@param env: A dict of Key=Value pairs for env variables
-	@type env: Dictionary
+	@param env: If env is not None, it must be a mapping that defines the environment
+		variables for the new process; these are used instead of the default behavior
+		of inheriting the current process's environment.
+	@type env: None or Mapping
 	@param opt_name: an optional name for the spawn'd process (defaults to the binary name)
 	@type opt_name: String
 	@param fd_pipes: A dict of mapping for pipes, { '0': stdin, '1': stdout } for example
@@ -248,6 +251,8 @@ def spawn(mycommand, env={}, opt_name=None, fd_pipes=None, returnpid=False,
 	@type groups: List
 	@param umask: An integer representing the umask for the process (see man chmod for umask details)
 	@type umask: Integer
+	@param cwd: Current working directory
+	@type cwd: String
 	@param logfile: name of a file to use for logging purposes
 	@type logfile: String
 	@param path_lookup: If the binary is not fully specified then look for it in PATH
@@ -278,6 +283,8 @@ def spawn(mycommand, env={}, opt_name=None, fd_pipes=None, returnpid=False,
 	# mycommand is either a str or a list
 	if isinstance(mycommand, basestring):
 		mycommand = mycommand.split()
+
+	env = os.environ if env is None else env
 
 	if sys.hexversion < 0x3000000:
 		# Avoid a potential UnicodeEncodeError from os.execve().
@@ -332,11 +339,29 @@ def spawn(mycommand, env={}, opt_name=None, fd_pipes=None, returnpid=False,
 		fd_pipes[1] = pw
 		fd_pipes[2] = pw
 
-	# This caches the libc library lookup in the current
-	# process, so that it's only done once rather than
-	# for each child process.
+	# This caches the libc library lookup and _unshare_validator results
+	# in the current process, so that results are cached for use in
+	# child processes.
+	unshare_flags = 0
 	if unshare_net or unshare_ipc or unshare_mount or unshare_pid:
-		find_library("c")
+		# from /usr/include/bits/sched.h
+		CLONE_NEWNS = 0x00020000
+		CLONE_NEWIPC = 0x08000000
+		CLONE_NEWPID = 0x20000000
+		CLONE_NEWNET = 0x40000000
+
+		if unshare_net:
+			unshare_flags |= CLONE_NEWNET
+		if unshare_ipc:
+			unshare_flags |= CLONE_NEWIPC
+		if unshare_mount:
+			# NEWNS = mount namespace
+			unshare_flags |= CLONE_NEWNS
+		if unshare_pid:
+			# we also need mount namespace for slave /proc
+			unshare_flags |= CLONE_NEWPID | CLONE_NEWNS
+
+		_unshare_validate(unshare_flags)
 
 	# Force instantiation of portage.data.userpriv_groups before the
 	# fork, so that the result is cached in the main process.
@@ -350,9 +375,9 @@ def spawn(mycommand, env={}, opt_name=None, fd_pipes=None, returnpid=False,
 		if pid == 0:
 			try:
 				_exec(binary, mycommand, opt_name, fd_pipes,
-					env, gid, groups, uid, umask, pre_exec, close_fds,
+					env, gid, groups, uid, umask, cwd, pre_exec, close_fds,
 					unshare_net, unshare_ipc, unshare_mount, unshare_pid,
-					cgroup)
+					unshare_flags, cgroup)
 			except SystemExit:
 				raise
 			except Exception as e:
@@ -421,9 +446,10 @@ def spawn(mycommand, env={}, opt_name=None, fd_pipes=None, returnpid=False,
 	# Everything succeeded
 	return 0
 
-def _exec(binary, mycommand, opt_name, fd_pipes, env, gid, groups, uid, umask,
+def _exec(binary, mycommand, opt_name, fd_pipes,
+	env, gid, groups, uid, umask, cwd,
 	pre_exec, close_fds, unshare_net, unshare_ipc, unshare_mount, unshare_pid,
-	cgroup):
+	unshare_flags, cgroup):
 
 	"""
 	Execute a given binary with options
@@ -441,11 +467,13 @@ def _exec(binary, mycommand, opt_name, fd_pipes, env, gid, groups, uid, umask,
 	@param gid: Group ID to run the process under
 	@type gid: Integer
 	@param groups: Groups the Process should be in.
-	@type groups: Integer
+	@type groups: List
 	@param uid: User ID to run the process under
 	@type uid: Integer
 	@param umask: an int representing a unix umask (see man chmod for umask details)
 	@type umask: Integer
+	@param cwd: Current working directory
+	@type cwd: String
 	@param pre_exec: A function to be called with no arguments just prior to the exec call.
 	@type pre_exec: callable
 	@param unshare_net: If True, networking will be unshared from the spawned process
@@ -457,6 +485,8 @@ def _exec(binary, mycommand, opt_name, fd_pipes, env, gid, groups, uid, umask,
 	@type unshare_mount: Boolean
 	@param unshare_pid: If True, PID ns will be unshared from the spawned process
 	@type unshare_pid: Boolean
+	@param unshare_flags: Flags for the unshare(2) function
+	@type unshare_flags: Integer
 	@param cgroup: CGroup path to bind the process to
 	@type cgroup: String
 	@rtype: None
@@ -518,40 +548,53 @@ def _exec(binary, mycommand, opt_name, fd_pipes, env, gid, groups, uid, umask,
 		if filename is not None:
 			libc = LoadLibrary(filename)
 			if libc is not None:
-				# from /usr/include/bits/sched.h
-				CLONE_NEWNS = 0x00020000
-				CLONE_NEWIPC = 0x08000000
-				CLONE_NEWPID = 0x20000000
-				CLONE_NEWNET = 0x40000000
-
-				flags = 0
-				if unshare_net:
-					flags |= CLONE_NEWNET
-				if unshare_ipc:
-					flags |= CLONE_NEWIPC
-				if unshare_mount:
-					# NEWNS = mount namespace
-					flags |= CLONE_NEWNS
-				if unshare_pid:
-					# we also need mount namespace for slave /proc
-					flags |= CLONE_NEWPID | CLONE_NEWNS
-
 				try:
-					if libc.unshare(flags) != 0:
+					# Since a failed unshare call could corrupt process
+					# state, first validate that the call can succeed.
+					# The parent process should call _unshare_validate
+					# before it forks, so that all child processes can
+					# reuse _unshare_validate results that have been
+					# cached by the parent process.
+					errno_value = _unshare_validate(unshare_flags)
+					if errno_value == 0 and libc.unshare(unshare_flags) != 0:
+						errno_value = ctypes.get_errno()
+					if errno_value != 0:
 						writemsg("Unable to unshare: %s\n" % (
-							errno.errorcode.get(ctypes.get_errno(), '?')),
+							errno.errorcode.get(errno_value, '?')),
 							noiselevel=-1)
 					else:
 						if unshare_pid:
-							# pid namespace requires us to become init
-							fork_ret = os.fork()
-							if fork_ret != 0:
-								os.execv(portage._python_interpreter, [
+							main_child_pid = os.fork()
+							if main_child_pid == 0:
+								# pid namespace requires us to become init
+								binary, myargs = portage._python_interpreter, [
 									portage._python_interpreter,
 									os.path.join(portage._bin_path,
 										'pid-ns-init'),
-									'%s' % fork_ret,
-									])
+									_unicode_encode('' if uid is None else str(uid)),
+									_unicode_encode('' if gid is None else str(gid)),
+									_unicode_encode('' if groups is None else ','.join(str(group) for group in groups)),
+									_unicode_encode('' if umask is None else str(umask)),
+									_unicode_encode(','.join(str(fd) for fd in fd_pipes)),
+									binary] + myargs
+								uid = None
+								gid = None
+								groups = None
+								umask = None
+							else:
+								# Execute a supervisor process which will forward
+								# signals to init and forward exit status to the
+								# parent process. The supervisor process runs in
+								# the global pid namespace, so skip /proc remount
+								# and other setup that's intended only for the
+								# init process.
+								binary, myargs = portage._python_interpreter, [
+									portage._python_interpreter,
+									os.path.join(portage._bin_path,
+									'pid-ns-init'), str(main_child_pid)]
+
+								os.execve(binary, myargs, env)
+
 						if unshare_mount:
 							# mark the whole filesystem as slave to avoid
 							# mounts escaping the namespace
@@ -609,11 +652,108 @@ def _exec(binary, mycommand, opt_name, fd_pipes, env, gid, groups, uid, umask,
 		os.setuid(int(uid))
 	if umask:
 		os.umask(umask)
+	if cwd is not None:
+		os.chdir(cwd)
 	if pre_exec:
 		pre_exec()
 
 	# And switch to the new process.
 	os.execve(binary, myargs, env)
+
+
+class _unshare_validator(object):
+	"""
+	In order to prevent failed unshare calls from corrupting the state
+	of an essential process, validate the relevant unshare call in a
+	short-lived subprocess. An unshare call is considered valid if it
+	successfully executes in a short-lived subprocess.
+	"""
+
+	def __init__(self):
+		self._results = {}
+
+	def __call__(self, flags):
+		"""
+		Validate unshare with the given flags. Results are cached.
+
+		@rtype: int
+		@returns: errno value, or 0 if no error occurred.
+		"""
+
+		try:
+			return self._results[flags]
+		except KeyError:
+			result = self._results[flags] = self._validate(flags)
+			return result
+
+	@classmethod
+	def _validate(cls, flags):
+		"""
+		Perform validation.
+
+		@param flags: unshare flags
+		@type flags: int
+		@rtype: int
+		@returns: errno value, or 0 if no error occurred.
+		"""
+		filename = find_library("c")
+		if filename is None:
+			return errno.ENOTSUP
+
+		libc = LoadLibrary(filename)
+		if libc is None:
+			return errno.ENOTSUP
+
+		parent_pipe, subproc_pipe = multiprocessing.Pipe(duplex=False)
+
+		proc = multiprocessing.Process(
+			target=cls._run_subproc,
+			args=(subproc_pipe, cls._validate_subproc, (libc.unshare, flags)))
+		proc.start()
+		subproc_pipe.close()
+
+		result = parent_pipe.recv()
+		parent_pipe.close()
+		proc.join()
+
+		return result
+
+	@staticmethod
+	def _run_subproc(subproc_pipe, target, args=(), kwargs={}):
+		"""
+		Call function and send return value to parent process.
+
+		@param subproc_pipe: connection to parent process
+		@type subproc_pipe: multiprocessing.Connection
+		@param target: target is the callable object to be invoked
+		@type target: callable
+		@param args: the argument tuple for the target invocation
+		@type args: tuple
+		@param kwargs: dictionary of keyword arguments for the target invocation
+		@type kwargs: dict
+		"""
+		subproc_pipe.send(target(*args, **kwargs))
+		subproc_pipe.close()
+
+	@staticmethod
+	def _validate_subproc(unshare, flags):
+		"""
+		Perform validation. Calls to this method must be isolated in a
+		subprocess, since the unshare function is called for purposes of
+		validation.
+
+		@param unshare: unshare function
+		@type unshare: callable
+		@param flags: unshare flags
+		@type flags: int
+		@rtype: int
+		@returns: errno value, or 0 if no error occurred.
+		"""
+		return 0 if unshare(flags) == 0 else ctypes.get_errno()
+
+
+_unshare_validate = _unshare_validator()
+
 
 def _setup_pipes(fd_pipes, close_fds=True, inheritable=None):
 	"""Setup pipes for a forked process.

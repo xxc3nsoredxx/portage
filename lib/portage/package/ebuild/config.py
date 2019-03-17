@@ -1,4 +1,4 @@
-# Copyright 2010-2018 Gentoo Foundation
+# Copyright 2010-2019 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -154,6 +154,9 @@ class config(object):
 
 	_constant_keys = frozenset(['PORTAGE_BIN_PATH', 'PORTAGE_GID',
 		'PORTAGE_PYM_PATH', 'PORTAGE_PYTHONPATH'])
+
+	_deprecated_keys = {'PORTAGE_LOGDIR': 'PORT_LOGDIR',
+		'PORTAGE_LOGDIR_CLEAN': 'PORT_LOGDIR_CLEAN'}
 
 	_setcpv_aux_keys = ('BDEPEND', 'DEFINED_PHASES', 'DEPEND', 'EAPI', 'HDEPEND',
 		'INHERITED', 'IUSE', 'REQUIRED_USE', 'KEYWORDS', 'LICENSE', 'PDEPEND',
@@ -2288,7 +2291,7 @@ class config(object):
 			for curdb in mydbs:
 				mysplit.extend(curdb.get('ACCEPT_LICENSE', '').split())
 			mysplit = prune_incremental(mysplit)
-			accept_license_str = ' '.join(mysplit)
+			accept_license_str = ' '.join(mysplit) or '* -@EULA'
 			self.configlist[-1]['ACCEPT_LICENSE'] = accept_license_str
 			self._license_manager.set_accept_license_str(accept_license_str)
 		else:
@@ -2665,6 +2668,14 @@ class config(object):
 				return d[mykey]
 			except KeyError:
 				pass
+
+		deprecated_key = self._deprecated_keys.get(mykey)
+		if deprecated_key is not None:
+			value = self._getitem(deprecated_key)
+			#warnings.warn(_("Key %s has been renamed to %s. Please ",
+			#	"update your configuration") % (deprecated_key, mykey),
+			#	UserWarning)
+			return value
 
 		raise KeyError(mykey)
 
