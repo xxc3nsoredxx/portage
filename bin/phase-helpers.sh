@@ -239,8 +239,8 @@ use() {
 	# a full profile with IUSE_IMPLICIT and stuff (see bug #456830).
 	elif declare -f ___in_portage_iuse >/dev/null &&
 		[[ -n ${EBUILD_PHASE} && -n ${PORTAGE_INTERNAL_CALLER} ]] ; then
-		if ( [[ ! " ${FEATURES} " == *" force-multilib "* && $u == multilib ]] && \
-		if ! ___in_portage_iuse "${u}"; then
+		if ! ___in_portage_iuse "${u}" ]]; then
+		if [[ ! " ${FEATURES} " == *" force-multilib "* && $u == multilib ]] ; then
 			if [[ ${EMERGE_FROM} != binary &&
 				! ${EAPI} =~ ^(0|1|2|3|4|4-python|4-slot-abi)$ ]] ; then
 				# This is only strict starting with EAPI 5, since implicit IUSE
@@ -249,6 +249,7 @@ use() {
 			fi
 			eqawarn "QA Notice: USE Flag '${u}' not" \
 				"in IUSE for ${CATEGORY}/${PF}"
+		fi
 		fi
 	fi
 

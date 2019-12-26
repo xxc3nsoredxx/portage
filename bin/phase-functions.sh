@@ -578,8 +578,6 @@ __dyn_test() {
 		SANDBOX_PREDICT=${save_sp}
 	fi
 
-	done
-
 	trap - SIGINT SIGQUIT
 }
 
