@@ -1,4 +1,4 @@
-# Copyright 1998-2018 Gentoo Foundation
+# Copyright 1998-2019 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -32,8 +32,7 @@ class dbapi(object):
 	_use_mutable = False
 	_known_keys = frozenset(x for x in auxdbkeys
 		if not x.startswith("UNUSED_0"))
-	_pkg_str_aux_keys = ("BUILD_TIME", "EAPI", "BUILD_ID",
-		"KEYWORDS", "SLOT", "repository")
+	_pkg_str_aux_keys = ("EAPI", "KEYWORDS", "SLOT", "repository")
 
 	def __init__(self):
 		pass
@@ -314,12 +313,12 @@ class dbapi(object):
 				# Check masked and forced flags for repoman.
 				usemask = self.settings._getUseMask(pkg,
 					stable=self.settings._parent_stable)
-				if any(x in usemask for x in atom.use.enabled):
+				if any(x in usemask and iuse.get_real_flag(x) is not None for x in atom.use.enabled):
 					return False
 
 				useforce = self.settings._getUseForce(pkg,
 					stable=self.settings._parent_stable)
-				if any(x in useforce and x not in usemask
+				if any(x in useforce and x not in usemask and iuse.get_real_flag(x) is not None
 					for x in atom.use.disabled):
 					return False
 

@@ -1,4 +1,4 @@
-# Copyright 2013 Gentoo Foundation
+# Copyright 2013-2019 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 from portage.tests import TestCase
@@ -13,15 +13,15 @@ class SlotOperatorAutoUnmaskTestCase(TestCase):
 	def testSubSlot(self):
 		ebuilds = {
 			"dev-libs/icu-49" : {
-				"EAPI": "4-slot-abi",
+				"EAPI": "5",
 				"SLOT": "0/49"
 			},
 			"dev-libs/icu-4.8" : {
-				"EAPI": "4-slot-abi",
+				"EAPI": "5",
 				"SLOT": "0/48"
 			},
 			"dev-libs/libxml2-2.7.8" : {
-				"EAPI": "4-slot-abi",
+				"EAPI": "5",
 				"DEPEND":  "dev-libs/icu:=",
 				"RDEPEND": "dev-libs/icu:=",
 				"KEYWORDS": "~x86"
@@ -29,26 +29,26 @@ class SlotOperatorAutoUnmaskTestCase(TestCase):
 		}
 		binpkgs = {
 			"dev-libs/icu-49" : {
-				"EAPI": "4-slot-abi",
+				"EAPI": "5",
 				"SLOT": "0/49"
 			},
 			"dev-libs/icu-4.8" : {
-				"EAPI": "4-slot-abi",
+				"EAPI": "5",
 				"SLOT": "0/48"
 			},
 			"dev-libs/libxml2-2.7.8" : {
-				"EAPI": "4-slot-abi",
+				"EAPI": "5",
 				"DEPEND":  "dev-libs/icu:0/48=",
 				"RDEPEND": "dev-libs/icu:0/48="
 			},
 		}
 		installed = {
 			"dev-libs/icu-4.8" : {
-				"EAPI": "4-slot-abi",
+				"EAPI": "5",
 				"SLOT": "0/48"
 			},
 			"dev-libs/libxml2-2.7.8" : {
-				"EAPI": "4-slot-abi",
+				"EAPI": "5",
 				"DEPEND":  "dev-libs/icu:0/48=",
 				"RDEPEND": "dev-libs/icu:0/48="
 			},
@@ -73,14 +73,14 @@ class SlotOperatorAutoUnmaskTestCase(TestCase):
 
 			ResolverPlaygroundTestCase(
 				["dev-libs/icu"],
-				options = {"--oneshot": True, "--usepkg": True},
+				options = {"--autounmask": True, "--oneshot": True, "--usepkg": True},
 				success = False,
 				mergelist = ["[binary]dev-libs/icu-49", "dev-libs/libxml2-2.7.8" ],
 				unstable_keywords = ['dev-libs/libxml2-2.7.8']),
 
 			ResolverPlaygroundTestCase(
 				["dev-libs/icu"],
-				options = {"--oneshot": True, "--usepkgonly": True},
+				options = {"--autounmask": True, "--oneshot": True, "--usepkgonly": True},
 				success = True,
 				mergelist = ["[binary]dev-libs/icu-4.8"]),
 

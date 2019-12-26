@@ -37,6 +37,7 @@ import portage
 portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.util.futures.unix_events:_PortageEventLoopPolicy',
 	'portage.util.futures:compat_coroutine@_compat_coroutine',
+	'portage.util._eventloop.EventLoop:EventLoop@_EventLoop',
 )
 from portage.util._eventloop.asyncio_event_loop import AsyncioEventLoop as _AsyncioEventLoop
 from portage.util._eventloop.global_event_loop import (
@@ -139,8 +140,9 @@ def create_subprocess_exec(*args, **kwargs):
 	loop = _wrap_loop(kwargs.pop('loop', None))
 	kwargs.setdefault('close_fds', _close_fds_default)
 	if _asyncio_enabled and isinstance(loop, _AsyncioEventLoop):
-		# Use the real asyncio loop and create_subprocess_exec.
-		return _real_asyncio.create_subprocess_exec(*args, loop=loop._loop, **kwargs)
+		# Use the real asyncio create_subprocess_exec (loop argument
+		# is deprecated since since Python 3.8).
+		return _real_asyncio.create_subprocess_exec(*args, **kwargs)
 
 	result = loop.create_future()
 
@@ -250,3 +252,20 @@ if _asyncio_enabled:
 		loop = loop or _global_event_loop()
 		return (loop if hasattr(loop, '_asyncio_wrapper')
 			else _AsyncioEventLoop(loop=loop))
+
+
+def _safe_loop():
+	"""
+	Return an event loop that's safe to use within the current context.
+	For portage internal callers, this returns a globally shared event
+	loop instance. For external API consumers, this constructs a
+	temporary event loop instance that's safe to use in a non-main
+	thread (it does not override the global SIGCHLD handler).
+
+	@rtype: asyncio.AbstractEventLoop (or compatible)
+	@return: event loop instance
+	"""
+	if portage._internal_caller:
+		return _global_event_loop()
+	else:
+		return _EventLoop(main=False)

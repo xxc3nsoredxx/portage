@@ -1,6 +1,206 @@
 Release Notes; upgrade information mainly.
 Features/major bugfixes are listed in NEWS
 
+portage-2.3.83
+==================================
+* Bug Fixes:
+    - Bug 384107 adjust || preference to break dependency cycles,
+      which solves bug 382421 and bug 703440
+    - Bug 703348 emerge --with-test-deps: allow circular deps
+
+
+portage-2.3.82
+==================================
+* Bug Fixes:
+    - Bug 310009 emerge: Show package USE in conflict messages
+    - Bug 680456 display relevant FEATURES when unshare fails
+    - Bug 693454 emerge-webrsync: support gentoo-YYYYMMDD snapshots
+    - Bug 702146 emerge: drop FEATURES=distcc-pump support
+    - Bug 702970 emerge-webrsync: enable xz snapshots for tarsync
+
+
+portage-2.3.81
+==================================
+* Bug Fixes:
+    - Bug 681312 add emerge --implicit-system-deps <y|n> option
+    - Bug 701996 fix virtual/wine handling to avoid pulling in multiple
+      wine implementations in some cases
+
+
+portage-2.3.80
+==================================
+* Bug Fixes:
+    - Bug 667432 Rename DCO_SIGNED_OFF_BY config variable to SIGNED_OFF_BY.
+    - Bug 674562 eapply: Drop -s option for patch.
+    - Bug 689226 emerge --buildpkgonly: respect buildtime hard blockers
+    - Bug 699986 emerge: add --quickpkg-direct option
+
+
+portage-2.3.79
+==================================
+* Bug Fixes:
+    - Bug 673400 emerge: fix error message for unknown options
+    - Bug 698046 fetch: remove symlink created by FETCHCOMMAND_RSYNC
+    - Bug 698474 fetch: respect try_mirrors parameter for local mirrors
+    - Bug 699392 emirrordist: _recycle_copier_exit UnboundLocalError
+    - Bug 699400 emirrordist: clean up FileCopier exception logging
+    - Bug 699548 install.py: ignore -Z / --context
+
+
+portage-2.3.78
+==================================
+* Bug Fixes:
+    - Bug 697566 fetch: Use FETCHCOMMAND to fetch mirror layout.conf
+    - Bug 697890 emirrordist: Fix DeletionTask layout assumptions
+    - Bug 697906 emirrordist: Delete potential symlinks for all layouts
+    - Bug 698046 make.globals: Change FETCHCOMMAND_RSYNC to --copy-links
+
+
+portage-2.3.77
+==================================
+* Bug Fixes:
+    - Bug 220533 Fix FEATURES=skiprocheck read-only DISTDIR support
+    - Bug 646898 Support GLEP 75 mirror structure
+    - Bug 658648 Disable emerge --autounmask by default, except for
+                 package.use and package.license changes
+    - Bug 695870 Improvements to ebuild(5) man page
+
+
+portage-2.3.76
+==================================
+* Bug Fixes:
+    - Bug 693836 erroneous firefox downgrade
+    - Bug 693980 x11-module-rebuild: support SYMLINK_LIB=no
+    - Bug 694000 OwnerSet: fix exclude-files support
+
+
+portage-2.3.75
+==================================
+* Bug Fixes:
+    - Bug 235970 glsa-check: add --reverse option
+    - Bug 692134 glsa-check: fix truncated CVE ids in listmode
+    - Bug 692746 missed virtual/libmysqlclient update
+    - Bug 693242 premature backtracking termination
+
+
+portage-2.3.74
+==================================
+* Bug Fixes:
+    - Bug 587930 glsa-check: add exit code for affected GLSAs
+    - Bug 688902 Add FEATURES=pkgdir-index-trusted
+    - Bug 690758 Use RTNETLINK to configure the loopback interface
+    - Bug 692872 glsa-check: forward port --quiet option from
+      gentoolkit
+    - Bug 693026 rsync: proxychains compatibility
+    - Bug 693088 glsa-check: forward port remaining changes from
+      gentoolkit
+    - Bug 693096 emerge: deprecate --changelog option
+
+
+portage-2.3.73
+==================================
+* Bug Fixes:
+    - Bug 692698 preserve-libs: ignore dropped non-soname symlink
+
+
+portage-2.3.72
+==================================
+* Allow ESYSROOT and BROOT in the pkg_setup phase, following a recent
+  change to PMS.
+* Bug Fixes:
+    - Bug 463952 glsa-check: install in /usr/bin
+    - Bug 646090 preserve-libs: get dep graph from EROOT
+    - Bug 690484 detect internal collisions for /usr merge
+    - Bug 690786 repoman: support metadata/layout.conf restrict-allowed
+    - Bug 691776 unpack: Unconditionally die if an unpacker returns
+      an error
+    - Bug 691638 Show get/setfattr stderr
+    - Bug 692024 econf: Unconditionally die on error in EAPIs 0 to 3
+    - Bug 692262 QA Notice: EXPORT_FUNCTIONS is called before inherit
+      in kernel-2.eclass
+    - Bug 692412 emerge IndexError for ambiguous package atom with pypy
+
+
+portage-2.3.71
+==================================
+* Bug Fixes:
+    - Bug 691290 Fix RTNETLINK answers: Operation not supported messages
+      when IPv6 is disabled
+
+
+portage-2.3.70
+==================================
+* Bug Fixes:
+    - Bug 233589 Support PROPERTIES=live
+    - Bug 690304 dispatch-conf unicode safety
+    - Bug 690446 emaint -c binhost support for binpkg-multi-instance
+    - Bug 690758 network-sandbox support for AI_ADDRCONFIG
+
+
+portage-2.3.69
+==================================
+* Bug Fixes:
+    - Bug 642604 handle empty EPREFIX, ROOT, SYSROOT, etc settings
+    - Bug 680810 ebuild.sh: suppress export error messages for eix-update
+    - Bug 689072 default repo.conf sync-openpgp-keyserver to
+      hkps://keys.gentoo.org in order to prevent key poisoning
+    - Bug 689506 default repos.conf sync-webrsync-verify-signature
+
+
+portage-2.3.68
+==================================
+* Bug Fixes:
+    - Bug 687814 config: don't swallow IOError for "packages" files
+    - Bug 688124 fix emerge fetch download size calculation for resume
+    - Bug 688648 fix emerge --sync keyserver None message
+
+
+portage-2.3.67
+==================================
+* Bug Fixes:
+    - Bug 516016 install-qa-check.d/80libraries: Fix false positive
+    - Bug 662468 Add bash ___is_indexed_array_var function
+    - Bug 685482 repoman: Check IUSE in _match_use for USE defaults
+    - Bug 685532 estrip: Fix inconsistent behavior with EAPI >= 7
+    - Bug 685854 get_vm_info: Set C locale for subprocesses
+    - Bug 686194 Recognize riscv ABIs
+    - Bug 686282 estrip: Strip __gentoo_check_ldflags__ symbol
+    - Bug 686356 install-qa-check.d/10ignored-flags: Fix false positive
+    - Bug 686406 Fix ACCEPT_LICENSE=-* to behave as intended
+
+
+portage-2.3.66
+==================================
+* Bug Fixes:
+    - Bug 175612 download distfiles to temp file and rename atomically
+    - Bug 651678 enable FEATURES=strict-keepdir behavior for new EAPIs
+
+
+portage-2.3.65
+==================================
+* Bug Fixes:
+    - Bug 478544 fix duplicate repo warning triggered by PORTDIR
+    - Bug 553224 emerge --info per-package FEATURES
+    - Bug 684232 don't set permissions on /dev/null emerge.log symlink
+
+
+portage-2.3.64
+==================================
+* Bug Fixes:
+    - Bug 378603 New (council approved) default locations for the Gentoo
+      repository, distfiles, and binary packages
+
+
+portage-2.3.63
+==================================
+* Bug Fixes:
+    - Bug 672540 enable SIGINT in emerge exception handler
+    - Bug 674932 document BDEPEND in ebuild(5) man page
+    - Bug 680810 optimize bash IUSE checks by not using regexp
+    - Bug 680908 repos.conf: add sync-openpgp-keyserver option
+    - Bug 683040 fix distcc/network-sandbox-proxy socket permission
+
+
 portage-2.3.62
 ==================================
 * Bug Fixes:

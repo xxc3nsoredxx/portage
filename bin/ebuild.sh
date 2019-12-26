@@ -8,6 +8,7 @@ unalias -a
 
 # Make sure this isn't exported to scripts we execute.
 unset BASH_COMPAT
+declare -F ___in_portage_iuse >/dev/null && export -n -f ___in_portage_iuse
 
 source "${PORTAGE_BIN_PATH}/isolated-functions.sh" || exit 1
 
@@ -244,14 +245,6 @@ inherit() {
 	ECLASS_DEPTH=$(($ECLASS_DEPTH + 1))
 	if [[ ${ECLASS_DEPTH} -gt 1 ]]; then
 		debug-print "*** Multiple Inheritence (Level: ${ECLASS_DEPTH})"
-
-		# Since ECLASS_DEPTH > 1, the following variables are locals from the
-		# previous inherit call in the call stack.
-		if [[ -n ${ECLASS} && -n ${!__export_funcs_var} ]] ; then
-			eqawarn "QA Notice: EXPORT_FUNCTIONS is called before inherit in ${ECLASS}.eclass."
-			eqawarn "For compatibility with <=portage-2.1.6.7, only call EXPORT_FUNCTIONS"
-			eqawarn "after inherit(s)."
-		fi
 	fi
 
 	local -x ECLASS
@@ -767,8 +760,8 @@ else
 
 	# If ${EBUILD_FORCE_TEST} == 1 and USE came from ${T}/environment
 	# then it might not have USE=test like it's supposed to here.
-	if [[ ${EBUILD_PHASE} == test && ${EBUILD_FORCE_TEST} == 1 &&
-		test =~ ${PORTAGE_IUSE} ]] && ! has test ${USE} ; then
+	if [[ ${EBUILD_PHASE} == test && ${EBUILD_FORCE_TEST} == 1 ]] &&
+		___in_portage_iuse test && ! has test ${USE} ; then
 		export USE="${USE} test"
 	fi
 	declare -r USE

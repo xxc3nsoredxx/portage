@@ -51,6 +51,7 @@ from portage.util import ensure_dirs, getconfig, grabdict, \
 	grabdict_package, grabfile, grabfile_package, LazyItemsDict, \
 	normalize_path, shlex_split, stack_dictlist, stack_dicts, stack_lists, \
 	writemsg, writemsg_level, _eapi_cache
+from portage.util.install_mask import _raise_exc
 from portage.util.path import first_existing
 from portage.util._path import exists_raise_eaccess, isdir_raise_eaccess
 from portage.versions import catpkgsplit, catsplit, cpv_getkey, _pkg_str
@@ -156,7 +157,8 @@ class config(object):
 		'PORTAGE_PYM_PATH', 'PORTAGE_PYTHONPATH'])
 
 	_deprecated_keys = {'PORTAGE_LOGDIR': 'PORT_LOGDIR',
-		'PORTAGE_LOGDIR_CLEAN': 'PORT_LOGDIR_CLEAN'}
+		'PORTAGE_LOGDIR_CLEAN': 'PORT_LOGDIR_CLEAN',
+		'SIGNED_OFF_BY': 'DCO_SIGNED_OFF_BY'}
 
 	_setcpv_aux_keys = ('BDEPEND', 'DEFINED_PHASES', 'DEPEND', 'EAPI', 'HDEPEND',
 		'INHERITED', 'IUSE', 'REQUIRED_USE', 'KEYWORDS', 'LICENSE', 'PDEPEND',
@@ -596,10 +598,8 @@ class config(object):
 					verify_eapi=True, eapi=x.eapi, eapi_default=None,
 					allow_build_id=x.allow_build_id)
 					for x in profiles_complex]
-			except IOError as e:
-				if e.errno == IsADirectory.errno:
-					raise IsADirectory(os.path.join(self.profile_path,
-									 "packages"))
+			except EnvironmentError as e:
+				_raise_exc(e)
 
 			self.packages = tuple(stack_lists(packages_list, incremental=1))
 
@@ -1213,6 +1213,10 @@ class config(object):
 			writemsg(_("!!! FEATURES=fakeroot is enabled, but the "
 				"fakeroot binary is not installed.\n"), noiselevel=-1)
 
+		if "webrsync-gpg" in self.features:
+			writemsg(_("!!! FEATURES=webrsync-gpg is deprecated, see the make.conf(5) man page.\n"),
+				noiselevel=-1)
+
 		if os.getuid() == 0 and not hasattr(os, "setgroups"):
 			warning_shown = False
 
@@ -1771,13 +1775,27 @@ class config(object):
 				portage_iuse.update(built_use)
 			self.configdict["pkg"]["IUSE_EFFECTIVE"] = \
 				" ".join(sorted(portage_iuse))
+
+			self.configdict["env"]["BASH_FUNC____in_portage_iuse%%"] = (
+				"() { "
+				"if [[ ${#___PORTAGE_IUSE_HASH[@]} -lt 1 ]]; then "
+				"  declare -gA ___PORTAGE_IUSE_HASH=(%s); "
+				"fi; "
+				"[[ -n ${___PORTAGE_IUSE_HASH[$1]} ]]; "
+				"}" ) % " ".join('["%s"]=1' % x for x in portage_iuse)
 		else:
 			portage_iuse = self._get_implicit_iuse()
 			portage_iuse.update(explicit_iuse)
 
-		# PORTAGE_IUSE is not always needed so it's lazily evaluated.
-		self.configdict["env"].addLazySingleton(
-			"PORTAGE_IUSE", _lazy_iuse_regex, portage_iuse)
+			# The _get_implicit_iuse() returns a regular expression
+			# so we can't use the (faster) map.  Fall back to
+			# implementing ___in_portage_iuse() the older/slower way.
+
+			# PORTAGE_IUSE is not always needed so it's lazily evaluated.
+			self.configdict["env"].addLazySingleton(
+				"PORTAGE_IUSE", _lazy_iuse_regex, portage_iuse)
+			self.configdict["env"]["BASH_FUNC____in_portage_iuse%%"] = \
+				"() { [[ $1 =~ ${PORTAGE_IUSE} ]]; }"
 
 		ebuild_force_test = not restrict_test and \
 			self.get("EBUILD_FORCE_TEST") == "1"
@@ -2816,12 +2834,13 @@ class config(object):
 		if not eapi_exports_merge_type(eapi):
 			mydict.pop("MERGE_TYPE", None)
 
-		src_phase = _phase_func_map.get(phase, '').startswith('src_')
+		src_like_phase = (phase == 'setup' or
+				_phase_func_map.get(phase, '').startswith('src_'))
 
-		if not (src_phase and eapi_attrs.sysroot):
+		if not (src_like_phase and eapi_attrs.sysroot):
 			mydict.pop("ESYSROOT", None)
 
-		if not (src_phase and eapi_attrs.broot):
+		if not (src_like_phase and eapi_attrs.broot):
 			mydict.pop("BROOT", None)
 
 		# Prefix variables are supported beginning with EAPI 3, or when

@@ -1,4 +1,4 @@
-# Copyright 1998-2018 Gentoo Foundation
+# Copyright 1998-2019 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -14,6 +14,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.dbapi.dep_expand:dep_expand',
 	'portage.dep:Atom,dep_getkey,match_from_list,use_reduce,_match_slot',
 	'portage.package.ebuild.doebuild:doebuild',
+	'portage.package.ebuild.fetch:_download_suffix',
 	'portage.util:ensure_dirs,shlex_split,writemsg,writemsg_level',
 	'portage.util.listdir:listdir',
 	'portage.versions:best,catsplit,catpkgsplit,_pkgsplit@pkgsplit,ver_regexp,_pkg_str',
@@ -34,8 +35,6 @@ from portage import eclass_cache, \
 from portage import os
 from portage import _encodings
 from portage import _unicode_encode
-from portage import OrderedDict
-from portage.util._eventloop.EventLoop import EventLoop
 from portage.util.futures import asyncio
 from portage.util.futures.compat_coroutine import coroutine, coroutine_return
 from portage.util.futures.iter_completed import iter_gather
@@ -48,6 +47,8 @@ import warnings
 import errno
 import collections
 import functools
+
+from collections import OrderedDict
 
 try:
 	from urllib.parse import urlparse
@@ -345,14 +346,7 @@ class portdbapi(dbapi):
 
 	@property
 	def _event_loop(self):
-		if portage._internal_caller:
-			# For internal portage usage, asyncio._wrap_loop() is safe.
-			return asyncio._wrap_loop()
-		else:
-			# For external API consumers, use a local EventLoop, since
-			# we don't want to assume that it's safe to override the
-			# global SIGCHLD handler.
-			return EventLoop(main=False)
+		return asyncio._safe_loop()
 
 	def _create_pregen_cache(self, tree):
 		conf = self.repositories.get_repo_for_location(tree)
@@ -851,6 +845,17 @@ class portdbapi(dbapi):
 				mystat = os.stat(file_path)
 			except OSError:
 				pass
+			else:
+				if mystat.st_size != fetch_size:
+					# Use file with _download_suffix instead.
+					mystat = None
+
+			if mystat is None:
+				try:
+					mystat = os.stat(file_path + _download_suffix)
+				except OSError:
+					pass
+
 			if mystat is None:
 				existing_size = 0
 				ro_distdirs = self.settings.get("PORTAGE_RO_DISTDIRS")

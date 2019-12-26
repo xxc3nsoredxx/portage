@@ -1,4 +1,4 @@
-# Copyright 1998-2018 Gentoo Foundation
+# Copyright 1998-2019 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import division, unicode_literals
@@ -30,9 +30,10 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.util:apply_secpass_permissions,ConfigProtect,ensure_dirs,' + \
 		'writemsg,writemsg_level,write_atomic,atomic_ofstream,writedict,' + \
 		'grabdict,normalize_path,new_protect_filename',
+	'portage.util._compare_files:compare_files',
 	'portage.util.digraph:digraph',
 	'portage.util.env_update:env_update',
-	'portage.util.install_mask:install_mask_dir,InstallMask',
+	'portage.util.install_mask:install_mask_dir,InstallMask,_raise_exc',
 	'portage.util.listdir:dircache,listdir',
 	'portage.util.movefile:movefile',
 	'portage.util.monotonic:monotonic',
@@ -58,6 +59,7 @@ from portage.exception import CommandNotFound, \
 	InvalidData, InvalidLocation, InvalidPackageName, \
 	FileNotFound, PermissionDenied, UnsupportedAPIException
 from portage.localization import _
+from portage.util.futures import asyncio
 
 from portage import abssymlink, _movefile, bsd_chflags
 
@@ -69,6 +71,8 @@ from portage import _os_merge
 from portage import _selinux_merge
 from portage import _unicode_decode
 from portage import _unicode_encode
+from portage.util.futures.compat_coroutine import coroutine
+from portage.util.futures.executor.fork import ForkExecutor
 from ._VdbMetadataDelta import VdbMetadataDelta
 
 from _emerge.EbuildBuildDir import EbuildBuildDir
@@ -78,14 +82,17 @@ from _emerge.MiscFunctionsProcess import MiscFunctionsProcess
 from _emerge.SpawnProcess import SpawnProcess
 from ._ContentsCaseSensitivityManager import ContentsCaseSensitivityManager
 
+import argparse
 import errno
 import fnmatch
+import functools
 import gc
 import grp
 import io
 from itertools import chain
 import logging
 import os as _os
+import operator
 import platform
 import pwd
 import re
@@ -125,6 +132,7 @@ class vardbapi(dbapi):
 
 	_aux_cache_keys_re = re.compile(r'^NEEDED\..*$')
 	_aux_multi_line_re = re.compile(r'^(CONTENTS|NEEDED\..*)$')
+	_pkg_str_aux_keys = dbapi._pkg_str_aux_keys + ("BUILD_ID", "BUILD_TIME", "_mtime_")
 
 	def __init__(self, _unused_param=DeprecationWarning,
 		categories=None, settings=None, vartree=None):
@@ -950,6 +958,110 @@ class vardbapi(dbapi):
 					pass
 		self._bump_mtime(cpv)
 
+	@coroutine
+	def unpack_metadata(self, pkg, dest_dir):
+		"""
+		Unpack package metadata to a directory. This method is a coroutine.
+
+		@param pkg: package to unpack
+		@type pkg: _pkg_str or portage.config
+		@param dest_dir: destination directory
+		@type dest_dir: str
+		"""
+		loop = asyncio._wrap_loop()
+		if not isinstance(pkg, portage.config):
+			cpv = pkg
+		else:
+			cpv = pkg.mycpv
+		dbdir = self.getpath(cpv)
+		def async_copy():
+			for parent, dirs, files in os.walk(dbdir, onerror=_raise_exc):
+				for key in files:
+					shutil.copy(os.path.join(parent, key),
+						os.path.join(dest_dir, key))
+				break
+		yield loop.run_in_executor(ForkExecutor(loop=loop), async_copy)
+
+	@coroutine
+	def unpack_contents(self, pkg, dest_dir,
+		include_config=None, include_unmodified_config=None):
+		"""
+		Unpack package contents to a directory. This method is a coroutine.
+
+		This copies files from the installed system, in the same way
+		as the quickpkg(1) command. Default behavior for handling
+		of protected configuration files is controlled by the
+		QUICKPKG_DEFAULT_OPTS variable. The relevant quickpkg options
+		are --include-config and --include-unmodified-config. When
+		a configuration file is not included because it is protected,
+		an ewarn message is logged.
+
+		@param pkg: package to unpack
+		@type pkg: _pkg_str or portage.config
+		@param dest_dir: destination directory
+		@type dest_dir: str
+		@param include_config: Include all files protected by
+			CONFIG_PROTECT (as a security precaution, default is False
+			unless modified by QUICKPKG_DEFAULT_OPTS).
+		@type include_config: bool
+		@param include_unmodified_config: Include files protected by
+			CONFIG_PROTECT that have not been modified since installation
+			(as a security precaution, default is False unless modified
+			by QUICKPKG_DEFAULT_OPTS).
+		@type include_unmodified_config: bool
+		"""
+		loop = asyncio._wrap_loop()
+		if not isinstance(pkg, portage.config):
+			settings = self.settings
+			cpv = pkg
+		else:
+			settings = pkg
+			cpv = settings.mycpv
+
+		scheduler = SchedulerInterface(loop)
+		parser = argparse.ArgumentParser()
+		parser.add_argument('--include-config',
+			choices=('y', 'n'),
+			default='n')
+		parser.add_argument('--include-unmodified-config',
+			choices=('y', 'n'),
+			default='n')
+
+		# Method parameters may override QUICKPKG_DEFAULT_OPTS.
+		opts_list = portage.util.shlex_split(settings.get('QUICKPKG_DEFAULT_OPTS', ''))
+		if include_config is not None:
+			opts_list.append('--include-config={}'.format(
+				'y' if include_config else 'n'))
+		if include_unmodified_config is not None:
+			opts_list.append('--include-unmodified-config={}'.format(
+				'y' if include_unmodified_config else 'n'))
+
+		opts, args = parser.parse_known_args(opts_list)
+
+		tar_cmd = ('tar', '-x', '--xattrs', '--xattrs-include=*', '-C', dest_dir)
+		pr, pw = os.pipe()
+		proc = (yield asyncio.create_subprocess_exec(*tar_cmd, stdin=pr))
+		os.close(pr)
+		with os.fdopen(pw, 'wb', 0) as pw_file:
+			excluded_config_files = (yield loop.run_in_executor(ForkExecutor(loop=loop),
+				functools.partial(self._dblink(cpv).quickpkg,
+				pw_file,
+				include_config=opts.include_config == 'y',
+				include_unmodified_config=opts.include_unmodified_config == 'y')))
+		yield proc.wait()
+		if proc.returncode != os.EX_OK:
+			raise PortageException('command failed: {}'.format(tar_cmd))
+
+		if excluded_config_files:
+			log_lines = ([_("Config files excluded by QUICKPKG_DEFAULT_OPTS (see quickpkg(1) man page):")] +
+				['\t{}'.format(name) for name in excluded_config_files])
+			out = io.StringIO()
+			for line in log_lines:
+				portage.elog.messages.ewarn(line, phase='install', key=cpv, out=out)
+			scheduler.output(out.getvalue(),
+				background=self.settings.get("PORTAGE_BACKGROUND") == "1",
+				log_path=settings.get("PORTAGE_LOG_FILE"))
+
 	def counter_tick(self, myroot=None, mycpv=None):
 		"""
 		@param myroot: ignored, self._eroot is used instead
@@ -1406,8 +1518,7 @@ class vardbapi(dbapi):
 
 			# Do work via the global event loop, so that it can be used
 			# for indication of progress during the search (bug #461412).
-			event_loop = (portage._internal_caller and
-				global_event_loop() or EventLoop(main=False))
+			event_loop = asyncio._safe_loop()
 			root = self._vardb._eroot
 
 			def search_pkg(cpv, search_future):
@@ -1881,6 +1992,56 @@ class dblink(object):
 		self.contentscache = pkgfiles
 		return pkgfiles
 
+	def quickpkg(self, output_file, include_config=False, include_unmodified_config=False):
+		"""
+		Create a tar file appropriate for use by quickpkg.
+
+		@param output_file: Write binary tar stream to file.
+		@type output_file: file
+		@param include_config: Include all files protected by CONFIG_PROTECT
+			(as a security precaution, default is False).
+		@type include_config: bool
+		@param include_unmodified_config: Include files protected by CONFIG_PROTECT
+			that have not been modified since installation (as a security precaution,
+			default is False).
+		@type include_unmodified_config: bool
+		@rtype: list
+		@return: Paths of protected configuration files which have been omitted.
+		"""
+		settings = self.settings
+		cpv = self.mycpv
+		xattrs = 'xattr' in settings.features
+		contents = self.getcontents()
+		excluded_config_files = []
+		protect = None
+
+		if not include_config:
+			confprot = ConfigProtect(settings['EROOT'],
+				portage.util.shlex_split(settings.get('CONFIG_PROTECT', '')),
+				portage.util.shlex_split(settings.get('CONFIG_PROTECT_MASK', '')),
+				case_insensitive=('case-insensitive-fs' in settings.features))
+
+			def protect(filename):
+				if not confprot.isprotected(filename):
+					return False
+				if include_unmodified_config:
+					file_data = contents[filename]
+					if file_data[0] == 'obj':
+						orig_md5 = file_data[2].lower()
+						cur_md5 = perform_md5(filename, calc_prelink=1)
+						if orig_md5 == cur_md5:
+							return False
+				excluded_config_files.append(filename)
+				return True
+
+		# The tarfile module will write pax headers holding the
+		# xattrs only if PAX_FORMAT is specified here.
+		with tarfile.open(fileobj=output_file, mode='w|',
+			format=tarfile.PAX_FORMAT if xattrs else tarfile.DEFAULT_FORMAT) as tar:
+			tar_contents(contents, settings['ROOT'], tar, protect=protect, xattrs=xattrs)
+
+		return excluded_config_files
+
 	def _prune_plib_registry(self, unmerge=False,
 		needed=None, preserve_paths=None):
 		# remove preserved libraries that don't have any consumers left
@@ -1998,8 +2159,7 @@ class dblink(object):
 		if self._scheduler is None:
 			# We create a scheduler instance and use it to
 			# log unmerge output separately from merge output.
-			self._scheduler = SchedulerInterface(portage._internal_caller and
-				global_event_loop() or EventLoop(main=False))
+			self._scheduler = SchedulerInterface(asyncio._safe_loop())
 		if self.settings.get("PORTAGE_BACKGROUND") == "subprocess":
 			if self.settings.get("PORTAGE_BACKGROUND_UNMERGE") == "1":
 				self.settings["PORTAGE_BACKGROUND"] = "1"
@@ -3132,10 +3292,6 @@ class dblink(object):
 						os = portage.os
 
 			f = f_abs[root_len:]
-			if not unmerge and self.isowner(f):
-				# We have an indentically named replacement file,
-				# so we don't try to preserve the old copy.
-				continue
 			try:
 				consumers = linkmap.findConsumers(f,
 					exclude_providers=(installed_instance.isowner,))
@@ -3183,15 +3339,26 @@ class dblink(object):
 			hardlinks = set()
 			soname_symlinks = set()
 			soname = linkmap.getSoname(next(iter(preserve_node.alt_paths)))
+			have_replacement_soname_link = False
+			have_replacement_hardlink = False
 			for f in preserve_node.alt_paths:
 				f_abs = os.path.join(root, f.lstrip(os.sep))
 				try:
 					if stat.S_ISREG(os.lstat(f_abs).st_mode):
 						hardlinks.add(f)
+						if not unmerge and self.isowner(f):
+							have_replacement_hardlink = True
+							if os.path.basename(f) == soname:
+								have_replacement_soname_link = True
 					elif os.path.basename(f) == soname:
 						soname_symlinks.add(f)
+						if not unmerge and self.isowner(f):
+							have_replacement_soname_link = True
 				except OSError:
 					pass
+
+			if have_replacement_hardlink and have_replacement_soname_link:
+				continue
 
 			if hardlinks:
 				preserve_paths.update(hardlinks)
@@ -3419,6 +3586,8 @@ class dblink(object):
 
 			os = _os_merge
 
+			real_relative_paths = {}
+
 			collision_ignore = []
 			for x in portage.util.shlex_split(
 				self.settings.get("COLLISION_IGNORE", "")):
@@ -3470,8 +3639,13 @@ class dblink(object):
 					previous = current
 					progress_shown = True
 
-				dest_path = normalize_path(
-					os.path.join(destroot, f.lstrip(os.path.sep)))
+				dest_path = normalize_path(os.path.join(destroot, f.lstrip(os.path.sep)))
+
+				# Relative path with symbolic links resolved only in parent directories
+				real_relative_path = os.path.join(os.path.realpath(os.path.dirname(dest_path)),
+					os.path.basename(dest_path))[len(destroot):]
+
+				real_relative_paths.setdefault(real_relative_path, []).append(f.lstrip(os.path.sep))
 
 				parent = os.path.dirname(dest_path)
 				if parent not in dirs:
@@ -3557,9 +3731,24 @@ class dblink(object):
 							break
 					if stopmerge:
 						collisions.append(f)
+
+			internal_collisions = {}
+			for real_relative_path, files in real_relative_paths.items():
+				# Detect internal collisions between non-identical files.
+				if len(files) >= 2:
+					files.sort()
+					for i in range(len(files) - 1):
+						file1 = normalize_path(os.path.join(srcroot, files[i]))
+						file2 = normalize_path(os.path.join(srcroot, files[i+1]))
+						# Compare files, ignoring differences in times.
+						differences = compare_files(file1, file2, skipped_types=("atime", "mtime", "ctime"))
+						if differences:
+							internal_collisions.setdefault(real_relative_path, {})[(files[i], files[i+1])] = differences
+
 			if progress_shown:
 				showMessage(_("100% done\n"))
-			return collisions, dirs_ro, symlink_collisions, plib_collisions
+
+			return collisions, internal_collisions, dirs_ro, symlink_collisions, plib_collisions
 
 	def _lstat_inode_map(self, path_iter):
 		"""
@@ -4082,7 +4271,7 @@ class dblink(object):
 			if blocker.exists():
 				blockers.append(blocker)
 
-		collisions, dirs_ro, symlink_collisions, plib_collisions = \
+		collisions, internal_collisions, dirs_ro, symlink_collisions, plib_collisions = \
 			self._collision_protect(srcroot, destroot,
 			others_in_slot + blockers, filelist, linklist)
 
@@ -4108,6 +4297,29 @@ class dblink(object):
 				"messages for the whole content of the above message.")
 			msg = textwrap.wrap(msg, 70)
 			eerror(msg)
+			return 1
+
+		if internal_collisions:
+			msg = _("Package '%s' has internal collisions between non-identical files "
+				"(located in separate directories in the installation image (${D}) "
+				"corresponding to merged directories in the target "
+				"filesystem (${ROOT})):") % self.settings.mycpv
+			msg = textwrap.wrap(msg, 70)
+			msg.append("")
+			for k, v in sorted(internal_collisions.items(), key=operator.itemgetter(0)):
+				msg.append("\t%s" % os.path.join(destroot, k.lstrip(os.path.sep)))
+				for (file1, file2), differences in sorted(v.items()):
+					msg.append("\t\t%s" % os.path.join(destroot, file1.lstrip(os.path.sep)))
+					msg.append("\t\t%s" % os.path.join(destroot, file2.lstrip(os.path.sep)))
+					msg.append("\t\t\tDifferences: %s" % ", ".join(differences))
+					msg.append("")
+			self._elog("eerror", "preinst", msg)
+
+			msg = _("Package '%s' NOT merged due to internal collisions "
+				"between non-identical files.") % self.settings.mycpv
+			msg += _(" If necessary, refer to your elog messages for the whole "
+				"content of the above message.")
+			eerror(textwrap.wrap(msg, 70))
 			return 1
 
 		if symlink_collisions:
@@ -5141,9 +5353,7 @@ class dblink(object):
 			paths = tuple(paths)
 
 			proc = SyncfsProcess(paths=paths,
-				scheduler=(self._scheduler or
-					portage._internal_caller and global_event_loop() or
-					EventLoop(main=False)))
+				scheduler=(self._scheduler or asyncio._safe_loop()))
 			proc.start()
 			returncode = proc.wait()
 
@@ -5168,8 +5378,7 @@ class dblink(object):
 			self.lockdb()
 		self.vartree.dbapi._bump_mtime(self.mycpv)
 		if self._scheduler is None:
-			self._scheduler = SchedulerInterface(portage._internal_caller and
-				global_event_loop() or EventLoop(main=False))
+			self._scheduler = SchedulerInterface(asyncio._safe_loop())
 		try:
 			retval = self.treewalk(mergeroot, myroot, inforoot, myebuild,
 				cleanup=cleanup, mydbapi=mydbapi, prev_mtimes=prev_mtimes,
@@ -5375,8 +5584,7 @@ def merge(mycat, mypkg, pkgloc, infloc,
 	merge_task = MergeProcess(
 		mycat=mycat, mypkg=mypkg, settings=settings,
 		treetype=mytree, vartree=vartree,
-		scheduler=(scheduler or portage._internal_caller and
-			global_event_loop() or EventLoop(main=False)),
+		scheduler=(scheduler or asyncio._safe_loop()),
 		background=background, blockers=blockers, pkgloc=pkgloc,
 		infloc=infloc, myebuild=myebuild, mydbapi=mydbapi,
 		prev_mtimes=prev_mtimes, logfile=settings.get('PORTAGE_LOG_FILE'),

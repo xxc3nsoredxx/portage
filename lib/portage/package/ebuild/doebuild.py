@@ -82,6 +82,7 @@ from portage.util import ( apply_recursive_permissions,
 from portage.util.cpuinfo import get_cpu_count
 from portage.util.lafilefixer import rewrite_lafile
 from portage.util.compression_probe import _compressors
+from portage.util.futures import asyncio
 from portage.util.path import first_existing
 from portage.util.socks5 import get_socks5_proxy
 from portage.versions import _pkgsplit
@@ -113,13 +114,6 @@ _ipc_phases = frozenset([
 # phases which execute in the global PID namespace
 _global_pid_phases = frozenset([
 	'config', 'depend', 'preinst', 'prerm', 'postinst', 'postrm'])
-
-# phases in which networking access is allowed
-_networked_phases = frozenset([
-	# for VCS fetching
-	"unpack",
-	# + for network-bound IPC
-] + list(_ipc_phases))
 
 _phase_func_map = {
 	"config": "pkg_config",
@@ -155,7 +149,9 @@ def _doebuild_spawn(phase, settings, actionmap=None, **kwargs):
 		phase in _ipc_phases
 	kwargs['mountns'] = 'mount-sandbox' in settings.features
 	kwargs['networked'] = 'network-sandbox' not in settings.features or \
-		phase in _networked_phases or \
+		(phase == 'unpack' and \
+		'live' in settings.configdict['pkg'].get('PROPERTIES', '').split()) or \
+		phase in _ipc_phases or \
 		'network-sandbox' in settings['PORTAGE_RESTRICT'].split()
 	kwargs['pidns'] = ('pid-sandbox' in settings.features and
 		phase not in _global_pid_phases)
@@ -198,8 +194,7 @@ def _spawn_phase(phase, settings, actionmap=None, returnpid=False,
 	# The logfile argument is unused here, since EbuildPhase uses
 	# the PORTAGE_LOG_FILE variable if set.
 	ebuild_phase = EbuildPhase(actionmap=actionmap, background=False,
-		phase=phase, scheduler=SchedulerInterface(portage._internal_caller and
-			global_event_loop() or EventLoop(main=False)),
+		phase=phase, scheduler=SchedulerInterface(asyncio._safe_loop()),
 		settings=settings, **kwargs)
 
 	ebuild_phase.start()
@@ -548,7 +543,7 @@ def doebuild_environment(myebuild, mydo, myroot=None, settings=None,
 			compression = _compressors[binpkg_compression]
 		except KeyError as e:
 			if binpkg_compression:
-				writemsg("Warning: Invalid or unsupported compression method: %s" % e.args[0])
+				writemsg("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
 			else:
 				# Empty BINPKG_COMPRESS disables compression.
 				mysettings['PORTAGE_COMPRESSION_COMMAND'] = 'cat'
@@ -556,11 +551,11 @@ def doebuild_environment(myebuild, mydo, myroot=None, settings=None,
 			try:
 				compression_binary = shlex_split(varexpand(compression["compress"], mydict=settings))[0]
 			except IndexError as e:
-				writemsg("Warning: Invalid or unsupported compression method: %s" % e.args[0])
+				writemsg("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
 			else:
 				if find_binary(compression_binary) is None:
 					missing_package = compression["package"]
-					writemsg("Warning: File compression unsupported %s. Missing package: %s" % (binpkg_compression, missing_package))
+					writemsg("Warning: File compression unsupported %s. Missing package: %s\n" % (binpkg_compression, missing_package))
 				else:
 					cmd = [varexpand(x, mydict=settings) for x in shlex_split(compression["compress"])]
 					# Filter empty elements
@@ -830,8 +825,7 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 			if not returnpid and \
 				'PORTAGE_BUILDDIR_LOCKED' not in mysettings:
 				builddir_lock = EbuildBuildDir(
-					scheduler=(portage._internal_caller and
-						global_event_loop() or EventLoop(main=False)),
+					scheduler=asyncio._safe_loop(),
 					settings=mysettings)
 				builddir_lock.scheduler.run_until_complete(
 					builddir_lock.async_lock())
@@ -957,8 +951,7 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 					if builddir_lock is None and \
 						'PORTAGE_BUILDDIR_LOCKED' not in mysettings:
 						builddir_lock = EbuildBuildDir(
-							scheduler=(portage._internal_caller and
-								global_event_loop() or EventLoop(main=False)),
+							scheduler=asyncio._safe_loop(),
 							settings=mysettings)
 						builddir_lock.scheduler.run_until_complete(
 							builddir_lock.async_lock())
@@ -982,8 +975,7 @@ def doebuild(myebuild, mydo, _unused=DeprecationWarning, settings=None, debug=0,
 			if not returnpid and \
 				'PORTAGE_BUILDDIR_LOCKED' not in mysettings:
 				builddir_lock = EbuildBuildDir(
-					scheduler=(portage._internal_caller and
-						global_event_loop() or EventLoop(main=False)),
+					scheduler=asyncio._safe_loop(),
 					settings=mysettings)
 				builddir_lock.scheduler.run_until_complete(
 					builddir_lock.async_lock())
@@ -1331,8 +1323,7 @@ def _prepare_env_file(settings):
 	"""
 
 	env_extractor = BinpkgEnvExtractor(background=False,
-		scheduler=(portage._internal_caller and
-			global_event_loop() or EventLoop(main=False)),
+		scheduler=asyncio._safe_loop(),
 		settings=settings)
 
 	if env_extractor.dest_env_exists():
@@ -1658,8 +1649,7 @@ def spawn(mystring, mysettings, debug=False, free=False, droppriv=False,
 
 		proc = EbuildSpawnProcess(
 			background=False, args=mystring,
-			scheduler=SchedulerInterface(portage._internal_caller and
-				global_event_loop() or EventLoop(main=False)),
+			scheduler=SchedulerInterface(asyncio._safe_loop()),
 			spawn_func=spawn_func,
 			settings=mysettings, **keywords)
 
@@ -2279,7 +2269,7 @@ def _post_src_install_soname_symlinks(mysettings, out):
 			f.close()
 
 	metadata = {}
-	for k in ("QA_PREBUILT", "QA_NO_SYMLINK"):
+	for k in ("QA_PREBUILT", "QA_SONAME_NO_SYMLINK"):
 		try:
 			with io.open(_unicode_encode(os.path.join(
 				mysettings["PORTAGE_BUILDDIR"],
@@ -2300,14 +2290,14 @@ def _post_src_install_soname_symlinks(mysettings, out):
 			fnmatch.translate(x.lstrip(os.sep))
 			for x in portage.util.shlex_split(qa_prebuilt)))
 
-	qa_no_symlink = metadata.get("QA_NO_SYMLINK", "").split()
-	if qa_no_symlink:
-		if len(qa_no_symlink) > 1:
-			qa_no_symlink = "|".join("(%s)" % x for x in qa_no_symlink)
-			qa_no_symlink = "^(%s)$" % qa_no_symlink
+	qa_soname_no_symlink = metadata.get("QA_SONAME_NO_SYMLINK", "").split()
+	if qa_soname_no_symlink:
+		if len(qa_soname_no_symlink) > 1:
+			qa_soname_no_symlink = "|".join("(%s)" % x for x in qa_soname_no_symlink)
+			qa_soname_no_symlink = "^(%s)$" % qa_soname_no_symlink
 		else:
-			qa_no_symlink = "^%s$" % qa_no_symlink[0]
-		qa_no_symlink = re.compile(qa_no_symlink)
+			qa_soname_no_symlink = "^%s$" % qa_soname_no_symlink[0]
+		qa_soname_no_symlink = re.compile(qa_soname_no_symlink)
 
 	libpaths = set(portage.util.getlibpaths(
 		mysettings["ROOT"], env=mysettings))
@@ -2416,7 +2406,7 @@ def _post_src_install_soname_symlinks(mysettings, out):
 			continue
 		if not is_libdir(os.path.dirname(obj)):
 			continue
-		if qa_no_symlink and qa_no_symlink.match(obj.strip(os.sep)) is not None:
+		if qa_soname_no_symlink and qa_soname_no_symlink.match(obj.strip(os.sep)) is not None:
 			continue
 
 		obj_file_path = os.path.join(image_dir, obj.lstrip(os.sep))

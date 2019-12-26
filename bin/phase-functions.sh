@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 1999-2018 Gentoo Foundation
+# Copyright 1999-2019 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 # Hardcoded bash lists are needed for backward compatibility with
@@ -97,7 +97,7 @@ __filter_readonly_variables() {
 	# Untrusted due to possible application of package renames to binpkgs
 	local binpkg_untrusted_vars="CATEGORY P PF PN PR PV PVR"
 	local misc_garbage_vars="_portage_filter_opts"
-	filtered_vars="$readonly_bash_vars $bash_misc_vars
+	filtered_vars="___.* $readonly_bash_vars $bash_misc_vars
 		$PORTAGE_READONLY_VARS $misc_garbage_vars"
 
 	# Filter SYSROOT unconditionally. It is propagated in every EAPI
@@ -383,7 +383,7 @@ __abort_install() {
 
 __has_phase_defined_up_to() {
 	local phase
-	for phase in unpack prepare configure compile install; do
+	for phase in unpack prepare configure compile test install; do
 		has ${phase} ${DEFINED_PHASES} && return 0
 		[[ ${phase} == $1 ]] && return 1
 	done
@@ -439,19 +439,6 @@ __dyn_prepare() {
 	trap - SIGINT SIGQUIT
 }
 
-# @FUNCTION: __start_distcc
-# @DESCRIPTION:
-# Start distcc-pump if necessary.
-__start_distcc() {
-	if has distcc $FEATURES && has distcc-pump $FEATURES ; then
-		if [[ -z $INCLUDE_SERVER_PORT ]] || [[ ! -w $INCLUDE_SERVER_PORT ]] ; then
-			# adding distcc to PATH repeatedly results in fatal distcc recursion :)
-			eval $(pump --startup | grep -v PATH)
-			trap "pump --shutdown >/dev/null" EXIT
-		fi
-	fi
-}
-
 __dyn_configure() {
 
 	if [[ -e $PORTAGE_BUILDDIR/.configured ]] ; then
@@ -480,7 +467,6 @@ __dyn_configure() {
 	fi
 
 	trap __abort_configure SIGINT SIGQUIT
-	__start_distcc
 
 	__ebuild_phase pre_src_configure
 
@@ -525,7 +511,6 @@ __dyn_compile() {
 	fi
 
 	trap __abort_compile SIGINT SIGQUIT
-	__start_distcc
 
 	__ebuild_phase pre_src_compile
 
@@ -551,13 +536,15 @@ __dyn_test() {
 	fi
 
 	trap "__abort_test" SIGINT SIGQUIT
-	for LOOP_ABI in $(get_abi_list); do
-		__start_distcc
 
-	if [ -d "${S}" ]; then
+	if [[ -d ${S} ]]; then
 		cd "${S}"
-	else
+	elif ___eapi_has_S_WORKDIR_fallback; then
 		cd "${WORKDIR}"
+	elif [[ -z ${A} ]] && ! __has_phase_defined_up_to test; then
+		cd "${WORKDIR}"
+	else
+		die "The source directory '${S}' doesn't exist"
 	fi
 
 	if has test ${RESTRICT} ; then
@@ -606,7 +593,6 @@ __dyn_install() {
 		return 0
 	fi
 	trap "__abort_install" SIGINT SIGQUIT
-	__start_distcc
 
 	# Handle setting QA_* based on QA_PREBUILT
 	# Those variables shouldn't be needed before src_install()
@@ -659,7 +645,7 @@ __dyn_install() {
 	fi
 
 	__vecho
-	__vecho ">>> Install ${PF} into ${D} category ${CATEGORY}"
+	__vecho ">>> Install ${CATEGORY}/${PF} into ${D}"
 	#our custom version of libtool uses $S and $D to fix
 	#invalid paths in .la files
 	export S D
@@ -696,7 +682,7 @@ __dyn_install() {
 
 	>> "$PORTAGE_BUILDDIR/.installed" || \
 		die "Failed to create $PORTAGE_BUILDDIR/.installed"
-	__vecho ">>> Completed installing ${PF} into ${D}"
+	__vecho ">>> Completed installing ${CATEGORY}/${PF} into ${D}"
 	__vecho
 	__ebuild_phase post_src_install
 
@@ -1089,9 +1075,8 @@ __ebuild_main() {
 	# respect FEATURES="-ccache".
 	has ccache $FEATURES || export CCACHE_DISABLE=1
 
-	local phase_func=$(__ebuild_arg_to_phase "$EBUILD_PHASE")
-	[[ -n $phase_func ]] && __ebuild_phase_funcs "$EAPI" "$phase_func"
-	unset phase_func
+	local ___phase_func=$(__ebuild_arg_to_phase "$EBUILD_PHASE")
+	[[ -n ${___phase_func} ]] && __ebuild_phase_funcs "$EAPI" "${___phase_func}"
 
 	__source_all_bashrcs
 

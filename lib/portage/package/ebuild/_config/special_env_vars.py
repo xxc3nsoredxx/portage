@@ -14,8 +14,8 @@ import re
 # to enter the config instance from the external environment or
 # configuration files.
 env_blacklist = frozenset((
-	"A", "AA", "BDEPEND", "BROOT", "CATEGORY", "DEPEND", "DESCRIPTION",
-	"DOCS", "EAPI",
+	"A", "AA", "BASH_FUNC____in_portage_iuse%%", "BDEPEND", "BROOT",
+	"CATEGORY", "DEPEND", "DESCRIPTION", "DOCS", "EAPI",
 	"EBUILD_FORCE_TEST", "EBUILD_PHASE",
 	"EBUILD_PHASE_FUNC", "EBUILD_SKIP_MANIFEST",
 	"ED", "EMERGE_FROM", "EPREFIX", "EROOT",
@@ -42,7 +42,8 @@ environ_whitelist = []
 # environment in order to prevent sandbox from sourcing /etc/profile
 # in it's bashrc (causing major leakage).
 environ_whitelist += [
-	"ACCEPT_LICENSE", "BASH_ENV", "BROOT", "BUILD_PREFIX", "COLUMNS", "D",
+	"ACCEPT_LICENSE", "BASH_ENV", "BASH_FUNC____in_portage_iuse%%",
+	"BROOT", "BUILD_PREFIX", "COLUMNS", "D",
 	"DISTDIR", "DOC_SYMLINKS_DIR", "EAPI", "EBUILD",
 	"EBUILD_FORCE_TEST",
 	"EBUILD_PHASE", "EBUILD_PHASE_FUNC", "ECLASSDIR", "ECLASS_DEPTH", "ED",
@@ -151,7 +152,6 @@ environ_filter += [
 	"BINPKG_COMPRESS", "BINPKG_COMPRESS_FLAGS",
 	"CLEAN_DELAY", "COLLISION_IGNORE",
 	"CONFIG_PROTECT", "CONFIG_PROTECT_MASK",
-	"DCO_SIGNED_OFF_BY",
 	"EGENCACHE_DEFAULT_OPTS", "EMERGE_DEFAULT_OPTS",
 	"EMERGE_LOG_DIR",
 	"EMERGE_WARNING_DELAY",
@@ -181,6 +181,7 @@ environ_filter += [
 	"RESUMECOMMAND", "RESUMECOMMAND_FTP",
 	"RESUMECOMMAND_HTTP", "RESUMECOMMAND_HTTPS",
 	"RESUMECOMMAND_RSYNC", "RESUMECOMMAND_SFTP",
+	"SIGNED_OFF_BY",
 	"UNINSTALL_IGNORE", "USE_EXPAND_HIDDEN", "USE_ORDER",
 	"__PORTAGE_HELPER"
 ]
