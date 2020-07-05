@@ -23,7 +23,7 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.locks:lockdir,unlockdir,lockfile,unlockfile',
 	'portage.output:bold,colorize',
 	'portage.package.ebuild.doebuild:doebuild_environment,' + \
-		'_merge_unicode_error', '_spawn_phase',
+		'_merge_unicode_error',
 	'portage.package.ebuild.prepare_build_dirs:prepare_build_dirs',
 	'portage.package.ebuild._ipc.QueryCommand:QueryCommand',
 	'portage.process:find_binary',
@@ -187,7 +187,7 @@ class vardbapi(dbapi):
 		self.vartree = vartree
 		self._aux_cache_keys = set(
 			["BDEPEND", "BUILD_TIME", "CHOST", "COUNTER", "DEPEND",
-			"DESCRIPTION", "EAPI", "HDEPEND", "HOMEPAGE",
+			"DESCRIPTION", "EAPI", "HOMEPAGE",
 			"BUILD_ID", "IUSE", "KEYWORDS",
 			"LICENSE", "PDEPEND", "PROPERTIES", "RDEPEND",
 			"repository", "RESTRICT" , "SLOT", "USE", "DEFINED_PHASES",
@@ -661,13 +661,6 @@ class vardbapi(dbapi):
 	def _aux_cache_init(self):
 		aux_cache = None
 		open_kwargs = {}
-		if sys.hexversion >= 0x3000000 and sys.hexversion < 0x3020000:
-			# Buffered io triggers extreme performance issues in
-			# Unpickler.load() (problem observed with python-3.0.1).
-			# Unfortunately, performance is still poor relative to
-			# python-2.x, but buffering makes it much worse (problem
-			# appears to be solved in Python >=3.2 at least).
-			open_kwargs["buffering"] = 0
 		try:
 			with open(_unicode_encode(self._aux_cache_filename,
 				encoding=_encodings['fs'], errors='strict'),

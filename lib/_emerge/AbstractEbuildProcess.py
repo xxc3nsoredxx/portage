@@ -1,4 +1,4 @@
-# Copyright 1999-2019 Gentoo Foundation
+# Copyright 1999-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 import errno
@@ -196,6 +196,7 @@ class AbstractEbuildProcess(SpawnProcess):
 			null_fd = os.open('/dev/null', os.O_RDONLY)
 			self.fd_pipes[0] = null_fd
 
+		self.log_filter_file = self.settings.get('PORTAGE_LOG_FILTER_FILE_CMD')
 		try:
 			SpawnProcess._start(self)
 		finally:
@@ -401,7 +402,7 @@ class AbstractEbuildProcess(SpawnProcess):
 			SpawnProcess._async_wait(self)
 		elif self._build_dir_unlock is None:
 			if self.returncode is None:
-				raise asyncio.InvalidStateError('Result is not ready.')
+				raise asyncio.InvalidStateError('Result is not ready for %s' % (self,))
 			self._async_unlock_builddir(returncode=self.returncode)
 
 	def _async_unlock_builddir(self, returncode=None):

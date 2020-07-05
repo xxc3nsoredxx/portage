@@ -1,4 +1,4 @@
-# Copyright 1998-2019 Gentoo Authors
+# Copyright 1998-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 from __future__ import unicode_literals
@@ -164,8 +164,13 @@ class _better_cache(object):
 					raise
 				continue
 			for p in pkg_list:
-				if os.path.isdir(cat_dir + "/" + p):
-					self._items[cat + "/" + p].append(repo)
+				try:
+					atom = Atom("%s/%s" % (cat, p))
+				except InvalidAtom:
+					continue
+				if atom != atom.cp:
+					continue
+				self._items[atom.cp].append(repo)
 		self._scanned_cats.add(cat)
 
 
@@ -315,7 +320,7 @@ class portdbapi(dbapi):
 					self._pregen_auxdb[x] = cache
 		# Selectively cache metadata in order to optimize dep matching.
 		self._aux_cache_keys = set(
-			["BDEPEND", "DEPEND", "EAPI", "HDEPEND",
+			["BDEPEND", "DEPEND", "EAPI",
 			"INHERITED", "IUSE", "KEYWORDS", "LICENSE",
 			"PDEPEND", "PROPERTIES", "RDEPEND", "repository",
 			"RESTRICT", "SLOT", "DEFINED_PHASES", "REQUIRED_USE"])
@@ -804,8 +809,11 @@ class portdbapi(dbapi):
 					(mypkg, eapi)))
 				return
 
-			result.set_result(_parse_uri_map(mypkg,
-				{'EAPI':eapi,'SRC_URI':myuris}, use=useflags))
+			try:
+				result.set_result(_parse_uri_map(mypkg,
+					{'EAPI':eapi,'SRC_URI':myuris}, use=useflags))
+			except Exception as e:
+				result.set_exception(e)
 
 		aux_get_future = self.async_aux_get(
 			mypkg, ["EAPI", "SRC_URI"], mytree=mytree, loop=loop)

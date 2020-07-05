@@ -1,4 +1,4 @@
-.TH "MAKE.CONF" "5" "Nov 2019" "Portage VERSION" "Portage"
+.TH "MAKE.CONF" "5" "Jun 2020" "Portage VERSION" "Portage"
 .SH "NAME"
 make.conf \- custom settings for Portage
 .SH "SYNOPSIS"
@@ -115,7 +115,7 @@ This variable is used to determine the compression used for \fIbinary
 packages\fR. Supported settings and compression algorithms are: bzip2, gzip,
 lz4, lzip, lzop, xz, zstd.
 .br
-Defaults to "bzip2".
+Defaults to "zstd".
 .br
 .I Example:
 .nf
@@ -607,6 +607,10 @@ If \fIcollision\-protect\fR is enabled then it takes precedence over
 Output a verbose trace of python execution to stderr when a command's
 \-\-debug option is enabled.
 .TP
+.B qa\-unresolved\-soname\-deps
+Trigger a QA warning when a package installs files with unresolved soname
+dependencies.
+.TP
 .B sandbox
 Enable sandbox\-ing when running \fBemerge\fR(1) and \fBebuild\fR(1).
 .TP
@@ -974,6 +978,11 @@ string should contain a \\${PID} place-holder that will be substituted
 with an integer pid. For example, a value of "ionice \-c 3 \-p \\${PID}"
 will set idle io priority. For more information about ionice, see
 \fBionice\fR(1). This variable is unset by default.
+.TP
+.B PORTAGE_LOG_FILTER_FILE_CMD
+This variable specifies a command that filters build log output to a
+log file. In order to filter ANSI escape codes from build logs,
+\fBansifilter\fR(1) is a convenient setting for this variable.
 .TP
 .B PORTAGE_LOGDIR
 This variable defines the directory in which per\-ebuild logs are kept.

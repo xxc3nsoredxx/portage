@@ -11,15 +11,20 @@ class InheritDeprecated(LineCheck):
 
 	# deprecated eclass : new eclass (False if no new eclass)
 	deprecated_eclasses = {
+		"autotools-multilib": "multilib-minimal",
+		"autotools-utils": False,
 		"base": False,
 		"bash-completion": "bash-completion-r1",
 		"boost-utils": False,
 		"clutter": "gnome2",
+		"cmake-utils": "cmake",
 		"confutils": False,
 		"distutils": "distutils-r1",
 		"epatch": "(eapply since EAPI 6)",
+		"fdo-mime": "xdg-utils",
 		"games": False,
 		"gems": "ruby-fakegem",
+		"git-2": "git-r3",
 		"gpe": False,
 		"gst-plugins-bad": "gstreamer",
 		"gst-plugins-base": "gstreamer",
@@ -28,11 +33,13 @@ class InheritDeprecated(LineCheck):
 		"gst-plugins10": "gstreamer",
 		"ltprune": False,
 		"mono": "mono-env",
+		"netsurf": False,
 		"python": "python-r1 / python-single-r1 / python-any-r1",
 		"ruby": "ruby-ng",
 		"user": "GLEP 81",
 		"versionator": "eapi7-ver (built-in since EAPI 7)",
 		"x-modular": "xorg-2",
+		"xfconf": False,
 	}
 
 	_inherit_re = re.compile(r'^\s*inherit\s(.*)$')
