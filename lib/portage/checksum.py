@@ -1,20 +1,20 @@
 # checksum.py -- core Portage functionality
-# Copyright 1998-2017 Gentoo Foundation
+# Copyright 1998-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
+# pylint: disable=ungrouped-imports
 
-import portage
-from portage.const import PRELINK_BINARY, HASHING_BLOCKSIZE
-from portage.localization import _
-from portage import os
-from portage import _encodings
-from portage import _unicode_decode, _unicode_encode
 import errno
 import functools
 import hashlib
+import portage
 import stat
-import sys
 import subprocess
 import tempfile
+
+from portage import _encodings, _unicode_decode, _unicode_encode
+from portage import os
+from portage.const import HASHING_BLOCKSIZE, PRELINK_BINARY
+from portage.localization import _
 
 
 # Summary of all available hashes and their implementations,
@@ -33,7 +33,7 @@ import tempfile
 # SHA3_512: hashlib (3.6+), pysha3, pycrypto
 
 
-#dict of all available hash functions
+# Dict of all available hash functions
 hashfunc_map = {}
 hashorigin_map = {}
 
@@ -52,7 +52,7 @@ def _open_file(filename):
 		else:
 			raise
 
-class _generate_hash_function(object):
+class _generate_hash_function:
 
 	__slots__ = ("_hashobject",)
 
@@ -76,7 +76,7 @@ class _generate_hash_function(object):
 	def checksum_file(self, filename):
 		"""
 		Run a checksum against a file.
-	
+
 		@param filename: File to run the checksum against
 		@type filename: String
 		@return: The hash and size of the data
@@ -159,7 +159,7 @@ if False:
 		import binascii
 		import pygcrypt.hashcontext
 
-		class GCryptHashWrapper(object):
+		class GCryptHashWrapper:
 			def __init__(self, algo):
 				self._obj = pygcrypt.hashcontext.HashContext(algo=algo,
 						secure=False)
@@ -287,7 +287,7 @@ if "WHIRLPOOL" not in hashfunc_map:
 
 
 # There is only one implementation for size
-class SizeHash(object):
+class SizeHash:
 	def checksum_file(self, filename):
 		size = os.stat(filename).st_size
 		return (size, size)
@@ -361,7 +361,7 @@ def _filter_unaccelarated_hashes(digests):
 
 	return digests
 
-class _hash_filter(object):
+class _hash_filter:
 	"""
 	Implements filtering for PORTAGE_CHECKSUM_FILTER.
 	"""
@@ -383,7 +383,7 @@ class _hash_filter(object):
 		for token in self._tokens:
 			if token in matches:
 				return True
-			elif token[:1] == "-":
+			if token[:1] == "-":
 				if token[1:] in matches:
 					return False
 		return False

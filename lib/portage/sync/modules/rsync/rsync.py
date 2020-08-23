@@ -1,33 +1,32 @@
-# Copyright 1999-2018 Gentoo Foundation
+# Copyright 1999-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-import sys
-import logging
-import time
-import signal
-import socket
 import datetime
 import io
-import re
+import logging
 import random
-import subprocess
+import re
+import signal
+import socket
+import sys
 import tempfile
+import time
+
+from _emerge.UserQuery import UserQuery
 
 import portage
-from portage import os
 from portage import _unicode_decode
-from portage.exception import CommandNotFound
-from portage.util import writemsg_level
+from portage import os
+from portage.const import VCS_DIRS, TIMESTAMP_FORMAT, RSYNC_PACKAGE_ATOM
 from portage.output import create_color_func, yellow, blue, bold
+from portage.sync.getaddrinfo_validate import getaddrinfo_validate
+from portage.sync.syncbase import NewBase
+from portage.util import writemsg, writemsg_level, writemsg_stdout
+from portage.util.futures import asyncio
+
 good = create_color_func("GOOD")
 bad = create_color_func("BAD")
 warn = create_color_func("WARN")
-from portage.const import VCS_DIRS, TIMESTAMP_FORMAT, RSYNC_PACKAGE_ATOM
-from portage.util import writemsg, writemsg_stdout
-from portage.util.futures import asyncio
-from portage.sync.getaddrinfo_validate import getaddrinfo_validate
-from _emerge.UserQuery import UserQuery
-from portage.sync.syncbase import NewBase
 
 try:
 	from gemato.exceptions import GematoException
@@ -36,11 +35,6 @@ try:
 except ImportError:
 	gemato = None
 
-if sys.hexversion >= 0x3000000:
-	# pylint: disable=W0622
-	_unicode = str
-else:
-	_unicode = unicode
 
 SERVER_OUT_OF_DATE = -1
 EXCEEDED_MAX_RETRIES = -2
@@ -68,7 +62,7 @@ class RsyncSync(NewBase):
 		out = portage.output.EOutput(quiet=quiet)
 		syncuri = self.repo.sync_uri
 		if self.repo.module_specific_options.get(
-			'sync-rsync-vcs-ignore', 'false').lower() == 'true':
+			'sync-rsync-vcs-ignore', 'false').lower() in ('true', 'yes'):
 			vcs_dirs = ()
 		else:
 			vcs_dirs = frozenset(VCS_DIRS)
@@ -102,7 +96,7 @@ class RsyncSync(NewBase):
 		# via default repos.conf though.
 		self.verify_metamanifest = (
 				self.repo.module_specific_options.get(
-					'sync-rsync-verify-metamanifest', 'no') in ('yes', 'true'))
+					'sync-rsync-verify-metamanifest', 'no').lower() in ('yes', 'true'))
 		# Support overriding job count.
 		self.verify_jobs = self.repo.module_specific_options.get(
 				'sync-rsync-verify-jobs', None)
@@ -243,7 +237,7 @@ class RsyncSync(NewBase):
 			except socket.error as e:
 				writemsg_level(
 					"!!! getaddrinfo failed for '%s': %s\n"
-					% (_unicode_decode(hostname), _unicode(e)),
+					% (_unicode_decode(hostname), str(e)),
 					noiselevel=-1, level=logging.ERROR)
 
 			if addrinfos:
@@ -300,7 +294,7 @@ class RsyncSync(NewBase):
 				effective_maxretries = len(uris) - 1
 
 			local_state_unchanged = True
-			while (1):
+			while 1:
 				if uris:
 					dosyncuri = uris.pop()
 				elif maxretries < 0 or retries > maxretries:
@@ -311,7 +305,7 @@ class RsyncSync(NewBase):
 					uris.extend(uris_orig)
 					dosyncuri = uris.pop()
 
-				if (retries==0):
+				if retries == 0:
 					if "--ask" in opts:
 						uq = UserQuery(opts)
 						if uq.query("Do you want to sync your ebuild repository " + \
@@ -429,7 +423,7 @@ class RsyncSync(NewBase):
 				openpgp_env.close()
 
 	def _process_exitcode(self, exitcode, syncuri, out, maxretries):
-		if (exitcode==0):
+		if exitcode == 0:
 			pass
 		elif exitcode == SERVER_OUT_OF_DATE:
 			exitcode = 1
@@ -437,7 +431,7 @@ class RsyncSync(NewBase):
 			sys.stderr.write(
 				">>> Exceeded PORTAGE_RSYNC_RETRIES: %s\n" % maxretries)
 			exitcode = 1
-		elif (exitcode>0):
+		elif exitcode > 0:
 			msg = []
 			if exitcode==1:
 				msg.append("Rsync has reported that there is a syntax error. Please ensure")

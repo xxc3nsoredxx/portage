@@ -1,19 +1,19 @@
+# Copyright 1998-2020 Gentoo Authors
+# Distributed under the terms of the GNU General Public License v2
 
-from __future__ import print_function
-
-import sys
-import signal
 import logging
 import operator
+import sys
+import signal
+
+from _emerge.ProgressHandler import ProgressHandler
 
 import portage
-from portage import os
 from portage import eapi_is_supported
-from portage.util import writemsg_level
+from portage import os
 from portage.cache.cache_errors import CacheError
-from _emerge.ProgressHandler import ProgressHandler
 from portage.eclass_cache import hashed_path
-
+from portage.util import writemsg_level
 
 def action_metadata(settings, portdb, myopts, porttrees=None):
 	if porttrees is None:
@@ -32,7 +32,7 @@ def action_metadata(settings, portdb, myopts, porttrees=None):
 
 	auxdbkeys = portdb._known_keys
 
-	class TreeData(object):
+	class TreeData:
 		__slots__ = ('dest_db', 'eclass_db', 'path', 'src_db', 'valid_nodes')
 		def __init__(self, dest_db, eclass_db, path, src_db):
 			self.dest_db = dest_db

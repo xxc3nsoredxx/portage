@@ -1,12 +1,9 @@
 # Copyright 2010-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-from __future__ import unicode_literals
-
 import io
 import logging
 import warnings
-import sys
 import re
 
 import portage
@@ -28,9 +25,6 @@ from portage import _encodings
 from portage import manifest
 import portage.sync
 
-if sys.hexversion >= 0x3000000:
-	# pylint: disable=W0622
-	basestring = str
 
 # Characters prohibited by repoman's file.name check.
 _invalid_path_char_re = re.compile(r'[^a-zA-Z0-9._\-+/]')
@@ -71,7 +65,7 @@ def _find_invalid_path_char(path, pos=0, endpos=None):
 
 	return -1
 
-class RepoConfig(object):
+class RepoConfig:
 	"""Stores config of one repository"""
 
 	__slots__ = (
@@ -220,10 +214,10 @@ class RepoConfig(object):
 		self.sync_depth = repo_opts.get('sync-depth')
 
 		self.sync_hooks_only_on_change = repo_opts.get(
-			'sync-hooks-only-on-change', 'false').lower() == 'true'
+			'sync-hooks-only-on-change', 'false').lower() in ('true', 'yes')
 
 		self.strict_misc_digests = repo_opts.get(
-			'strict-misc-digests', 'true').lower() == 'true'
+			'strict-misc-digests', 'true').lower() in ('true', 'yes')
 
 		self.sync_allow_hardlinks = repo_opts.get(
 			'sync-allow-hardlinks', 'true').lower() in ('true', 'yes')
@@ -263,10 +257,10 @@ class RepoConfig(object):
 		self.module_specific_options = {}
 
 		# Not implemented.
-		format = repo_opts.get('format')
-		if format is not None:
-			format = format.strip()
-		self.format = format
+		repo_format = repo_opts.get('format')
+		if repo_format is not None:
+			repo_format = repo_format.strip()
+		self.format = repo_format
 
 		self.user_location = None
 		location = repo_opts.get('location')
@@ -535,14 +529,8 @@ class RepoConfig(object):
 			d[k] = getattr(self, k, None)
 		return "%s" % (d,)
 
-	if sys.hexversion < 0x3000000:
 
-		__unicode__ = __str__
-
-		def __str__(self):
-			return _unicode_encode(self.__unicode__())
-
-class RepoConfigLoader(object):
+class RepoConfigLoader:
 	"""Loads and store config of several repositories, loaded from PORTDIR_OVERLAY or repos.conf"""
 
 	@staticmethod
@@ -671,7 +659,7 @@ class RepoConfigLoader(object):
 
 		recursive_paths = []
 		for p in paths:
-			if isinstance(p, basestring):
+			if isinstance(p, str):
 				recursive_paths.extend(_recursive_file_list(p))
 			else:
 				recursive_paths.append(p)
@@ -883,7 +871,7 @@ class RepoConfigLoader(object):
 				continue
 			if repo.masters is None:
 				if self.mainRepo() and repo_name != self.mainRepo().name:
-					repo.masters = self.mainRepo(),
+					repo.masters = (self.mainRepo(),)
 				else:
 					repo.masters = ()
 			else:
@@ -980,8 +968,7 @@ class RepoConfigLoader(object):
 		main_repo = self.prepos['DEFAULT'].main_repo
 		if main_repo is not None and main_repo in self.prepos:
 			return self.prepos[main_repo].location
-		else:
-			return ''
+		return ''
 
 	def mainRepo(self):
 		"""Returns the main repo"""

@@ -1,13 +1,8 @@
 # Copyright 2008-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-try:
-	import fcntl
-except ImportError:
-	# http://bugs.jython.org/issue1074
-	fcntl = None
-
 import errno
+import functools
 import logging
 import signal
 import sys
@@ -38,7 +33,7 @@ class SpawnProcess(SubProcess):
 		"unshare_ipc", "unshare_mount", "unshare_pid", "unshare_net")
 
 	__slots__ = ("args", "log_filter_file") + \
-		_spawn_kwarg_names + ("_main_task", "_selinux_type",)
+		_spawn_kwarg_names + ("_main_task", "_main_task_cancel", "_selinux_type",)
 
 	# Max number of attempts to kill the processes listed in cgroup.procs,
 	# given that processes may fork before they can be killed.
@@ -129,16 +124,6 @@ class SpawnProcess(SubProcess):
 		stdout_fd = None
 		if can_log and not self.background:
 			stdout_fd = os.dup(fd_pipes_orig[1])
-			# FD_CLOEXEC is enabled by default in Python >=3.4.
-			if sys.hexversion < 0x3040000 and fcntl is not None:
-				try:
-					fcntl.FD_CLOEXEC
-				except AttributeError:
-					pass
-				else:
-					fcntl.fcntl(stdout_fd, fcntl.F_SETFD,
-						fcntl.fcntl(stdout_fd,
-						fcntl.F_GETFD) | fcntl.FD_CLOEXEC)
 
 		build_logger = BuildLogger(env=self.env,
 			log_path=log_file_path,
@@ -154,25 +139,31 @@ class SpawnProcess(SubProcess):
 		pipe_logger.start()
 
 		self._registered = True
-		self._main_task = asyncio.ensure_future(self._main(build_logger, pipe_logger), loop=self.scheduler)
+		self._main_task_cancel = functools.partial(self._main_cancel, build_logger, pipe_logger)
+		self._main_task = asyncio.ensure_future(
+			self._main(build_logger, pipe_logger, loop=self.scheduler), loop=self.scheduler)
 		self._main_task.add_done_callback(self._main_exit)
 
 	@coroutine
-	def _main(self, build_logger, pipe_logger):
+	def _main(self, build_logger, pipe_logger, loop=None):
 		try:
 			if pipe_logger.poll() is None:
 				yield pipe_logger.async_wait()
 			if build_logger.poll() is None:
 				yield build_logger.async_wait()
 		except asyncio.CancelledError:
-			if pipe_logger.poll() is None:
-				pipe_logger.cancel()
-			if build_logger.poll() is None:
-				build_logger.cancel()
+			self._main_cancel(build_logger, pipe_logger)
 			raise
+
+	def _main_cancel(self, build_logger, pipe_logger):
+		if pipe_logger.poll() is None:
+			pipe_logger.cancel()
+		if build_logger.poll() is None:
+			build_logger.cancel()
 
 	def _main_exit(self, main_task):
 		self._main_task = None
+		self._main_task_cancel = None
 		try:
 			main_task.result()
 		except asyncio.CancelledError:
@@ -221,7 +212,11 @@ class SpawnProcess(SubProcess):
 
 	def _cancel(self):
 		if self._main_task is not None:
-			self._main_task.done() or self._main_task.cancel()
+			if not self._main_task.done():
+				if self._main_task_cancel is not None:
+					self._main_task_cancel()
+					self._main_task_cancel = None
+				self._main_task.cancel()
 		SubProcess._cancel(self)
 		self._cgroup_cleanup()
 

@@ -24,7 +24,6 @@ __all__ = [
 
 import array
 import errno
-import sys
 
 import portage
 from portage import os
@@ -78,8 +77,6 @@ def encodeint(myint):
 def decodeint(mystring):
 	"""Takes a 4 byte string and converts it into a 4 byte integer.
 	Returns an integer."""
-	if sys.hexversion < 0x3000000:
-		mystring = [ord(x) for x in mystring]
 	myint = 0
 	myint += mystring[3]
 	myint += mystring[2] << 8
@@ -154,11 +151,11 @@ def xsplit(infile):
 		encoding=_encodings['fs'], errors='strict'), 'rb')
 	mydat = myfile.read()
 	myfile.close()
-	
+
 	splits = xsplit_mem(mydat)
 	if not splits:
 		return False
-	
+
 	myfile = open(_unicode_encode(infile + '.index',
 		encoding=_encodings['fs'], errors='strict'), 'wb')
 	myfile.write(splits[0])
@@ -216,7 +213,7 @@ def getindex_mem(myindex):
 	myindexlen = len(myindex)
 	startpos = 0
 	myret = []
-	while ((startpos + 8) < myindexlen):
+	while (startpos + 8) < myindexlen:
 		mytestlen = decodeint(myindex[startpos:startpos + 4])
 		myret = myret + [myindex[startpos + 4:startpos + 4 + mytestlen]]
 		startpos = startpos + mytestlen + 12
@@ -230,7 +227,7 @@ def searchindex(myindex, myitem):
 	mylen = len(myitem)
 	myindexlen = len(myindex)
 	startpos = 0
-	while ((startpos + 8) < myindexlen):
+	while (startpos + 8) < myindexlen:
 		mytestlen = decodeint(myindex[startpos:startpos + 4])
 		if mytestlen == mylen:
 			if myitem == myindex[startpos + 4:startpos + 4 + mytestlen]:
@@ -239,7 +236,7 @@ def searchindex(myindex, myitem):
 				datalen = decodeint(myindex[startpos + 8 + mytestlen:startpos + 12 + mytestlen])
 				return datapos, datalen
 		startpos = startpos + mytestlen + 12
-		
+
 def getitem(myid, myitem):
 	myindex = myid[0]
 	mydata = myid[1]
@@ -254,7 +251,7 @@ def xpand(myid, mydest):
 	mydata = myid[1]
 	myindexlen = len(myindex)
 	startpos = 0
-	while ((startpos + 8) < myindexlen):
+	while (startpos + 8) < myindexlen:
 		namelen = decodeint(myindex[startpos:startpos + 4])
 		datapos = decodeint(myindex[startpos + 4 + namelen:startpos + 8 + namelen])
 		datalen = decodeint(myindex[startpos + 8 + namelen:startpos + 12 + namelen])
@@ -276,7 +273,7 @@ def xpand(myid, mydest):
 		mydat.close()
 		startpos = startpos + namelen + 12
 
-class tbz2(object):
+class tbz2:
 	def __init__(self, myfile):
 		self.file = myfile
 		self.filestat = None
@@ -442,7 +439,7 @@ class tbz2(object):
 		if not os.path.exists(mydest):
 			os.makedirs(mydest)
 		startpos = 0
-		while ((startpos + 8) < self.indexsize):
+		while (startpos + 8) < self.indexsize:
 			namelen = decodeint(self.index[startpos:startpos + 4])
 			datapos = decodeint(self.index[startpos + 4 + namelen:startpos + 8 + namelen])
 			datalen = decodeint(self.index[startpos + 8 + namelen:startpos + 12 + namelen])
@@ -475,7 +472,7 @@ class tbz2(object):
 			encoding=_encodings['fs'], errors='strict'), 'rb')
 		mydata = {}
 		startpos = 0
-		while ((startpos + 8) < self.indexsize):
+		while (startpos + 8) < self.indexsize:
 			namelen = decodeint(self.index[startpos:startpos + 4])
 			datapos = decodeint(self.index[startpos + 4 + namelen:startpos + 8 + namelen])
 			datalen = decodeint(self.index[startpos + 8 + namelen:startpos + 12 + namelen])

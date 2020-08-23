@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
-# Copyright 1999-2017 Gentoo Foundation
+# Copyright 1999-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
-
-from __future__ import print_function, unicode_literals
 
 import io
 import logging
@@ -11,6 +9,7 @@ import sys
 
 # import our centrally initialized portage instance
 from repoman._portage import portage
+
 portage._internal_caller = True
 portage._disable_legacy_globals()
 
@@ -36,8 +35,6 @@ from repoman import utilities
 from repoman.modules.vcs.settings import VCSSettings
 from repoman import VERSION
 
-if sys.hexversion >= 0x3000000:
-	basestring = str
 
 bad = create_color_func("BAD")
 

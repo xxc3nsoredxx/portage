@@ -1,7 +1,5 @@
-# Copyright 2010-2014 Gentoo Foundation
+# Copyright 2010-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
-
-from __future__ import print_function
 
 import stat
 
@@ -149,8 +147,7 @@ def _do_global_updates(trees, prev_mtimes, quiet=False, if_mtime_changed=True):
 				if portdb.match(atoma):
 					world_warnings.add((atoma, atomb))
 				return True
-			else:
-				return False
+			return False
 
 		for update_cmd in myupd:
 			for pos, atom in enumerate(world_list):

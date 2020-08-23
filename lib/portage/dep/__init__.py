@@ -1,8 +1,6 @@
 # deps.py -- Portage dependency resolution functions
-# Copyright 2003-2018 Gentoo Foundation
+# Copyright 2003-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
-
-from __future__ import unicode_literals
 
 __all__ = [
 	'Atom', 'best_match_to_list', 'cpvequal',
@@ -11,12 +9,15 @@ __all__ = [
 	'get_operator', 'isjustname', 'isspecific',
 	'isvalidatom', 'match_from_list', 'match_to_list',
 	'paren_enclose', 'paren_normalize', 'paren_reduce',
-	'remove_slot', 'strip_empty', 'use_reduce', 
+	'remove_slot', 'strip_empty', 'use_reduce',
 	'_repo_separator', '_slot_separator',
 ]
 
-import re, sys
+import re
+import sys
 import warnings
+
+from functools import lru_cache
 
 import portage
 portage.proxy.lazyimport.lazyimport(globals(),
@@ -31,12 +32,6 @@ from portage.versions import _cp, _cpv, _pkg_str, _slot, _unknown_repo, _vr, \
 	catpkgsplit, vercmp, ververify
 import portage.cache.mappings
 
-if sys.hexversion >= 0x3000000:
-	# pylint: disable=W0622
-	basestring = str
-	_unicode = str
-else:
-	_unicode = unicode
 
 # \w is [a-zA-Z0-9_]
 
@@ -78,7 +73,7 @@ def _match_slot(atom, pkg):
 	if pkg.slot == atom.slot:
 		if not atom.sub_slot:
 			return True
-		elif atom.sub_slot == pkg.sub_slot:
+		if atom.sub_slot == pkg.sub_slot:
 			return True
 	return False
 
@@ -100,7 +95,7 @@ def _get_atom_re(eapi_attrs):
 	atom_re = re.compile('^(?P<without_use>(?:' +
 		'(?P<op>' + _op + cpv_re + ')|' +
 		'(?P<star>=' + cpv_re + r'\*)|' +
-		'(?P<simple>' + cp_re + '))' + 
+		'(?P<simple>' + cp_re + '))' +
 		'(' + _slot_separator + _slot_loose + ')?' +
 		_repo + ')(' + _use + ')?$', re.VERBOSE | re.UNICODE)
 
@@ -288,7 +283,7 @@ def paren_reduce(mystr, _deprecation_warn=True):
 							stack[level].extend(l[0])
 						else:
 							stack[level].extend(l)
-					else:	
+					else:
 						stack[level].append(l)
 
 				if l:
@@ -329,13 +324,13 @@ def paren_reduce(mystr, _deprecation_warn=True):
 
 			if token[-1] == "?":
 				need_bracket = True
-			
+
 			stack[level].append(token)
 
 	if level != 0 or need_bracket:
 		raise InvalidDependString(
 			_("malformed syntax: '%s'") % mystr)
-	
+
 	return stack[0]
 
 class paren_normalize(list):
@@ -353,7 +348,7 @@ class paren_normalize(list):
 			return dest
 		i = iter(src)
 		for x in i:
-			if isinstance(x, basestring):
+			if isinstance(x, str):
 				if x in ('||', '^^'):
 					y = self._zap_parens(next(i), [], disjunction=True)
 					if len(y) == 1:
@@ -404,49 +399,10 @@ def paren_enclose(mylist, unevaluated_atom=False, opconvert=False):
 			mystrparts.append(x)
 	return " ".join(mystrparts)
 
-def use_reduce(depstr, uselist=(), masklist=(), matchall=False, excludeall=(), is_src_uri=False, \
-	eapi=None, opconvert=False, flat=False, is_valid_flag=None, token_class=None, matchnone=False,
-	subset=None):
-	"""
-	Takes a dep string and reduces the use? conditionals out, leaving an array
-	with subarrays. All redundant brackets are removed.
-
-	@param depstr: depstring
-	@type depstr: String
-	@param uselist: Sequence of use enabled flags
-	@type uselist: Sequence
-	@param masklist: Sequence of masked flags (always treated as disabled)
-	@type masklist: Sequence
-	@param matchall: Treat all conditionals as active. Used by repoman. 
-	@type matchall: Bool
-	@param excludeall: Sequence of flags for which negated conditionals are always treated as inactive.
-	@type excludeall: Sequence
-	@param is_src_uri: Indicates if depstr represents a SRC_URI
-	@type is_src_uri: Bool
-	@param eapi: Indicates the EAPI the dep string has to comply to
-	@type eapi: String
-	@param opconvert: Put every operator as first element into it's argument list
-	@type opconvert: Bool
-	@param flat: Create a flat list of all tokens
-	@type flat: Bool
-	@param is_valid_flag: Function that decides if a given use flag might be used in use conditionals
-	@type is_valid_flag: Function
-	@param token_class: Convert all non operator tokens into this class
-	@type token_class: Class
-	@param matchnone: Treat all conditionals as inactive. Used by digestgen(). 
-	@type matchnone: Bool
-	@param subset: Select a subset of dependencies conditional on the given flags
-	@type subset: Sequence
-	@rtype: List
-	@return: The use reduced depend array
-	"""
-	if isinstance(depstr, list):
-		if portage._internal_caller:
-			warnings.warn(_("Passing paren_reduced dep arrays to %s is deprecated. " + \
-				"Pass the original dep string instead.") % \
-				('portage.dep.use_reduce',), DeprecationWarning, stacklevel=2)
-		depstr = paren_enclose(depstr)
-
+@lru_cache(1024)
+def _use_reduce_cached(depstr, uselist, masklist, matchall, excludeall, \
+	is_src_uri,  eapi, opconvert, flat, is_valid_flag, token_class, \
+	matchnone,subset):
 	if opconvert and flat:
 		raise ValueError("portage.dep.use_reduce: 'opconvert' and 'flat' are mutually exclusive")
 
@@ -466,7 +422,7 @@ def use_reduce(depstr, uselist=(), masklist=(), matchall=False, excludeall=(), i
 		else:
 			flag = conditional[:-1]
 			is_negated = False
-		
+
 		if is_valid_flag:
 			if not is_valid_flag(flag):
 				msg = _("USE flag '%s' referenced in " + \
@@ -597,13 +553,12 @@ def use_reduce(depstr, uselist=(), masklist=(), matchall=False, excludeall=(), i
 						stack[level].extend(l)
 					continue
 
-				if stack[level] and isinstance(stack[level][-1],
-					basestring):
+				if stack[level] and isinstance(stack[level][-1], str):
 					if stack[level][-1] == "||" and not l:
 						#Optimize: || ( ) -> .
 						if not eapi_attrs.empty_groups_always_true:
 							# in EAPI 7+, we need to fail here
-							l.append((token_class or _unicode)("__const__/empty-any-of"))
+							l.append((token_class or str)("__const__/empty-any-of"))
 						stack[level].pop()
 					elif stack[level][-1][-1] == "?":
 						#The last token before the '(' that matches the current ')'
@@ -626,11 +581,10 @@ def use_reduce(depstr, uselist=(), masklist=(), matchall=False, excludeall=(), i
 					#ends in a non-operator. This is almost equivalent to stack[level][-1]=="||",
 					#expect that it skips empty levels.
 					while k>=0:
-						if stack[k] and isinstance(stack[k][-1],
-							basestring):
+						if stack[k] and isinstance(stack[k][-1], str):
 							if stack[k][-1] == "||":
 								return k
-							elif stack[k][-1][-1] != "?":
+							if stack[k][-1][-1] != "?":
 								return -1
 						k -= 1
 					return -1
@@ -717,7 +671,7 @@ def use_reduce(depstr, uselist=(), masklist=(), matchall=False, excludeall=(), i
 				raise InvalidDependString(
 					_("SRC_URI arrow not allowed in EAPI %s: token %s") % (eapi, pos+1))
 			need_simple_token = True
-			stack[level].append(token)	
+			stack[level].append(token)
 		else:
 			if need_bracket:
 				raise InvalidDependString(
@@ -758,16 +712,75 @@ def use_reduce(depstr, uselist=(), masklist=(), matchall=False, excludeall=(), i
 	if level != 0:
 		raise InvalidDependString(
 			_("Missing '%s' at end of string") % (")",))
-	
+
 	if need_bracket:
 		raise InvalidDependString(
 			_("Missing '%s' at end of string") % ("(",))
-			
+
 	if need_simple_token:
 		raise InvalidDependString(
 			_("Missing file name at end of string"))
 
 	return stack[0]
+
+def use_reduce(depstr, uselist=(), masklist=(), matchall=False, excludeall=(), is_src_uri=False, \
+	eapi=None, opconvert=False, flat=False, is_valid_flag=None, token_class=None, matchnone=False,
+	subset=None):
+	"""
+	Takes a dep string and reduces the use? conditionals out, leaving an array
+	with subarrays. All redundant brackets are removed.
+
+	@param depstr: depstring
+	@type depstr: String
+	@param uselist: Sequence of use enabled flags
+	@type uselist: Sequence
+	@param masklist: Sequence of masked flags (always treated as disabled)
+	@type masklist: Sequence
+	@param matchall: Treat all conditionals as active. Used by repoman.
+	@type matchall: Bool
+	@param excludeall: Sequence of flags for which negated conditionals are always treated as inactive.
+	@type excludeall: Sequence
+	@param is_src_uri: Indicates if depstr represents a SRC_URI
+	@type is_src_uri: Bool
+	@param eapi: Indicates the EAPI the dep string has to comply to
+	@type eapi: String
+	@param opconvert: Put every operator as first element into it's argument list
+	@type opconvert: Bool
+	@param flat: Create a flat list of all tokens
+	@type flat: Bool
+	@param is_valid_flag: Function that decides if a given use flag might be used in use conditionals
+	@type is_valid_flag: Function
+	@param token_class: Convert all non operator tokens into this class
+	@type token_class: Class
+	@param matchnone: Treat all conditionals as inactive. Used by digestgen().
+	@type matchnone: Bool
+	@param subset: Select a subset of dependencies conditional on the given flags
+	@type subset: Sequence
+	@rtype: List
+	@return: The use reduced depend array
+	"""
+	if isinstance(depstr, list):
+		if portage._internal_caller:
+			warnings.warn(_("Passing paren_reduced dep arrays to %s is deprecated. " + \
+				"Pass the original dep string instead.") % \
+				('portage.dep.use_reduce',), DeprecationWarning, stacklevel=2)
+		depstr = paren_enclose(depstr)
+
+	if uselist is not None:
+		uselist = frozenset(uselist)
+	if masklist is not None:
+		masklist = frozenset(masklist)
+	if excludeall is not None:
+		excludeall = frozenset(excludeall)
+	if subset is not None:
+		subset = frozenset(subset)
+
+	result = _use_reduce_cached(depstr, uselist, masklist, matchall, \
+		excludeall, is_src_uri, eapi, opconvert, flat, is_valid_flag, \
+		token_class, matchnone, subset)
+
+	# The list returned by this function may be modified, so return a copy.
+	return result[:]
 
 def dep_opconvert(deplist):
 	"""
@@ -829,12 +842,12 @@ def flatten(mylist):
 			newlist.append(x)
 	return newlist
 
-class _use_dep(object):
+class _use_dep:
 
 	__slots__ = ("_eapi_attrs", "conditional", "missing_enabled", "missing_disabled",
 		"disabled", "enabled", "tokens", "required")
 
-	class _conditionals_class(object):
+	class _conditionals_class:
 		__slots__ = ("enabled", "disabled", "equal", "not_equal")
 
 		def items(self):
@@ -949,21 +962,10 @@ class _use_dep(object):
 	def __bool__(self):
 		return bool(self.tokens)
 
-	if sys.hexversion < 0x3000000:
-		__nonzero__ = __bool__
-
 	def __str__(self):
 		if not self.tokens:
 			return ""
 		return "[%s]" % (",".join(self.tokens),)
-
-	if sys.hexversion < 0x3000000:
-
-		__unicode__ = __str__
-
-		def __str__(self):
-			return _unicode_encode(self.__unicode__(),
-				encoding=_encodings['content'], errors='backslashreplace')
 
 	def __repr__(self):
 		return "portage.dep._use_dep(%s)" % repr(self.tokens)
@@ -1054,7 +1056,7 @@ class _use_dep(object):
 		tokens = []
 
 		all_defaults = self.missing_enabled | self.missing_disabled
-		
+
 		def validate_flag(flag):
 			return is_valid_flag(flag) or flag in all_defaults
 
@@ -1209,7 +1211,7 @@ class _use_dep(object):
 		return _use_dep(tokens, self._eapi_attrs, enabled_flags=enabled_flags, disabled_flags=disabled_flags,
 			missing_enabled=missing_enabled, missing_disabled=missing_disabled, required=self.required)
 
-class Atom(_unicode):
+class Atom(str):
 
 	"""
 	For compatibility with existing atom string manipulation code, this
@@ -1222,10 +1224,10 @@ class Atom(_unicode):
 	# Distiguishes soname atoms from other atom types
 	soname = False
 
-	class _blocker(object):
+	class _blocker:
 		__slots__ = ("overlap",)
 
-		class _overlap(object):
+		class _overlap:
 			__slots__ = ("forbid",)
 
 			def __init__(self, forbid=False):
@@ -1236,7 +1238,7 @@ class Atom(_unicode):
 
 	def __new__(cls, s, unevaluated_atom=None, allow_wildcard=False, allow_repo=None,
 		_use=None, eapi=None, is_valid_flag=None, allow_build_id=None):
-		return _unicode.__new__(cls, s)
+		return str.__new__(cls, s)
 
 	def __init__(self, s, unevaluated_atom=None, allow_wildcard=False, allow_repo=None,
 		_use=None, eapi=None, is_valid_flag=None, allow_build_id=None):
@@ -1244,13 +1246,13 @@ class Atom(_unicode):
 			# This is an efficiency assertion, to ensure that the Atom
 			# constructor is not called redundantly.
 			raise TypeError(_("Expected %s, got %s") % \
-				(_unicode, type(s)))
+				(str, type(s)))
 
-		if not isinstance(s, _unicode):
-			# Avoid TypeError from _unicode.__init__ with PyPy.
+		if not isinstance(s, str):
+			# Avoid TypeError from str.__init__ with PyPy.
 			s = _unicode_decode(s)
 
-		_unicode.__init__(s)
+		str.__init__(s)
 
 		eapi_attrs = _get_eapi_attrs(eapi)
 		atom_re = _get_atom_re(eapi_attrs)
@@ -1417,7 +1419,7 @@ class Atom(_unicode):
 				unevaluated_atom.use is not None:
 				# unevaluated_atom.use is used for IUSE checks when matching
 				# packages, so it must not propagate to without_use
-				without_use = Atom(_unicode(self),
+				without_use = Atom(str(self),
 					allow_wildcard=allow_wildcard,
 					allow_repo=allow_repo,
 					eapi=eapi)
@@ -1433,9 +1435,9 @@ class Atom(_unicode):
 			self.__dict__['unevaluated_atom'] = self
 
 		if eapi is not None:
-			if not isinstance(eapi, basestring):
+			if not isinstance(eapi, str):
 				raise TypeError('expected eapi argument of ' + \
-					'%s, got %s: %s' % (basestring, type(eapi), eapi,))
+					'%s, got %s: %s' % (str, type(eapi), eapi,))
 			if self.slot and not eapi_attrs.slot_deps:
 				raise InvalidAtom(
 					_("Slot deps are not allowed in EAPI %s: '%s'") \
@@ -1497,7 +1499,7 @@ class Atom(_unicode):
 		if self.repo is not None:
 			atom += _repo_separator + self.repo
 		if self.use is not None:
-			atom += _unicode(self.use)
+			atom += str(self.use)
 		return Atom(atom,
 			allow_repo=True, allow_wildcard=True)
 
@@ -1513,7 +1515,7 @@ class Atom(_unicode):
 				atom += self.slot_operator
 		atom += _repo_separator + repo
 		if self.use is not None:
-			atom += _unicode(self.use)
+			atom += str(self.use)
 		return Atom(atom, allow_repo=True, allow_wildcard=True)
 
 	def with_slot(self, slot):
@@ -1521,7 +1523,7 @@ class Atom(_unicode):
 		if self.repo is not None:
 			atom += _repo_separator + self.repo
 		if self.use is not None:
-			atom += _unicode(self.use)
+			atom += str(self.use)
 		return Atom(atom, allow_repo=True, allow_wildcard=True)
 
 	def __setattr__(self, name, value):
@@ -1579,7 +1581,7 @@ class Atom(_unicode):
 			if self.slot_operator is not None:
 				atom += self.slot_operator
 		use_dep = self.use.evaluate_conditionals(use)
-		atom += _unicode(use_dep)
+		atom += str(use_dep)
 		return Atom(atom, unevaluated_atom=self, allow_repo=(self.repo is not None), _use=use_dep)
 
 	def violated_conditionals(self, other_use, is_valid_flag, parent_use=None):
@@ -1607,7 +1609,7 @@ class Atom(_unicode):
 			if self.slot_operator is not None:
 				atom += self.slot_operator
 		use_dep = self.use.violated_conditionals(other_use, is_valid_flag, parent_use)
-		atom += _unicode(use_dep)
+		atom += str(use_dep)
 		return Atom(atom, unevaluated_atom=self, allow_repo=(self.repo is not None), _use=use_dep)
 
 	def _eval_qa_conditionals(self, use_mask, use_force):
@@ -1623,7 +1625,7 @@ class Atom(_unicode):
 			if self.slot_operator is not None:
 				atom += self.slot_operator
 		use_dep = self.use._eval_qa_conditionals(use_mask, use_force)
-		atom += _unicode(use_dep)
+		atom += str(use_dep)
 		return Atom(atom, unevaluated_atom=self, allow_repo=(self.repo is not None), _use=use_dep)
 
 	def __copy__(self):
@@ -1701,12 +1703,10 @@ class ExtendedAtomDict(portage.cache.mappings.MutableMapping):
 	def __delitem__(self, cp):
 		if "*" in cp:
 			return self._extended.__delitem__(cp)
-		else:
-			return self._normal.__delitem__(cp)
+		return self._normal.__delitem__(cp)
 
-	if sys.hexversion >= 0x3000000:
-		keys = __iter__
-		items = iteritems
+	keys = __iter__
+	items = iteritems
 
 	def __len__(self):
 		return len(self._normal) + len(self._extended)
@@ -1714,12 +1714,11 @@ class ExtendedAtomDict(portage.cache.mappings.MutableMapping):
 	def setdefault(self, cp, default=None):
 		if "*" in cp:
 			return self._extended.setdefault(cp, default)
-		else:
-			return self._normal.setdefault(cp, default)
+		return self._normal.setdefault(cp, default)
 
 	def __getitem__(self, cp):
 
-		if not isinstance(cp, basestring):
+		if not isinstance(cp, str):
 			raise KeyError(cp)
 
 		if '*' in cp:
@@ -1826,14 +1825,13 @@ def dep_getslot(mydep):
 
 	#remove repo_name if present
 	mydep = mydep.split(_repo_separator)[0]
-	
+
 	colon = mydep.find(_slot_separator)
 	if colon != -1:
 		bracket = mydep.find("[", colon)
 		if bracket == -1:
 			return mydep[colon+1:]
-		else:
-			return mydep[colon+1:bracket]
+		return mydep[colon+1:bracket]
 	return None
 
 def dep_getrepo(mydep):
@@ -1864,8 +1862,7 @@ def dep_getrepo(mydep):
 		bracket = mydep.find("[", colon)
 		if bracket == -1:
 			return mydep[colon+2:]
-		else:
-			return mydep[colon+2:bracket]
+		return mydep[colon+2:bracket]
 	return None
 
 def remove_slot(mydep):
@@ -1906,7 +1903,7 @@ def dep_getusedeps( depend ):
 	# -1 = failure (think c++ string::npos)
 	comma_separated = False
 	bracket_count = 0
-	while( open_bracket != -1 ):
+	while open_bracket != -1:
 		bracket_count += 1
 		if bracket_count > 1:
 			raise InvalidAtom(_("USE Dependency with more "
@@ -1961,7 +1958,7 @@ def isvalidatom(atom, allow_blockers=False, allow_wildcard=False,
 
 	if eapi is not None and isinstance(atom, Atom) and atom.eapi != eapi:
 		# We'll construct a new atom with the given eapi.
-		atom = _unicode(atom)
+		atom = str(atom)
 
 	try:
 		if not isinstance(atom, Atom):
@@ -2254,7 +2251,7 @@ def match_from_list(mydep, candidate_list):
 
 	elif operator == "=*": # glob match
 		# XXX: Nasty special casing for leading zeros
-		# Required as =* is a literal prefix match, so can't 
+		# Required as =* is a literal prefix match, so can't
 		# use vercmp
 		myver = mycpv_cps[2].lstrip("0")
 		if not myver or not myver[0].isdigit():
@@ -2500,7 +2497,7 @@ def get_required_use_flags(required_use, eapi=None):
 				stack[level].append(token)
 			else:
 				stack[level].append(True)
-			
+
 			register_token(token)
 
 	if level != 0 or need_bracket:
@@ -2509,7 +2506,7 @@ def get_required_use_flags(required_use, eapi=None):
 
 	return frozenset(used_flags)
 
-class _RequiredUseLeaf(object):
+class _RequiredUseLeaf:
 
 	__slots__ = ('_satisfied', '_token')
 
@@ -2520,7 +2517,7 @@ class _RequiredUseLeaf(object):
 	def tounicode(self):
 		return self._token
 
-class _RequiredUseBranch(object):
+class _RequiredUseBranch:
 
 	__slots__ = ('_children', '_operator', '_parent', '_satisfied')
 
@@ -2564,8 +2561,6 @@ class _RequiredUseBranch(object):
 
 		return " ".join(tokens)
 
-	if sys.hexversion < 0x3000000:
-		__nonzero__ = __bool__
 
 def check_required_use(required_use, use, iuse_match, eapi=None):
 	"""
@@ -2610,20 +2605,20 @@ def check_required_use(required_use, use, iuse_match, eapi=None):
 
 		return (flag in use and not is_negated) or \
 			(flag not in use and is_negated)
-	
+
 	def is_satisfied(operator, argument):
 		if not argument and eapi_attrs.empty_groups_always_true:
 			#|| ( ) -> True
 			return True
 
 		if operator == "||":
-			return (True in argument)
-		elif operator == "^^":
-			return (argument.count(True) == 1)
-		elif operator == "??":
-			return (argument.count(True) <= 1)
-		elif operator[-1] == "?":
-			return (False not in argument)
+			return True in argument
+		if operator == "^^":
+			return argument.count(True) == 1
+		if operator == "??":
+			return argument.count(True) <= 1
+		if operator[-1] == "?":
+			return False not in argument
 
 	mysplit = required_use.split()
 	level = 0
@@ -2819,7 +2814,7 @@ def extract_affecting_use(mystr, atom, eapi=None):
 							stack[level].extend(l[0])
 						else:
 							stack[level].extend(l)
-					else:	
+					else:
 						stack[level].append(l)
 
 				if l:

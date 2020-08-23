@@ -1,23 +1,17 @@
-# Copyright 2014-2019 Gentoo Authors
+# Copyright 2014-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-import logging
 import os
-import sys
 
 import portage
 portage._internal_caller = True
 portage._sync_mode = True
-from portage.localization import _
 from portage.output import bold, red, create_color_func
 from portage._global_updates import _global_updates
 from portage.sync.controller import SyncManager
-from portage.util import writemsg_level
 from portage.util.digraph import digraph
 from portage.util.futures import asyncio
 from portage.util._async.AsyncScheduler import AsyncScheduler
-from portage.util._eventloop.global_event_loop import global_event_loop
-from portage.util._eventloop.EventLoop import EventLoop
 
 import _emerge
 from _emerge.emergelog import emergelog
@@ -32,13 +26,8 @@ portage.proxy.lazyimport.lazyimport(globals(),
 
 warn = create_color_func("WARN")
 
-if sys.hexversion >= 0x3000000:
-	_basestring = str
-else:
-	_basestring = basestring
 
-
-class SyncRepos(object):
+class SyncRepos:
 
 	short_desc = "Check repos.conf settings and/or sync repositories"
 
@@ -125,7 +114,7 @@ class SyncRepos(object):
 			return_messages = options.get('return-messages', False)
 		else:
 			return_messages = False
-		if isinstance(repo_names, _basestring):
+		if isinstance(repo_names, str):
 			repo_names = repo_names.split()
 		success, repos, msgs = self._get_repos(auto_sync_only=False,
 			match_repos=repo_names)

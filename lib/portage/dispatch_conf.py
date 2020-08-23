@@ -1,12 +1,9 @@
 # archive_conf.py -- functionality common to archive-conf and dispatch-conf
-# Copyright 2003-2014 Gentoo Foundation
+# Copyright 2003-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
-
 
 # Library by Wayne Davison <gentoo@blorf.net>, derived from code
 # written by Jeremy Wohl (http://igmus.org)
-
-from __future__ import print_function, unicode_literals
 
 import errno
 import io
@@ -97,7 +94,7 @@ def diff_mixed(func, file1, file2):
 		if tempdir is not None:
 			shutil.rmtree(tempdir)
 
-class diff_mixed_wrapper(object):
+class diff_mixed_wrapper:
 
 	def __init__(self, f, *args):
 		self._func = f

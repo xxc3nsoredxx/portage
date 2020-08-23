@@ -1,7 +1,5 @@
 # -*- coding:utf-8 -*-
 
-from __future__ import print_function, unicode_literals
-
 import errno
 import logging
 import sys
@@ -14,11 +12,6 @@ from portage import os
 from portage.output import green
 from portage.package.ebuild.fetch import fetch
 
-if sys.hexversion >= 0x3000000:
-	basestring = str
-
-if sys.hexversion >= 0x3000000:
-	basestring = str
 
 # Note: This URI is hardcoded in all metadata.xml files.  We can't
 # change it without updating all the xml files in the tree.

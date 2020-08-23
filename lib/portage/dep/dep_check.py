@@ -1,8 +1,6 @@
 # Copyright 2010-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-from __future__ import unicode_literals
-
 __all__ = ['dep_check', 'dep_eval', 'dep_wordreduce', 'dep_zapdeps']
 
 import collections
@@ -21,7 +19,7 @@ from portage.localization import _
 from portage.util import writemsg, writemsg_level
 from portage.util.digraph import digraph
 from portage.util.SlotObject import SlotObject
-from portage.versions import vercmp, _pkg_str
+from portage.versions import vercmp
 
 def _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot="/",
 	trees=None, use_mask=None, use_force=None, **kwargs):
@@ -307,14 +305,13 @@ def dep_eval(deplist):
 		if len(deplist) == 1:
 			return 1
 		return 0
-	else:
-		for x in deplist:
-			if isinstance(x, list):
-				if dep_eval(x)==0:
-					return 0
-			elif x==0 or x==2:
+	for x in deplist:
+		if isinstance(x, list):
+			if dep_eval(x)==0:
 				return 0
-		return 1
+		elif x==0 or x==2:
+			return 0
+	return 1
 
 class _dep_choice(SlotObject):
 	__slots__ = ('atoms', 'slot_map', 'cp_map', 'all_available',
@@ -761,7 +758,7 @@ def dep_zapdeps(unreduced, reduced, myroot, use_binaries=0, trees=None,
 				if choice.all_available or allow_masked:
 					return choice.atoms
 
-	assert(False) # This point should not be reachable
+	assert False # This point should not be reachable
 
 def dep_check(depstring, mydbapi, mysettings, use="yes", mode=None, myuse=None,
 	use_cache=1, use_binaries=0, myroot=None, trees=None):

@@ -1,7 +1,5 @@
-# Copyright 2010-2015 Gentoo Foundation
+# Copyright 2010-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
-
-from __future__ import unicode_literals
 
 import io
 import tempfile
@@ -87,7 +85,7 @@ class ConfigTestCase(TestCase):
 			"package.license":
 				(
 					"dev-libs/* TEST",
-					"dev-libs/A -TEST2", 
+					"dev-libs/A -TEST2",
 					"=dev-libs/A-2 TEST3 @TEST",
 					"*/* @EULA TEST2",
 					"=dev-libs/C-1 *",

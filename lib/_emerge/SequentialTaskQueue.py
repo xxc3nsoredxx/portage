@@ -2,7 +2,6 @@
 # Distributed under the terms of the GNU General Public License v2
 
 from collections import deque
-import sys
 
 from portage.util.futures import asyncio
 from portage.util.futures.compat_coroutine import coroutine
@@ -70,7 +69,7 @@ class SequentialTaskQueue(SlotObject):
 			task.cancel()
 
 	@coroutine
-	def wait(self):
+	def wait(self, loop=None):
 		"""
 		Wait for the queue to become empty. This method is a coroutine.
 		"""
@@ -78,15 +77,12 @@ class SequentialTaskQueue(SlotObject):
 			task = next(iter(self.running_tasks), None)
 			if task is None:
 				# Wait for self.running_tasks to populate.
-				yield asyncio.sleep(0)
+				yield asyncio.sleep(0, loop=loop)
 			else:
 				yield task.async_wait()
 
 	def __bool__(self):
 		return bool(self._task_queue or self.running_tasks)
-
-	if sys.hexversion < 0x3000000:
-		__nonzero__ = __bool__
 
 	def __len__(self):
 		return len(self._task_queue) + len(self.running_tasks)

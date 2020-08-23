@@ -1,8 +1,6 @@
 # Copyright 1998-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-from __future__ import unicode_literals
-
 __all__ = [
 	"close_portdbapi_caches", "FetchlistDict", "portagetree", "portdbapi"
 ]
@@ -41,24 +39,15 @@ from portage.util.futures.iter_completed import iter_gather
 from _emerge.EbuildMetadataPhase import EbuildMetadataPhase
 
 import os as _os
-import sys
 import traceback
 import warnings
 import errno
-import collections
 import functools
 
+import collections
 from collections import OrderedDict
+from urllib.parse import urlparse
 
-try:
-	from urllib.parse import urlparse
-except ImportError:
-	from urlparse import urlparse
-
-if sys.hexversion >= 0x3000000:
-	# pylint: disable=W0622
-	basestring = str
-	long = int
 
 def close_portdbapi_caches():
 	# The python interpreter does _not_ guarantee that destructors are
@@ -108,7 +97,7 @@ class _dummy_list(list):
 			pass
 
 
-class _better_cache(object):
+class _better_cache:
 
 	"""
 	The purpose of better_cache is to locate catpkgs in repositories using ``os.listdir()`` as much as possible, which
@@ -231,7 +220,7 @@ class portdbapi(dbapi):
 		# instance that is passed in.
 		self.doebuild_settings = config(clone=self.settings)
 		self.depcachedir = os.path.realpath(self.settings.depcachedir)
-		
+
 		if os.environ.get("SANDBOX_ON") == "1":
 			# Make api consumers exempt from sandbox violations
 			# when doing metadata cache updates.
@@ -464,7 +453,7 @@ class portdbapi(dbapi):
 		return self.settings.repositories.ignored_repos
 
 	def findname2(self, mycpv, mytree=None, myrepo=None):
-		""" 
+		"""
 		Returns the location of the CPV, and what overlay it was in.
 		Searches overlays first, then PORTDIR; this allows us to return the first
 		matching file.  As opposed to starting in portdir and then doing overlays
@@ -833,7 +822,7 @@ class portdbapi(dbapi):
 				pkgdir, self.settings["DISTDIR"])
 		checksums = mf.getDigests()
 		if not checksums:
-			if debug: 
+			if debug:
 				writemsg(_("[empty/missing/bad digest]: %s\n") % (mypkg,))
 			return {}
 		filesdict={}
@@ -888,7 +877,7 @@ class portdbapi(dbapi):
 				filesdict[myfile] = int(checksums[myfile]["size"])
 		return filesdict
 
-	def fetch_check(self, mypkg, useflags=None, mysettings=None, all=False, myrepo=None):
+	def fetch_check(self, mypkg, useflags=None, mysettings=None, all=False, myrepo=None): # pylint: disable=redefined-builtin
 		"""
 		TODO: account for PORTAGE_RO_DISTDIRS
 		"""
@@ -941,13 +930,12 @@ class portdbapi(dbapi):
 			return 0
 		if self.findname(cps[0] + "/" + cps2[1], myrepo=myrepo):
 			return 1
-		else:
-			return 0
+		return 0
 
 	def cp_all(self, categories=None, trees=None, reverse=False, sort=True):
 		"""
 		This returns a list of all keys in our tree or trees
-		@param categories: optional list of categories to search or 
+		@param categories: optional list of categories to search or
 			defaults to self.settings.categories
 		@param trees: optional list of trees to search the categories in or
 			defaults to self.porttrees
@@ -999,7 +987,7 @@ class portdbapi(dbapi):
 		# stable sort by version produces results ordered by
 		# (pkg.version, repo.priority).
 		if mytree is not None:
-			if isinstance(mytree, basestring):
+			if isinstance(mytree, str):
 				repos = [self.repositories.get_repo_for_location(mytree)]
 			else:
 				# assume it's iterable
@@ -1321,12 +1309,12 @@ class portdbapi(dbapi):
 
 		return True
 
-class portagetree(object):
+class portagetree:
 	def __init__(self, root=DeprecationWarning, virtual=DeprecationWarning,
 		settings=None):
 		"""
 		Constructor for a PortageTree
-		
+
 		@param root: deprecated, defaults to settings['ROOT']
 		@type root: String/Path
 		@param virtual: UNUSED
@@ -1461,12 +1449,7 @@ class FetchlistDict(Mapping):
 		infinite recursion in some cases."""
 		return len(self.portdb.cp_list(self.cp, mytree=self.mytree))
 
-	def keys(self):
-		"""Returns keys for all packages within pkgdir"""
-		return self.portdb.cp_list(self.cp, mytree=self.mytree)
-
-	if sys.hexversion >= 0x3000000:
-		keys = __iter__
+	keys = __iter__
 
 
 def _async_manifest_fetchlist(portdb, repo_config, cp, cpv_list=None,
@@ -1513,7 +1496,7 @@ def _async_manifest_fetchlist(portdb, repo_config, cp, cpv_list=None,
 
 		if result.cancelled():
 			return
-		elif e is None:
+		if e is None:
 			result.set_result(dict((k, list(v.result()))
 				for k, v in zip(cpv_list, gather_result.result())))
 		else:

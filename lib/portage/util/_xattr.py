@@ -1,4 +1,4 @@
-# Copyright 2010-2019 Gentoo Authors
+# Copyright 2010-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 """Portability shim for xattr support
@@ -11,8 +11,6 @@ See the standard xattr module for more documentation:
 	https://pypi.python.org/pypi/pyxattr
 """
 
-from __future__ import print_function
-
 import contextlib
 import os
 import subprocess
@@ -20,7 +18,7 @@ import subprocess
 from portage.exception import OperationNotSupported
 
 
-class _XattrGetAll(object):
+class _XattrGetAll:
 	"""Implement get_all() using list()/get() if there is no easy bulk method"""
 
 	@classmethod

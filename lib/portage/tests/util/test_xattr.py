@@ -1,20 +1,9 @@
-# Copyright 2010-2015 Gentoo Foundation
+# Copyright 2010-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 """Tests for the portage.util._xattr module"""
 
-from __future__ import print_function
-
-try:
-	# Try python-3.3 module first.
-	# pylint: disable=no-name-in-module
-	from unittest import mock
-except ImportError:
-	try:
-		# Try standalone module.
-		import mock
-	except ImportError:
-		mock = None
+from unittest import mock
 
 import subprocess
 
@@ -50,9 +39,6 @@ class SystemCommandsTest(TestCase):
 	))
 
 	def _setUp(self):
-		if mock is None:
-			self.skipTest('need mock for testing')
-
 		return _XattrSystemCommands
 
 	def _testGetBasic(self):

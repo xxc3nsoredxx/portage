@@ -1,6 +1,51 @@
 Release Notes; upgrade information mainly.
 Features/major bugfixes are listed in NEWS
 
+portage-3.0.4
+==================================
+* Bug Fixes:
+    - Bug 737698 fix hang for API consumers, involving support for local
+      event loops which may run in threads
+
+portage-3.0.3
+==================================
+* Bug Fixes:
+    - Bug 448462 repoman: avoid "RuntimeError: Event loop is closed"
+      after SIGINT with --jobs > 1.
+    - Bug 699256 emerge: Remove deprecated --changelog option
+    - Bug 699256 emerge: Add short -l option for --load-average
+    - Bug 711174 SpawnProcess: fix _cancel to cleanup PipeLogger quickly
+
+portage-3.0.2
+==================================
+* Bug Fixes:
+    - Bug 711174 Identified and fixed some FEATURES=compress-build-logs
+      corruption issues
+    - Bug 734990 Fix sync-rcu to recover from removed sync-rcu-store-dir
+    - Bug 735626 Add example postsync hook to call egencache
+      --update-pkg-desc-index
+    - Bug 736334 Add fork safety to sqlite cache module
+
+portage-3.0.1
+==================================
+* Bug Fixes:
+    - Bug 730192 Replace os.fork with multiprocessing.Process, and fix
+      regression in portage-3.0.0 involving eerror messages for fetch
+      failures
+
+portage-3.0.0
+==================================
+* Bug Fixes:
+    - Bug 703698 Improve repos.conf handling of boolean settings
+    - Bug 721516 ecompress complains about compressed files that have
+          been excluded by docompress -x
+    - Bug 729852 Set XTerm titles for konsole
+    - Bug 731114 Drop support for python2.7
+    - Bug 731246 man ebuild(5) has incorrect example of $P and $PN
+    - Bug 732378 Use lru_cache for use_reduce, vercmp, and catpkgsplit
+    - Bug 733154 List of ignored warnings in .desktop files should be
+          updated for compatibility with >=desktop-file-utils-0.25
+
 portage-2.3.103
 ==================================
 * Bug Fixes:

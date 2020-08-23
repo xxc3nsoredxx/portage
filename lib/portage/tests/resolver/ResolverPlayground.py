@@ -2,15 +2,14 @@
 # Distributed under the terms of the GNU General Public License v2
 
 import bz2
-from itertools import permutations
 import fnmatch
-import sys
 import tempfile
 import portage
+
+from itertools import permutations
 from portage import os
 from portage import shutil
-from portage.const import (GLOBAL_CONFIG_PATH, PORTAGE_BASE_PATH,
-	USER_CONFIG_PATH)
+from portage.const import (GLOBAL_CONFIG_PATH, USER_CONFIG_PATH)
 from portage.process import find_binary
 from portage.dep import Atom, _repo_separator
 from portage.package.ebuild.config import config
@@ -34,11 +33,8 @@ try:
 except ImportError:
 	cnf_path_repoman = None
 
-if sys.hexversion >= 0x3000000:
-	# pylint: disable=W0622
-	basestring = str
 
-class ResolverPlayground(object):
+class ResolverPlayground:
 	"""
 	This class helps to create the necessary files on disk and
 	the needed settings instances, etc. for the resolver to do
@@ -91,6 +87,7 @@ class ResolverPlayground(object):
 				"chgrp",
 				"chmod",
 				"chown",
+				"comm",
 				"cp",
 				"egrep",
 				"env",
@@ -410,7 +407,7 @@ class ResolverPlayground(object):
 
 			for eclass_name, eclass_content in eclasses.items():
 				with open(os.path.join(eclass_dir, "{}.eclass".format(eclass_name)), 'wt') as f:
-					if isinstance(eclass_content, basestring):
+					if isinstance(eclass_content, str):
 						eclass_content = [eclass_content]
 					for line in eclass_content:
 						f.write("{}\n".format(line))
@@ -643,7 +640,7 @@ class ResolverPlayground(object):
 		else:
 			shutil.rmtree(self.eroot)
 
-class ResolverPlaygroundTestCase(object):
+class ResolverPlaygroundTestCase:
 
 	def __init__(self, request, **kwargs):
 		self.all_permutations = kwargs.pop("all_permutations", False)
@@ -694,7 +691,7 @@ class ResolverPlaygroundTestCase(object):
 					if expected:
 						new_expected = []
 						for obj in expected:
-							if isinstance(obj, basestring):
+							if isinstance(obj, str):
 								if obj[:1] == "!":
 									new_expected.append(obj)
 									continue
@@ -719,7 +716,7 @@ class ResolverPlaygroundTestCase(object):
 					while got_stack and expected_stack:
 						got_token = got_stack.pop()
 						expected_obj = expected_stack.pop()
-						if isinstance(expected_obj, basestring):
+						if isinstance(expected_obj, str):
 							new_expected.append(expected_obj)
 							if got_token == expected_obj:
 								continue
@@ -759,7 +756,7 @@ class ResolverPlaygroundTestCase(object):
 
 					if match and self.merge_order_assertions:
 						for node1, node2 in self.merge_order_assertions:
-							if not (got.index(node1) < got.index(node2)):
+							if not got.index(node1) < got.index(node2):
 								fail_msgs.append("atoms: (" + \
 									", ".join(result.atoms) + "), key: " + \
 									("merge_order_assertions, expected: %s" % \
@@ -821,7 +818,7 @@ def _mergelist_str(x, depgraph):
 	return mergelist_str
 
 
-class ResolverPlaygroundResult(object):
+class ResolverPlaygroundResult:
 
 	checks = (
 		"success", "mergelist", "use_changes", "license_changes",
@@ -915,7 +912,7 @@ class ResolverPlaygroundResult(object):
 		if required_use_unsatisfied:
 			self.required_use_unsatisfied = set(required_use_unsatisfied)
 
-class ResolverPlaygroundDepcleanResult(object):
+class ResolverPlaygroundDepcleanResult:
 
 	checks = (
 		"success", "cleanlist", "ordered", "req_pkg_count",

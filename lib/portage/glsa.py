@@ -1,31 +1,27 @@
-# Copyright 2003-2017 Gentoo Foundation
+# Copyright 2003-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-from __future__ import absolute_import, unicode_literals
-
-import io
-import sys
-try:
-	from urllib.request import urlopen as urllib_request_urlopen
-except ImportError:
-	from urllib import urlopen as urllib_request_urlopen
 import codecs
-import re
 import operator
+import portage
+import re
+import sys
 import xml.dom.minidom
-from io import StringIO
+
 from functools import reduce
 
-import portage
+import io
+from io import StringIO
+
+from portage import _encodings, _unicode_decode, _unicode_encode
 from portage import os
-from portage import _encodings
-from portage import _unicode_decode
-from portage import _unicode_encode
-from portage.versions import pkgsplit, vercmp
-from portage.util import grabfile
 from portage.const import PRIVATE_PATH
-from portage.localization import _
 from portage.dep import _slot_separator
+from portage.localization import _
+from portage.util import grabfile
+from portage.versions import pkgsplit, vercmp
+
+from urllib.request import urlopen as urllib_request_urlopen
 
 # Note: the space for rgt and rlt is important !!
 # FIXME: use slot deps instead, requires GLSA format versioning
@@ -37,7 +33,7 @@ SPACE_ESCAPE = "!;_"		# some random string to mark spaces that should be preserv
 def get_applied_glsas(settings):
 	"""
 	Return a list of applied or injected GLSA IDs
-	
+
 	@type	settings: portage.config
 	@param	settings: portage config instance
 	@rtype:		list
@@ -142,7 +138,7 @@ def getListElements(listnode):
 		if li.nodeType == xml.dom.Node.ELEMENT_NODE]
 	return rValue
 
-def getText(node, format, textfd = None):
+def getText(node, format, textfd = None): # pylint: disable=redefined-builtin
 	"""
 	This is the main parser function. It takes a node and traverses
 	recursive over the subnodes, getting the text of each (and the
@@ -213,7 +209,7 @@ def getText(node, format, textfd = None):
 		rValue = re.sub(r"[\s]{2,}", " ", rValue)
 	return rValue
 
-def getMultiTagsText(rootnode, tagname, format):
+def getMultiTagsText(rootnode, tagname, format): # pylint: disable=redefined-builtin
 	"""
 	Returns a list with the text of all subnodes of type I{tagname}
 	under I{rootnode} (which itself is not parsed) using the given I{format}.
@@ -296,10 +292,9 @@ def match(atom, dbapi, match_type="default"):
 	"""
 	if atom[2] == "~":
 		return revisionMatch(atom, dbapi, match_type=match_type)
-	elif match_type == "default" or not hasattr(dbapi, "xmatch"):
+	if match_type == "default" or not hasattr(dbapi, "xmatch"):
 		return dbapi.match(atom)
-	else:
-		return dbapi.xmatch(match_type, atom)
+	return dbapi.xmatch(match_type, atom)
 
 def revisionMatch(revisionAtom, dbapi, match_type="default"):
 	"""
@@ -497,7 +492,6 @@ class Glsa:
 		finally:
 			f.close()
 
-		return None
 
 	def parse(self, myfile):
 		"""
@@ -588,7 +582,6 @@ class Glsa:
 			self.packages[name].append(tmp)
 		# TODO: services aren't really used yet
 		self.services = self.affected.getElementsByTagName("service")
-		return None
 
 	def dump(self, outstream=sys.stdout, encoding="utf-8"):
 		"""
@@ -670,7 +663,7 @@ class Glsa:
 		if not os.access(os.path.join(self.config["EROOT"],
 			PRIVATE_PATH, "glsa_injected"), os.R_OK):
 			return False
-		return (self.nr in get_applied_glsas(self.config))
+		return self.nr in get_applied_glsas(self.config)
 
 	def inject(self):
 		"""
@@ -689,7 +682,6 @@ class Glsa:
 				mode='a+', encoding=_encodings['content'], errors='strict')
 			checkfile.write(_unicode_decode(self.nr + "\n"))
 			checkfile.close()
-		return None
 
 	def getMergeList(self, least_change=True):
 		"""

@@ -1,17 +1,12 @@
 # elog/mod_echo.py - elog dispatch module
-# Copyright 2007-2017 Gentoo Foundation
+# Copyright 2007-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
-
-from __future__ import print_function
 
 import sys
 from portage.output import EOutput, colorize
 from portage.const import EBUILD_PHASES
 from portage.localization import _
 
-if sys.hexversion >= 0x3000000:
-	# pylint: disable=W0622
-	basestring = str
 
 _items = []
 def process(mysettings, key, logentries, fulltext):
@@ -61,9 +56,8 @@ def _finalize():
 						"ERROR": printer.eerror,
 						"LOG": printer.einfo,
 						"QA": printer.ewarn}
-				if isinstance(msgcontent, basestring):
+				if isinstance(msgcontent, str):
 					msgcontent = [msgcontent]
 				for line in msgcontent:
 					fmap[msgtype](line.strip("\n"))
 	_items = []
-	return

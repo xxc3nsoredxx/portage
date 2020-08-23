@@ -1,8 +1,5 @@
-# Copyright 2005-2015 Gentoo Foundation
+# Copyright 2005-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
-
-
-from __future__ import print_function
 
 from portage import os
 from portage.exception import PortageException
@@ -19,7 +16,7 @@ class ModuleVersionError(PortageException):
 	'''An incompatible module version'''
 
 
-class Module(object):
+class Module:
 	"""Class to define and hold our plug-in module
 
 	@type name: string
@@ -83,7 +80,7 @@ class Module(object):
 		return mod_class
 
 
-class Modules(object):
+class Modules:
 	"""Dynamic modules system for loading and retrieving any of the
 	installed emaint modules and/or provided class's
 

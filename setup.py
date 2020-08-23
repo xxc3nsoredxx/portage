@@ -2,8 +2,6 @@
 # Copyright 1998-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-from __future__ import print_function
-
 from distutils.core import setup, Command, Extension
 from distutils.command.build import build
 from distutils.command.build_ext import build_ext as _build_ext
@@ -657,7 +655,7 @@ class build_ext(_build_ext):
 
 setup(
 	name = 'portage',
-	version = '2.3.103',
+	version = '3.0.4',
 	url = 'https://wiki.gentoo.org/wiki/Project:Portage',
 	author = 'Gentoo Portage Development Team',
 	author_email = 'dev-portage@gentoo.org',
@@ -714,7 +712,7 @@ setup(
 		'Intended Audience :: System Administrators',
 		'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
 		'Operating System :: POSIX',
-		'Programming Language :: Python',
+		'Programming Language :: Python :: 3',
 		'Topic :: System :: Installation/Setup'
 	]
 )

@@ -1,19 +1,12 @@
 # Copyright 1999-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-from __future__ import division, print_function, unicode_literals
-
 import collections
-import errno
 import logging
 import operator
 import platform
-import pwd
-import random
 import re
 import signal
-import socket
-import stat
 import subprocess
 import sys
 import tempfile
@@ -31,31 +24,27 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.util.locale:check_locale',
 	'portage.emaint.modules.sync.sync:SyncRepos',
 	'_emerge.chk_updated_cfg_files:chk_updated_cfg_files',
-	'_emerge.help:help@emerge_help',
+	'_emerge.help:emerge_help',
 	'_emerge.post_emerge:display_news_notification,post_emerge',
 	'_emerge.stdout_spinner:stdout_spinner',
 )
 
 from portage import os
 from portage import shutil
-from portage import eapi_is_supported, _encodings, _unicode_decode
-from portage.cache.cache_errors import CacheError
-from portage.const import GLOBAL_CONFIG_PATH, VCS_DIRS, _DEPCLEAN_LIB_CHECK_DEFAULT
-from portage.const import SUPPORTED_BINPKG_FORMATS, TIMESTAMP_FORMAT
+from portage import _encodings, _unicode_decode
+from portage.const import _DEPCLEAN_LIB_CHECK_DEFAULT
 from portage.dbapi.dep_expand import dep_expand
 from portage.dbapi._expand_new_virt import expand_new_virt
 from portage.dbapi.IndexedPortdb import IndexedPortdb
 from portage.dbapi.IndexedVardb import IndexedVardb
 from portage.dep import Atom, _repo_separator, _slot_separator
-from portage.eclass_cache import hashed_path
 from portage.exception import InvalidAtom, InvalidData, ParseError
-from portage.output import blue, colorize, create_color_func, darkgreen, \
-	red, xtermTitle, xtermTitleReset, yellow
+from portage.output import colorize, create_color_func, darkgreen, \
+	red, xtermTitle, xtermTitleReset
 good = create_color_func("GOOD")
 bad = create_color_func("BAD")
 warn = create_color_func("WARN")
 from portage.package.ebuild._ipc.QueryCommand import QueryCommand
-from portage.package.ebuild.doebuild import _check_temp_dir
 from portage.package.ebuild.fetch import _hide_url_passwd
 from portage._sets import load_default_config, SETPREFIX
 from portage._sets.base import InternalPackageSet
@@ -73,17 +62,14 @@ from portage.metadata import action_metadata
 from portage.emaint.main import print_results
 
 from _emerge.clear_caches import clear_caches
-from _emerge.countdown import countdown
 from _emerge.create_depgraph_params import create_depgraph_params
 from _emerge.Dependency import Dependency
 from _emerge.depgraph import backtrack_depgraph, depgraph, resume_depgraph
-from _emerge.DepPrioritySatisfiedRange import DepPrioritySatisfiedRange
 from _emerge.emergelog import emergelog
 from _emerge.is_valid_package_atom import is_valid_package_atom
 from _emerge.main import profile_check
 from _emerge.MetadataRegen import MetadataRegen
 from _emerge.Package import Package
-from _emerge.ProgressHandler import ProgressHandler
 from _emerge.RootConfig import RootConfig
 from _emerge.Scheduler import Scheduler
 from _emerge.search import search
@@ -94,11 +80,6 @@ from _emerge.UnmergeDepPriority import UnmergeDepPriority
 from _emerge.UseFlagDisplay import pkg_use_display
 from _emerge.UserQuery import UserQuery
 
-if sys.hexversion >= 0x3000000:
-	long = int
-	_unicode = str
-else:
-	_unicode = unicode
 
 def action_build(emerge_config, trees=DeprecationWarning,
 	mtimedb=DeprecationWarning, myopts=DeprecationWarning,
@@ -350,7 +331,7 @@ def action_build(emerge_config, trees=DeprecationWarning,
 
 			return 1
 	else:
-		if ("--resume" in myopts):
+		if "--resume" in myopts:
 			print(darkgreen("emerge: It seems we have nothing to resume..."))
 			return os.EX_OK
 
@@ -467,7 +448,7 @@ def action_build(emerge_config, trees=DeprecationWarning,
 			myopts.pop("--ask", None)
 
 	if ("--pretend" in myopts) and not ("--fetchonly" in myopts or "--fetch-all-uri" in myopts):
-		if ("--resume" in myopts):
+		if "--resume" in myopts:
 			mymergelist = mydepgraph.altlist()
 			if len(mymergelist) == 0:
 				print(colorize("INFORM", "emerge: It seems we have nothing to resume..."))
@@ -539,7 +520,7 @@ def action_build(emerge_config, trees=DeprecationWarning,
 						level=logging.ERROR, noiselevel=-1)
 					return 1
 
-		if ("--resume" in myopts):
+		if "--resume" in myopts:
 			favorites=mtimedb["resume"]["favorites"]
 
 		else:
@@ -854,7 +835,7 @@ def _calc_depclean(settings, trees, ldpath_mtimes,
 						protected_set.add("=" + pkg.cpv)
 						continue
 				except portage.exception.InvalidDependString as e:
-					show_invalid_depstring_notice(pkg, _unicode(e))
+					show_invalid_depstring_notice(pkg, str(e))
 					del e
 					protected_set.add("=" + pkg.cpv)
 					continue
@@ -907,7 +888,7 @@ def _calc_depclean(settings, trees, ldpath_mtimes,
 					protected_set.add("=" + pkg.cpv)
 					continue
 			except portage.exception.InvalidDependString as e:
-				show_invalid_depstring_notice(pkg, _unicode(e))
+				show_invalid_depstring_notice(pkg, str(e))
 				del e
 				protected_set.add("=" + pkg.cpv)
 				continue
@@ -924,7 +905,7 @@ def _calc_depclean(settings, trees, ldpath_mtimes,
 				if excluded_set.findAtomForPackage(pkg):
 					required_sets['__excluded__'].add("=" + pkg.cpv)
 			except portage.exception.InvalidDependString as e:
-				show_invalid_depstring_notice(pkg, _unicode(e))
+				show_invalid_depstring_notice(pkg, str(e))
 				del e
 				required_sets['__excluded__'].add("=" + pkg.cpv)
 
@@ -989,14 +970,14 @@ def _calc_depclean(settings, trees, ldpath_mtimes,
 				# visible in the unevaluated form of the atom. In this
 				# case, we must display the unevaluated atom, so that
 				# the user can see the conditional USE deps that would
-				# otherwise be invisible. Use Atom(_unicode(atom)) to
+				# otherwise be invisible. Use Atom(str(atom)) to
 				# test for a package where this case would matter. This
 				# is not necessarily the same as atom.without_use,
-				# since Atom(_unicode(atom)) may still contain some
+				# since Atom(str(atom)) may still contain some
 				# USE dependencies that remain after evaluation of
 				# conditionals.
 				if atom.package and atom != atom.unevaluated_atom and \
-					vardb.match(Atom(_unicode(atom))):
+					vardb.match(Atom(str(atom))):
 					msg.append("  %s (%s) pulled in by:" %
 						(atom.unevaluated_atom, atom))
 				else:
@@ -1068,7 +1049,7 @@ def _calc_depclean(settings, trees, ldpath_mtimes,
 				key=operator.attrgetter('package'))
 			parent_strs.append("%s requires %s" %
 				(getattr(parent, "cpv", parent),
-				", ".join(_unicode(atom) for atom in atoms)))
+				", ".join(str(atom) for atom in atoms)))
 		parent_strs.sort()
 		msg = []
 		msg.append("  %s pulled in by:\n" % (child_node.cpv,))
@@ -1081,10 +1062,9 @@ def _calc_depclean(settings, trees, ldpath_mtimes,
 		"""Sort Package instances by cpv."""
 		if pkg1.cpv > pkg2.cpv:
 			return 1
-		elif pkg1.cpv == pkg2.cpv:
+		if pkg1.cpv == pkg2.cpv:
 			return 0
-		else:
-			return -1
+		return -1
 
 	def create_cleanlist():
 
@@ -1541,7 +1521,7 @@ def action_deselect(settings, trees, opts, atoms):
 
 				writemsg_stdout(
 					">>> %s %s from \"%s\" favorites file...\n" %
-					(action_desc, colorize("INFORM", _unicode(atom)),
+					(action_desc, colorize("INFORM", str(atom)),
 					filename), noiselevel=-1)
 
 			if '--ask' in opts:
@@ -1562,7 +1542,7 @@ def action_deselect(settings, trees, opts, atoms):
 			world_set.unlock()
 	return os.EX_OK
 
-class _info_pkgs_ver(object):
+class _info_pkgs_ver:
 	def __init__(self, ver, repo_suffix, provide_suffix):
 		self.ver = ver
 		self.repo_suffix = repo_suffix
@@ -2337,7 +2317,7 @@ def adjust_config(myopts, settings):
 		settings.backup_changes("PORTAGE_VERBOSE")
 
 	# Set so that configs will be merged regardless of remembered status
-	if ("--noconfmem" in myopts):
+	if "--noconfmem" in myopts:
 		settings["NOCONFMEM"]="1"
 		settings.backup_changes("NOCONFMEM")
 
@@ -2442,7 +2422,7 @@ def getportageversion(portdir, _unused, profile, chost, vardb):
 			if profilever is None:
 				try:
 					profilever = "!" + os.readlink(profile)
-				except (OSError):
+				except OSError:
 					pass
 
 	if profilever is None:
@@ -2956,11 +2936,6 @@ def run_action(emerge_config):
 
 	adjust_configs(emerge_config.opts, emerge_config.trees)
 
-	if "--changelog" in emerge_config.opts:
-		writemsg_level(
-			" %s The emerge --changelog (or -l) option is deprecated\n" %
-			warn("*"), level=logging.WARNING, noiselevel=-1)
-
 	if profile_check(emerge_config.trees, emerge_config.action) != os.EX_OK:
 		return 1
 
@@ -3000,7 +2975,7 @@ def run_action(emerge_config):
 			emerge_config.target_config.trees['vartree'].dbapi) + '\n',
 			noiselevel=-1)
 		return 0
-	elif emerge_config.action == 'help':
+	if emerge_config.action == 'help':
 		emerge_help()
 		return 0
 
@@ -3034,7 +3009,7 @@ def run_action(emerge_config):
 		writemsg_stdout("".join("%s\n" % s for s in
 			sorted(emerge_config.target_config.sets)))
 		return os.EX_OK
-	elif emerge_config.action == "check-news":
+	if emerge_config.action == "check-news":
 		news_counts = count_unread_news(
 			emerge_config.target_config.trees["porttree"].dbapi,
 			emerge_config.target_config.trees["vartree"].dbapi)
@@ -3082,7 +3057,7 @@ def run_action(emerge_config):
 			level=logging.ERROR, noiselevel=-1)
 		return 1
 
-	if ("--quiet" in emerge_config.opts):
+	if "--quiet" in emerge_config.opts:
 		spinner.update = spinner.update_quiet
 		portage.util.noiselimit = -1
 
@@ -3110,7 +3085,7 @@ def run_action(emerge_config):
 		if "python-trace" in emerge_config.target_config.settings.features:
 			portage.debug.set_trace(True)
 
-	if not ("--quiet" in emerge_config.opts):
+	if not "--quiet" in emerge_config.opts:
 		if '--nospinner' in emerge_config.opts or \
 			emerge_config.target_config.settings.get('TERM') == 'dumb' or \
 			not sys.stdout.isatty():
@@ -3206,8 +3181,6 @@ def run_action(emerge_config):
 
 	if not "--pretend" in emerge_config.opts:
 		time_fmt = "%b %d, %Y %H:%M:%S"
-		if sys.hexversion < 0x3000000:
-			time_fmt = portage._unicode_encode(time_fmt)
 		time_str = time.strftime(time_fmt, time.localtime(time.time()))
 		# Avoid potential UnicodeDecodeError in Python 2, since strftime
 		# returns bytes in Python 2, and %b may contain non-ascii chars.
@@ -3259,7 +3232,7 @@ def run_action(emerge_config):
 
 	if "sync" == emerge_config.action:
 		return action_sync(emerge_config)
-	elif "metadata" == emerge_config.action:
+	if "metadata" == emerge_config.action:
 		action_metadata(emerge_config.target_config.settings,
 			emerge_config.target_config.trees['porttree'].dbapi,
 			emerge_config.opts)

@@ -67,7 +67,12 @@ def _generator_future(generator_func, *args, **kwargs):
 	keyword argument named 'loop' is given, then it is used instead of
 	the default event loop.
 	"""
-	loop = asyncio._wrap_loop(kwargs.get('loop'))
+	loop = kwargs.get('loop')
+	if loop is None and portage._internal_caller:
+		# Require an explicit loop parameter, in order to support
+		# local event loops (bug 737698).
+		raise AssertionError("Missing required argument 'loop'")
+	loop = asyncio._wrap_loop(loop)
 	result = loop.create_future()
 	_GeneratorTask(generator_func(*args, **kwargs), result, loop=loop)
 	return result
@@ -78,7 +83,7 @@ class _CoroutineReturnValue(Exception):
 		self.result = result
 
 
-class _GeneratorTask(object):
+class _GeneratorTask:
 	"""
 	Asynchronously executes the generator to completion, waiting for
 	the result of each Future that it yields, and sending the result
@@ -134,4 +139,3 @@ class _GeneratorTask(object):
 		else:
 			self._current_task = asyncio.ensure_future(future, loop=self._loop)
 			self._current_task.add_done_callback(self._next)
-

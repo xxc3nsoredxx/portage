@@ -6,7 +6,6 @@ Base class for performing sync operations.
 This class contains common initialization code and functions.
 '''
 
-from __future__ import unicode_literals
 import functools
 import logging
 import os
@@ -21,7 +20,7 @@ from portage.util.futures.retry import retry
 from portage.util.futures.executor.fork import ForkExecutor
 from . import _SUBMODULE_PATH_MAP
 
-class SyncBase(object):
+class SyncBase:
 	'''Base Sync class for subclassing'''
 
 	short_desc = "Perform sync operations on repositories"
@@ -109,7 +108,7 @@ class SyncBase(object):
 		"""
 		if self._repo_storage is None:
 			storage_cls = portage.load_mod(self._select_storage_module())
-			self._repo_storage = _sync_methods(storage_cls(self.repo, self.spawn_kwargs))
+			self._repo_storage = _sync_methods(storage_cls(self.repo, self.spawn_kwargs), loop=global_event_loop())
 		return self._repo_storage
 
 	@property

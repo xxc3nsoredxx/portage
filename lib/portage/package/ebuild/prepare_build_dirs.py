@@ -1,8 +1,6 @@
 # Copyright 2010-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-from __future__ import unicode_literals
-
 __all__ = ['prepare_build_dirs']
 
 import errno
@@ -20,7 +18,6 @@ from portage.output import colorize
 from portage.util import apply_recursive_permissions, \
 	apply_secpass_permissions, ensure_dirs, normalize_path, writemsg
 from portage.util.install_mask import _raise_exc
-from portage.const import EPREFIX
 
 def prepare_build_dirs(myroot=None, settings=None, cleanup=False):
 	"""

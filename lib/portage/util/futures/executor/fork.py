@@ -16,7 +16,7 @@ from portage.util.futures import asyncio
 from portage.util.cpuinfo import get_cpu_count
 
 
-class ForkExecutor(object):
+class ForkExecutor:
 	"""
 	An implementation of concurrent.futures.Executor that forks a
 	new process for each task, with support for cancellation of tasks.
@@ -49,7 +49,7 @@ class ForkExecutor(object):
 
 	def _schedule(self):
 		while (not self._shutdown and self._submit_queue and
-			len(self._running_tasks) < self._max_workers):
+			(self._max_workers is True or len(self._running_tasks) < self._max_workers)):
 			future, proc = self._submit_queue.popleft()
 			future.add_done_callback(functools.partial(self._cancel_cb, proc))
 			proc.addExitListener(functools.partial(self._proc_exit, future))

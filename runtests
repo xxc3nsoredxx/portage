@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Copyright 2010-2015 Gentoo Foundation
+# Copyright 2010-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 #
 # Note: We don't want to import portage modules directly because we do things
@@ -11,8 +11,6 @@ Note: Any additional arguments will be passed down directly to the underlying
 unittest runner.  This lets you select specific tests to execute.
 """
 
-from __future__ import print_function
-
 import argparse
 import os
 import shutil
@@ -23,7 +21,6 @@ import tempfile
 
 # These are the versions we fully support and require to pass tests.
 PYTHON_SUPPORTED_VERSIONS = [
-	'2.7',
 	'3.6',
 	'3.7',
 	'3.8'
@@ -37,7 +34,7 @@ PYTHON_NICE_VERSIONS = [
 EPREFIX = os.environ.get('PORTAGE_OVERRIDE_EPREFIX', '/')
 
 
-class Colors(object):
+class Colors:
 	"""Simple object holding color constants."""
 
 	_COLORS_YES = ('y', 'yes', 'true')

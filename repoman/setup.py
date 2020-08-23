@@ -1,8 +1,6 @@
 #!/usr/bin/env python
-# Copyright 1998-2014 Gentoo Foundation
+# Copyright 1998-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
-
-from __future__ import print_function
 
 from distutils.core import setup, Command
 from distutils.command.build import build
@@ -450,7 +448,7 @@ def get_manpages():
 
 setup(
 	name = 'repoman',
-	version = '2.3.23',
+	version = '3.0.0',
 	url = 'https://wiki.gentoo.org/wiki/Project:Portage',
 	author = 'Gentoo Portage Development Team',
 	author_email = 'dev-portage@gentoo.org',
@@ -492,7 +490,7 @@ setup(
 		'Intended Audience :: System Administrators',
 		'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
 		'Operating System :: POSIX',
-		'Programming Language :: Python',
+		'Programming Language :: Python :: 3',
 		'Topic :: System :: Installation/Setup'
 	]
 )

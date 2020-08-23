@@ -1,15 +1,14 @@
-# Copyright 1999-2013 Gentoo Foundation
+# Copyright 1999-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-from __future__ import unicode_literals
-
-import sys
 import warnings
+
+from _emerge.Package import Package
+from _emerge.PackageVirtualDbapi import PackageVirtualDbapi
+from _emerge.resolver.DbapiProvidesIndex import PackageDbapiProvidesIndex
 
 import portage
 from portage import os
-from _emerge.Package import Package
-from _emerge.PackageVirtualDbapi import PackageVirtualDbapi
 from portage.const import VDB_PATH
 from portage.dbapi.vartree import vartree
 from portage.dep._slot_operator import find_built_slot_operator_atoms
@@ -17,15 +16,9 @@ from portage.eapi import _get_eapi_attrs
 from portage.exception import InvalidData, InvalidDependString
 from portage.update import grab_updates, parse_updates, update_dbentries
 from portage.versions import _pkg_str
-from _emerge.resolver.DbapiProvidesIndex import PackageDbapiProvidesIndex
 
-if sys.hexversion >= 0x3000000:
-	long = int
-	_unicode = str
-else:
-	_unicode = unicode
 
-class FakeVardbGetPath(object):
+class FakeVardbGetPath:
 	"""
 	Implements the vardbapi.getpath() method which is used in error handling
 	code for the Package class and vartree.get_provide().
@@ -167,7 +160,7 @@ class FakeVartree(vartree):
 					raise _DynamicDepsNotApplicable()
 				for k, v in built_slot_operator_atoms.items():
 					live_metadata[k] += (" " +
-						" ".join(_unicode(atom) for atom in v))
+						" ".join(str(atom) for atom in v))
 
 			self.dbapi.aux_update(pkg.cpv, live_metadata)
 		except _DynamicDepsNotApplicable:
@@ -249,7 +242,7 @@ class FakeVartree(vartree):
 			if pkg is not None:
 				counter, mtime = real_vardb.aux_get(cpv, validation_keys)
 				try:
-					counter = long(counter)
+					counter = int(counter)
 				except ValueError:
 					counter = 0
 

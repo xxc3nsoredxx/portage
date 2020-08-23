@@ -1,7 +1,5 @@
-# Copyright 2014 Gentoo Foundation
+# Copyright 2014-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
-
-from __future__ import print_function
 
 import bisect
 import collections
@@ -29,7 +27,7 @@ class PackageConflict(_PackageConflict):
 		return len(self.pkgs)
 
 
-class PackageTracker(object):
+class PackageTracker:
 	"""
 	**Behavior**
 
@@ -358,7 +356,7 @@ class PackageTracker(object):
 		return self.contains(pkg, installed=True)
 
 
-class PackageTrackerDbapiWrapper(object):
+class PackageTrackerDbapiWrapper:
 	"""
 	A wrpper class that provides parts of the legacy
 	dbapi interface. Remove it once all consumers have

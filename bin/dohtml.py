@@ -1,5 +1,5 @@
 #!/usr/bin/python -b
-# Copyright 1999-2014 Gentoo Foundation
+# Copyright 1999-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 #
@@ -27,8 +27,6 @@
 # dohtml -x CVS,SCCS,RCS -r <list-of-files-and-directories>
 #  - will do as 'dohtml -r', but ignore directories named CVS, SCCS, RCS
 #
-
-from __future__ import print_function, unicode_literals
 
 import os as _os
 import sys
@@ -163,12 +161,11 @@ def print_help():
 def parse_args():
 	argv = sys.argv[:]
 
-	if sys.hexversion >= 0x3000000:
-		# We can't trust that the filesystem encoding (locale dependent)
-		# correctly matches the arguments, so use surrogateescape to
-		# pass through the original argv bytes for Python 3.
-		fs_encoding = sys.getfilesystemencoding()
-		argv = [x.encode(fs_encoding, 'surrogateescape') for x in argv]
+	# We can't trust that the filesystem encoding (locale dependent)
+	# correctly matches the arguments, so use surrogateescape to
+	# pass through the original argv bytes for Python 3.
+	fs_encoding = sys.getfilesystemencoding()
+	argv = [x.encode(fs_encoding, 'surrogateescape') for x in argv]
 
 	for x, arg in enumerate(argv):
 		try:

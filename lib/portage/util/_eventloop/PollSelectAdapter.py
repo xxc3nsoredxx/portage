@@ -1,12 +1,11 @@
-# Copyright 1999-2014 Gentoo Foundation
+# Copyright 1999-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-from __future__ import division
-
-from .PollConstants import PollConstants
 import select
 
-class PollSelectAdapter(object):
+from .PollConstants import PollConstants
+
+class PollSelectAdapter:
 
 	"""
 	Use select to emulate a poll object, for
@@ -73,4 +72,3 @@ class PollSelectAdapter(object):
 		for fd in select_events[0]:
 			poll_events.append((fd, PollConstants.POLLIN))
 		return poll_events
-

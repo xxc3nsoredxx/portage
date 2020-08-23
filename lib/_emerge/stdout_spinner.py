@@ -7,7 +7,7 @@ import time
 
 from portage.output import darkgreen, green
 
-class stdout_spinner(object):
+class stdout_spinner:
 	scroll_msgs = [
 		"Gentoo Rocks ("+platform.system()+")",
 		"Thank you for using Gentoo. :)",
@@ -65,7 +65,7 @@ class stdout_spinner(object):
 	def update_scroll(self):
 		if self._return_early():
 			return True
-		if(self.spinpos >= len(self.scroll_sequence)):
+		if self.spinpos >= len(self.scroll_sequence):
 			sys.stdout.write(darkgreen(" \b\b\b" + self.scroll_sequence[
 				len(self.scroll_sequence) - 1 - (self.spinpos % len(self.scroll_sequence))]))
 		else:

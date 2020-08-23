@@ -1,9 +1,8 @@
 # -*- coding:utf-8 -*-
 
-from __future__ import print_function, unicode_literals
-
 import collections
 import logging
+
 from itertools import chain
 
 from portage import os
