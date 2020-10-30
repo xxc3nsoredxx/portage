@@ -939,7 +939,8 @@ class _use_dep:
 					missing_disabled.add(flag)
 			else:
 				if flag in missing_enabled or flag in missing_disabled:
-					raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
+					if flag != "multilib_abi_x86" and flag != "multilib_abi_amd64":
+						raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
 				no_default.add(flag)
 
 		self.tokens = use
