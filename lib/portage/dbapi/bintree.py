@@ -22,8 +22,9 @@ portage.proxy.lazyimport.lazyimport(globals(),
 	'portage.versions:best,catpkgsplit,catsplit,_pkg_str',
 )
 
+from portage.binrepo.config import BinRepoConfigLoader
 from portage.cache.mappings import slot_dict_class
-from portage.const import CACHE_PATH, SUPPORTED_XPAK_EXTENSIONS
+from portage.const import BINREPOS_CONF_FILE, CACHE_PATH, SUPPORTED_XPAK_EXTENSIONS
 from portage.dbapi.virtual import fakedbapi
 from portage.dep import Atom, use_reduce, paren_enclose
 from portage.exception import AlarmSignal, InvalidData, InvalidPackageName, \
@@ -364,6 +365,7 @@ class binarytree:
 			self.move_slot_ent = self.dbapi.move_slot_ent
 			self.populated = 0
 			self.tree = {}
+			self._binrepos_conf = None
 			self._remote_has_index = False
 			self._remotepkgs = None # remote metadata indexed by cpv
 			self._additional_pkgs = {}
@@ -380,10 +382,10 @@ class binarytree:
 			self._pkgindex_keys.update(["CPV", "SIZE"])
 			self._pkgindex_aux_keys = \
 				["BASE_URI", "BDEPEND", "BUILD_ID", "BUILD_TIME", "CHOST",
-				"DEFINED_PHASES", "DEPEND", "DESCRIPTION", "EAPI",
+				"DEFINED_PHASES", "DEPEND", "DESCRIPTION", "EAPI", "FETCHCOMMAND",
 				"IUSE", "KEYWORDS", "LICENSE", "PDEPEND",
 				"PKGINDEX_URI", "PROPERTIES", "PROVIDES",
-				"RDEPEND", "repository", "REQUIRES", "RESTRICT",
+				"RDEPEND", "repository", "REQUIRES", "RESTRICT", "RESUMECOMMAND",
 				"SIZE", "SLOT", "USE"]
 			self._pkgindex_aux_keys = list(self._pkgindex_aux_keys)
 			self._pkgindex_use_evaluated_keys = \
@@ -529,7 +531,7 @@ class binarytree:
 			new_path = self.getname(mynewcpv)
 			self._pkg_paths[
 				self.dbapi._instance_key(mynewcpv)] = new_path[len(self.pkgdir)+1:]
-			if new_path != mytbz2:
+			if new_path != tbz2path:
 				self._ensure_dir(os.path.dirname(new_path))
 				_movefile(tbz2path, new_path, mysettings=self.settings)
 			self.inject(mynewcpv)
@@ -628,8 +630,10 @@ class binarytree:
 				self._populate_additional(add_repos)
 
 			if getbinpkgs:
-				if not self.settings.get("PORTAGE_BINHOST"):
-					writemsg(_("!!! PORTAGE_BINHOST unset, but use is requested.\n"),
+				config_path = os.path.join(self.settings['PORTAGE_CONFIGROOT'], BINREPOS_CONF_FILE)
+				self._binrepos_conf = BinRepoConfigLoader((config_path,), self.settings)
+				if not self._binrepos_conf:
+					writemsg(_("!!! %s is missing (or PORTAGE_BINHOST is unset), but use is requested.\n") % (config_path,),
 						noiselevel=-1)
 				else:
 					self._populate_remote(getbinpkg_refresh=getbinpkg_refresh)
@@ -903,7 +907,9 @@ class binarytree:
 
 		self._remote_has_index = False
 		self._remotepkgs = {}
-		for base_url in self.settings["PORTAGE_BINHOST"].split():
+		# Order by descending priority.
+		for repo in reversed(list(self._binrepos_conf.values())):
+			base_url = repo.sync_uri
 			parsed_url = urlparse(base_url)
 			host = parsed_url.netloc
 			port = parsed_url.port
@@ -964,11 +970,18 @@ class binarytree:
 						download_timestamp + ttl > time.time():
 						raise UseCachedCopyOfRemoteIndex()
 
+				# Set proxy settings for _urlopen -> urllib_request
+				proxies = {}
+				for proto in ('http', 'https'):
+					value = self.settings.get(proto + '_proxy')
+					if value is not None:
+						proxies[proto] = value
+
 				# Don't use urlopen for https, unless
 				# PEP 476 is supported (bug #469888).
-				if parsed_url.scheme not in ('https',) or _have_pep_476():
+				if repo.fetchcommand is None and (parsed_url.scheme not in ('https',) or _have_pep_476()):
 					try:
-						f = _urlopen(url, if_modified_since=local_timestamp)
+						f = _urlopen(url, if_modified_since=local_timestamp, proxies=proxies)
 						if hasattr(f, 'headers') and f.headers.get('timestamp', ''):
 							remote_timestamp = f.headers.get('timestamp')
 					except IOError as err:
@@ -991,7 +1004,7 @@ class binarytree:
 
 					path = parsed_url.path.rstrip("/") + "/Packages"
 
-					if parsed_url.scheme == 'ssh':
+					if repo.fetchcommand is None and parsed_url.scheme == 'ssh':
 						# Use a pipe so that we can terminate the download
 						# early if we detect that the TIMESTAMP header
 						# matches that of the cached Packages file.
@@ -1010,12 +1023,15 @@ class binarytree:
 							stdout=subprocess.PIPE)
 						f = proc.stdout
 					else:
-						setting = 'FETCHCOMMAND_' + parsed_url.scheme.upper()
-						fcmd = self.settings.get(setting)
-						if not fcmd:
-							fcmd = self.settings.get('FETCHCOMMAND')
+						if repo.fetchcommand is None:
+							setting = 'FETCHCOMMAND_' + parsed_url.scheme.upper()
+							fcmd = self.settings.get(setting)
 							if not fcmd:
-								raise EnvironmentError("FETCHCOMMAND is unset")
+								fcmd = self.settings.get('FETCHCOMMAND')
+								if not fcmd:
+									raise EnvironmentError("FETCHCOMMAND is unset")
+						else:
+							fcmd = repo.fetchcommand
 
 						fd, tmp_filename = tempfile.mkstemp()
 						tmp_dirname, tmp_basename = os.path.split(tmp_filename)
@@ -1129,6 +1145,19 @@ class binarytree:
 					d["CPV"] = cpv
 					d["BASE_URI"] = remote_base_uri
 					d["PKGINDEX_URI"] = url
+					# FETCHCOMMAND and RESUMECOMMAND may be specified
+					# by binrepos.conf, and otherwise ensure that they
+					# do not propagate from the Packages index since
+					# it may be unsafe to execute remotely specified
+					# commands.
+					if repo.fetchcommand is None:
+						d.pop('FETCHCOMMAND', None)
+					else:
+						d['FETCHCOMMAND'] = repo.fetchcommand
+					if repo.resumecommand is None:
+						d.pop('RESUMECOMMAND', None)
+					else:
+						d['RESUMECOMMAND'] = repo.resumecommand
 					self._remotepkgs[self.dbapi._instance_key(cpv)] = d
 					self.dbapi.cpv_inject(cpv)
 

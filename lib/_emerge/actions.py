@@ -32,7 +32,8 @@ portage.proxy.lazyimport.lazyimport(globals(),
 from portage import os
 from portage import shutil
 from portage import _encodings, _unicode_decode
-from portage.const import _DEPCLEAN_LIB_CHECK_DEFAULT
+from portage.binrepo.config import BinRepoConfigLoader
+from portage.const import BINREPOS_CONF_FILE, _DEPCLEAN_LIB_CHECK_DEFAULT
 from portage.dbapi.dep_expand import dep_expand
 from portage.dbapi._expand_new_virt import expand_new_virt
 from portage.dbapi.IndexedPortdb import IndexedPortdb
@@ -1836,6 +1837,16 @@ def action_info(settings, trees, myopts, myfiles):
 	for repo in repos:
 		append(repo.info_string())
 
+	binrepos_conf_path = os.path.join(settings['PORTAGE_CONFIGROOT'], BINREPOS_CONF_FILE)
+	binrepos_conf = BinRepoConfigLoader((binrepos_conf_path,), settings)
+	if binrepos_conf and any(repo.name for repo in binrepos_conf.values()):
+		append("Binary Repositories:\n")
+		for repo in reversed(list(binrepos_conf.values())):
+			# Omit repos from the PORTAGE_BINHOST variable, since they
+			# do not have a name to label them with.
+			if repo.name:
+				append(repo.info_string())
+
 	installed_sets = sorted(s for s in
 		root_config.sets['selected'].getNonAtoms() if s.startswith(SETPREFIX))
 	if installed_sets:
@@ -2036,6 +2047,7 @@ def action_search(root_config, myopts, myfiles, spinner):
 			search_index=myopts.get("--search-index", "y") != "n",
 			search_similarity=myopts.get("--search-similarity"),
 			fuzzy=myopts.get("--fuzzy-search") != "n",
+			regex_auto=myopts.get("--regex-search-auto") != "n",
 			)
 		for mysearch in myfiles:
 			try:
@@ -2623,7 +2635,7 @@ def ionice(settings):
 	if not ionice_cmd:
 		return
 
-	variables = {"PID" : str(os.getpid())}
+	variables = {"PID" : str(portage.getpid())}
 	cmd = [varexpand(x, mydict=variables) for x in ionice_cmd]
 
 	try:
