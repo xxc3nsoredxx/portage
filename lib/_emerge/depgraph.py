@@ -3107,7 +3107,7 @@ class depgraph:
 								self._frozen_config.myopts,
 								modified_use=self._pkg_use_enabled(pkg))),
 								level=logging.DEBUG, noiselevel=-1)
-				elif (pkg.installed and myparent and
+				elif (pkg.installed and isinstance(myparent, Package) and
 					pkg.root == myparent.root and
 					pkg.slot_atom == myparent.slot_atom):
 					# If the parent package is replacing the child package then
@@ -8052,18 +8052,18 @@ class depgraph:
 									(selected_nodes[0],), noiselevel=-1)
 
 			if selected_nodes and ignore_priority is not None:
-				# Try to merge ignored medium_post deps as soon as possible
+				# Try to merge neglected medium_post deps as soon as possible
 				# if they're not satisfied by installed packages.
 				for node in selected_nodes:
 					children = set(mygraph.child_nodes(node))
-					soft = children.difference(
+					medium_post_satisifed = children.difference(
 						mygraph.child_nodes(node,
 							ignore_priority = \
-							DepPrioritySatisfiedRange.ignore_soft))
+							DepPrioritySatisfiedRange.ignore_medium_post_satisifed))
 					medium_post = children.difference(
 						mygraph.child_nodes(node,
 						ignore_priority=DepPrioritySatisfiedRange.ignore_medium_post))
-					medium_post -= soft
+					medium_post -= medium_post_satisifed
 					for child in medium_post:
 						if child in selected_nodes:
 							continue
