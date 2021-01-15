@@ -1164,6 +1164,8 @@ __ebuild_main() {
 					# >/dev/null = backward compactibility for prerm/postrm
 					source "${T}"/environment 2>/dev/null || die
 				fi
+				#dont run more then once with readonly variables
+				grep -q "readonly " "${T}"/environment && break
 			done
 		else
 			export SANDBOX_ON="0"
