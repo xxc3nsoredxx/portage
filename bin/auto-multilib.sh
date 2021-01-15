@@ -377,7 +377,7 @@ _finalize_abi_install() {
 	done
 	if [[ -d "${D%/}.${DEFAULT_ABI}" ]]; then
 		cd "${D%/}.${DEFAULT_ABI}"
-		find . | tar -c -T - -f - | tar -x -f - -C "${D}"
+		find . | tar -c -T - -f - | tar -x -P -f - -C "${D}"
 		cd ..
 		rm -rf "${D%/}.${DEFAULT_ABI}"
 	fi
