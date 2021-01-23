@@ -377,7 +377,17 @@ _finalize_abi_install() {
 	done
 	if [[ -d "${D%/}.${DEFAULT_ABI}" ]]; then
 		cd "${D%/}.${DEFAULT_ABI}"
+		#disable sandbox for symlinks
+		local x=
+		if [[ -n $SANDBOX_ON ]] ; then
+			x=$SANDBOX_ON
+			export SANDBOX_ON=0
+		fi
 		find . | tar -c -T - -f - | tar -x -P -f - -C "${D}"
+		if [[ -n $x ]] ; then
+			export SANDBOX_ON=$x
+		fi
+		unset x
 		cd ..
 		rm -rf "${D%/}.${DEFAULT_ABI}"
 	fi
