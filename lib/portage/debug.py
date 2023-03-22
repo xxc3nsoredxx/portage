@@ -27,7 +27,10 @@ class trace_handler:
     def __init__(self):
         python_system_paths = []
         for x in sys.path:
-            if os.path.basename(x) == "python%s.%s" % sys.version_info[:2]:
+            if (
+                os.path.basename(x)
+                == f"python{sys.version_info[0]}.{sys.version_info[1]}"
+            ):
                 python_system_paths.append(x)
 
         self.ignore_prefixes = []
@@ -52,15 +55,11 @@ class trace_handler:
 
     def trace_event(self, frame, event, arg):
         writemsg(
-            "%s line=%d name=%s event=%s %slocals=%s\n"
-            % (
-                self.trim_filename(frame.f_code.co_filename),
-                frame.f_lineno,
-                frame.f_code.co_name,
-                event,
-                self.arg_repr(frame, event, arg),
-                self.locals_repr(frame, event, arg),
-            )
+            f"{self.trim_filename(frame.f_code.co_filename)} "
+            f"line={frame.f_lineno} "
+            f"name={frame.f_code.co_name} "
+            f"event={event} "
+            f"{self.arg_repr(frame, event, arg)}locals={self.locals_repr(frame, event, arg)}\n"
         )
 
     def arg_repr(self, _frame, event, arg):
@@ -80,8 +79,7 @@ class trace_handler:
 
     def trace_line(self, frame, _event, _arg):
         writemsg(
-            "%s line=%d\n"
-            % (self.trim_filename(frame.f_code.co_filename), frame.f_lineno)
+            f"{self.trim_filename(frame.f_code.co_filename)} line={frame.f_lineno}\n"
         )
 
     def ignore_filename(self, filename):

@@ -394,11 +394,8 @@ class portdbapi(dbapi):
 
             if not cache.complete_eclass_entries:
                 warnings.warn(
-                    (
-                        "Repository '%s' used deprecated 'pms' cache format. "
-                        "Please migrate to 'md5-dict' format."
-                    )
-                    % (conf.name,),
+                    f"Repository '{conf.name}' used deprecated 'pms' cache format. "
+                    "Please migrate to 'md5-dict' format.",
                     DeprecationWarning,
                 )
 
@@ -596,7 +593,7 @@ class portdbapi(dbapi):
             ebuild_hash.mtime
         except FileNotFound:
             writemsg(
-                _("!!! aux_get(): ebuild for " "'%s' does not exist at:\n") % (cpv,),
+                f"!!! aux_get(): ebuild for '{cpv}' does not exist at:\n",
                 noiselevel=-1,
             )
             writemsg(f"!!!            {ebuild_path}\n", noiselevel=-1)
@@ -720,7 +717,7 @@ class portdbapi(dbapi):
 
         if not myebuild:
             writemsg(
-                "!!! aux_get(): %s\n" % _("ebuild not found for '%s'") % mycpv,
+                f"!!! aux_get(): ebuild not found for '{mycpv}'\n",
                 noiselevel=1,
             )
             future.set_exception(PortageKeyError(mycpv))
@@ -912,7 +909,7 @@ class portdbapi(dbapi):
         # returns a filename:size dictionnary of remaining downloads
         myebuild, mytree = self.findname2(mypkg, myrepo=myrepo)
         if myebuild is None:
-            raise AssertionError(_("ebuild not found for '%s'") % mypkg)
+            raise AssertionError(f"ebuild not found for '{mypkg}'")
         pkgdir = os.path.dirname(myebuild)
         mf = self.repositories.get_repo_for_location(
             os.path.dirname(os.path.dirname(pkgdir))
@@ -920,7 +917,7 @@ class portdbapi(dbapi):
         checksums = mf.getDigests()
         if not checksums:
             if debug:
-                writemsg(_("[empty/missing/bad digest]: %s\n") % (mypkg,))
+                writemsg(f"[empty/missing/bad digest]: {mypkg}\n")
             return {}
         filesdict = {}
         myfiles = self.getFetchMap(mypkg, useflags=useflags, mytree=mytree)
@@ -931,10 +928,7 @@ class portdbapi(dbapi):
                 fetch_size = int(checksums[myfile]["size"])
             except (KeyError, ValueError):
                 if debug:
-                    writemsg(
-                        _("[bad digest]: missing %(file)s for %(pkg)s\n")
-                        % {"file": myfile, "pkg": mypkg}
-                    )
+                    writemsg(f"[bad digest]: missing {myfile} for {mypkg}\n")
                 continue
             file_path = os.path.join(self.settings["DISTDIR"], myfile)
             mystat = None
@@ -1002,7 +996,7 @@ class portdbapi(dbapi):
         myfiles = self.getFetchMap(mypkg, useflags=useflags, mytree=mytree)
         myebuild = self.findname(mypkg, myrepo=myrepo)
         if myebuild is None:
-            raise AssertionError(_("ebuild not found for '%s'") % mypkg)
+            raise AssertionError(f"ebuild not found for '{mypkg}'")
         pkgdir = os.path.dirname(myebuild)
         mf = self.repositories.get_repo_for_location(
             os.path.dirname(os.path.dirname(pkgdir))
@@ -1022,7 +1016,7 @@ class portdbapi(dbapi):
                     )
                 except FileNotFound as e:
                     ok = False
-                    reason = _("File Not Found: '%s'") % (e,)
+                    reason = f"File Not Found: '{e}'"
             if not ok:
                 failures[x] = reason
         if failures:
@@ -1132,23 +1126,20 @@ class portdbapi(dbapi):
                     ps = pkgsplit(pf)
                     if not ps:
                         writemsg(
-                            _("\nInvalid ebuild name: %s\n")
-                            % os.path.join(oroot, mycp, x),
+                            f"\nInvalid ebuild name: {os.path.join(oroot, mycp, x)}\n",
                             noiselevel=-1,
                         )
                         continue
                     if ps[0] != mysplit[1]:
                         writemsg(
-                            _("\nInvalid ebuild name: %s\n")
-                            % os.path.join(oroot, mycp, x),
+                            f"\nInvalid ebuild name: {os.path.join(oroot, mycp, x)}\n",
                             noiselevel=-1,
                         )
                         continue
                     ver_match = ver_regexp.match("-".join(ps[1:]))
                     if ver_match is None or not ver_match.groups():
                         writemsg(
-                            _("\nInvalid ebuild version: %s\n")
-                            % os.path.join(oroot, mycp, x),
+                            f"\nInvalid ebuild version: {os.path.join(oroot, mycp, x)}\n",
                             noiselevel=-1,
                         )
                         continue
@@ -1157,11 +1148,8 @@ class portdbapi(dbapi):
                     )
         if invalid_category and mylist:
             writemsg(
-                _(
-                    "\n!!! '%s' has a category that is not listed in "
-                    "%setc/portage/categories\n"
-                )
-                % (mycp, self.settings["PORTAGE_CONFIGROOT"]),
+                f"\n!!! '{mycp}' has a category that is not listed in "
+                f"{self.settings['PORTAGE_CONFIGROOT']}etc/portage/categories\n",
                 noiselevel=-1,
             )
             mylist = []
@@ -1748,8 +1736,7 @@ def _parse_uri_map(cpv, metadata, use=None):
             distfile = os.path.basename(uri)
             if not distfile:
                 raise portage.exception.InvalidDependString(
-                    ("getFetchMap(): '%s' SRC_URI has no file " + "name: '%s'")
-                    % (cpv, uri)
+                    f"getFetchMap(): '{cpv}' SRC_URI has no file name: '{uri}'"
                 )
 
         uri_set = uri_map.get(distfile)

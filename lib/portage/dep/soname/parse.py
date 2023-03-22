@@ -5,10 +5,6 @@ from portage.exception import InvalidData
 from portage.localization import _
 from portage.dep.soname.SonameAtom import SonameAtom
 
-_error_empty_category = _("Multilib category empty: %s")
-_error_missing_category = _("Multilib category missing: %s")
-_error_duplicate_category = _("Multilib category occurs" " more than once: %s")
-
 
 def parse_soname_deps(s):
     """
@@ -27,19 +23,21 @@ def parse_soname_deps(s):
     for soname in s.split():
         if soname.endswith(":"):
             if category is not None and previous_soname is None:
-                raise InvalidData(_error_empty_category % category)
+                raise InvalidData(f"Multilib category empty: {category}")
 
             category = soname[:-1]
             previous_soname = None
             if category in categories:
-                raise InvalidData(_error_duplicate_category % category)
+                raise InvalidData(
+                    f"Multilib category occurs more than once: {category}"
+                )
             categories.add(category)
 
         elif category is None:
-            raise InvalidData(_error_missing_category % soname)
+            raise InvalidData(f"Multilib category missing: {soname}")
         else:
             previous_soname = soname
             yield SonameAtom(category, soname)
 
     if category is not None and previous_soname is None:
-        raise InvalidData(_error_empty_category % category)
+        raise InvalidData(f"Multilib category empty: {category}")

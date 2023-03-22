@@ -44,10 +44,7 @@ def dnf_convert(dep_struct):
                                 len(element) == 1
                                 and element[0]
                                 and element[0][0] == "||"
-                            ), (
-                                "Normalization error, expected single disjunction in %s"
-                                % (element,)
-                            )
+                            ), f"Normalization error, expected single disjunction in {element}"
                             x_dnf.extend(element[0][1:])
                         else:
                             x_dnf.append(element)

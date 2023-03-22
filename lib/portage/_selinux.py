@@ -23,7 +23,7 @@ def copyfile(src, dest):
     dest = _native_string(dest, encoding=_encodings["fs"], errors="strict")
     (rc, ctx) = selinux.lgetfilecon(src)
     if rc < 0:
-        raise OSError(_('copyfile: Failed getting context of "%s".') % src)
+        raise OSError(f'copyfile: Failed getting context of "{src}".')
 
     setfscreate(ctx)
     try:
@@ -49,7 +49,7 @@ def mkdir(target, refdir):
     (rc, ctx) = selinux.getfilecon(refdir)
     if rc < 0:
         raise OSError(
-            _('mkdir: Failed getting context of reference directory "%s".') % refdir
+            f'mkdir: Failed getting context of reference directory "{refdir}".'
         )
 
     setfscreate(ctx)
@@ -63,7 +63,7 @@ def rename(src, dest):
     src = _native_string(src, encoding=_encodings["fs"], errors="strict")
     (rc, ctx) = selinux.lgetfilecon(src)
     if rc < 0:
-        raise OSError(_('rename: Failed getting context of "%s".') % src)
+        raise OSError(f'rename: Failed getting context of "{src}".')
 
     setfscreate(ctx)
     try:
@@ -102,17 +102,17 @@ def setexec(ctx="\n"):
 
     if rc < 0:
         if selinux.security_getenforce() == 1:
-            raise OSError(_('Failed setting exec() context "%s".') % ctx)
+            raise OSError(f'Failed setting exec() context "{ctx}".')
         else:
             portage.writemsg(
-                "!!! " + _('Failed setting exec() context "%s".') % ctx, noiselevel=-1
+                f'!!! Failed setting exec() context "{ctx}".', noiselevel=-1
             )
 
 
 def setfscreate(ctx="\n"):
     ctx = _native_string(ctx, encoding=_encodings["content"], errors="strict")
     if selinux.setfscreatecon(ctx) < 0:
-        raise OSError(_('setfscreate: Failed setting fs create context "%s".') % ctx)
+        raise OSError(f'setfscreate: Failed setting fs create context "{ctx}".')
 
 
 class spawn_wrapper:
@@ -151,7 +151,7 @@ def symlink(target, link, reflnk):
     (rc, ctx) = selinux.lgetfilecon(reflnk)
     if rc < 0:
         raise OSError(
-            _('symlink: Failed getting context of reference symlink "%s".') % reflnk
+            f'symlink: Failed getting context of reference symlink "{reflnk}".'
         )
 
     setfscreate(ctx)

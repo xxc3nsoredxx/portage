@@ -158,8 +158,8 @@ class SyncRepos:
                 if missing:
                     msgs.append(
                         red(" * ")
-                        + "The specified repo(s) were not found: %s"
-                        % (" ".join(repo_name for repo_name in missing))
+                        + "The specified repo(s) were not found: "
+                        + " ".join(repo_name for repo_name in missing)
                         + "\n   ...returning"
                     )
                     return (False, repos, msgs)
@@ -173,8 +173,8 @@ class SyncRepos:
             if match_repos is not None:
                 msgs.append(
                     red(" * ")
-                    + "The specified repo(s) have sync disabled: %s"
-                    % " ".join(repo.name for repo in sync_disabled)
+                    + "The specified repo(s) have sync disabled: "
+                    + " ".join(repo.name for repo in sync_disabled)
                     + "\n   ...returning"
                 )
                 return (False, repos, msgs)
@@ -184,8 +184,8 @@ class SyncRepos:
             repos = [repo for repo in repos if repo.sync_uri is not None]
             msgs.append(
                 red(" * ")
-                + "The specified repo(s) are missing sync-uri: %s"
-                % " ".join(repo.name for repo in missing_sync_uri)
+                + "The specified repo(s) are missing sync-uri: "
+                + " ".join(repo.name for repo in missing_sync_uri)
                 + "\n   ...returning"
             )
             return (False, repos, msgs)

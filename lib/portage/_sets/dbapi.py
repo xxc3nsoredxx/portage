@@ -204,7 +204,7 @@ class VariableSet(EverythingSet):
         metadatadb = options.get("metadata-source", "vartree")
         if not metadatadb in trees:
             raise SetConfigError(
-                _("invalid value '%s' for option metadata-source") % metadatadb
+                f"invalid value '{metadatadb}' for option metadata-source"
             )
 
         return cls(
@@ -312,7 +312,7 @@ class UnavailableSet(EverythingSet):
         metadatadb = options.get("metadata-source", "porttree")
         if not metadatadb in trees:
             raise SetConfigError(
-                _("invalid value '%s' for option " "metadata-source") % (metadatadb,)
+                f"invalid value '{metadatadb}' for option metadata-source"
             )
 
         return cls(trees["vartree"].dbapi, metadatadb=trees[metadatadb].dbapi)
@@ -347,7 +347,7 @@ class UnavailableBinaries(EverythingSet):
         metadatadb = options.get("metadata-source", "bintree")
         if not metadatadb in trees:
             raise SetConfigError(
-                _("invalid value '%s' for option " "metadata-source") % (metadatadb,)
+                f"invalid value '{metadatadb}' for option metadata-source"
             )
 
         return cls(trees["vartree"].dbapi, metadatadb=trees[metadatadb].dbapi)
@@ -383,7 +383,7 @@ class CategorySet(PackageSet):
     def _builderGetRepository(cls, options, repositories):
         repository = options.get("repository", "porttree")
         if not repository in repositories:
-            raise SetConfigError(_("invalid repository class '%s'") % repository)
+            raise SetConfigError(f"invalid repository class '{repository}'")
         return repository
 
     _builderGetRepository = classmethod(_builderGetRepository)
@@ -399,7 +399,7 @@ class CategorySet(PackageSet):
 
         category = options["category"]
         if not category in settings.categories:
-            raise SetConfigError(_("invalid category name '%s'") % category)
+            raise SetConfigError(f"invalid category name '{category}'")
 
         repository = cls._builderGetRepository(options, trees.keys())
         visible = cls._builderGetVisible(options)
@@ -417,9 +417,7 @@ class CategorySet(PackageSet):
             categories = options["categories"].split()
             invalid = set(categories).difference(settings.categories)
             if invalid:
-                raise SetConfigError(
-                    _("invalid categories: %s") % ", ".join(list(invalid))
-                )
+                raise SetConfigError(f"invalid categories: {', '.join(list(invalid))}")
         else:
             categories = settings.categories
 
@@ -469,7 +467,7 @@ class AgeSet(EverythingSet):
         mode = options.get("mode", "older")
         if str(mode).lower() not in ["newer", "older"]:
             raise SetConfigError(
-                _("invalid 'mode' value %s (use either 'newer' or 'older')") % mode
+                f"invalid 'mode' value {mode} (use either 'newer' or 'older')"
             )
         try:
             age = int(options.get("age", "7"))
@@ -508,7 +506,7 @@ class DateSet(EverythingSet):
         mode = options.get("mode", "older")
         if str(mode).lower() not in ["newer", "older"]:
             raise SetConfigError(
-                _("invalid 'mode' value %s (use either 'newer' or 'older')") % mode
+                f"invalid 'mode' value {mode} (use either 'newer' or 'older')"
             )
 
         formats = []
@@ -544,16 +542,14 @@ class DateSet(EverythingSet):
                 date = int(date)
             except (KeyError, ValueError):
                 raise SetConfigError(
-                    _("cannot determine installation date of package %s") % package
+                    f"cannot determine installation date of package {package}"
                 )
         elif setformat == "filestamp":
             filestamp = options.get("filestamp")
             try:
                 date = int(os.stat(filestamp).st_mtime)
             except (OSError, ValueError):
-                raise SetConfigError(
-                    _("cannot determine 'filestamp' of '%s'") % filestamp
-                )
+                raise SetConfigError(f"cannot determine 'filestamp' of '{filestamp}'")
         elif setformat == "seconds":
             try:
                 date = int(options.get("seconds"))
@@ -566,8 +562,7 @@ class DateSet(EverythingSet):
                 date = int(time.mktime(time.strptime(dateopt, dateformat)))
             except ValueError:
                 raise SetConfigError(
-                    _("'date=%s' does not match 'dateformat=%s'")
-                    % (dateopt, dateformat)
+                    f"'date={dateopt}' does not match 'dateformat={dateformat}'"
                 )
         return DateSet(vardb=vardbapi, date=date, mode=mode)
 

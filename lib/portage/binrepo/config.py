@@ -58,7 +58,7 @@ class BinRepoConfigLoader(Mapping):
             parser = self._parse(paths, parser_defaults)
         except ConfigParserError as e:
             writemsg(
-                _("!!! Error while reading binrepo config file: %s\n") % e,
+                f"!!! Error while reading binrepo config file: {e}\n",
                 noiselevel=-1,
             )
             parser = SafeConfigParser(defaults=parser_defaults)
@@ -71,7 +71,7 @@ class BinRepoConfigLoader(Mapping):
             repo = BinRepoConfig(repo_data)
             if repo.sync_uri is None:
                 writemsg(
-                    _("!!! Missing sync-uri setting for binrepo %s\n") % (repo.name,),
+                    f"!!! Missing sync-uri setting for binrepo {repo.name}\n",
                     noiselevel=-1,
                 )
                 continue

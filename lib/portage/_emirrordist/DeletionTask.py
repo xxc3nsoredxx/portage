@@ -20,18 +20,17 @@ class DeletionTask(CompositeTask):
             recycle_path = os.path.join(self.config.options.recycle_dir, self.distfile)
             if self.config.options.dry_run:
                 logger.info(
-                    ("dry-run: move '%s' from " "distfiles to recycle") % self.distfile
+                    f"dry-run: move '{self.distfile}' from distfiles to recycle"
                 )
             else:
-                logger.debug(("move '%s' from " "distfiles to recycle") % self.distfile)
+                logger.debug(f"move '{self.distfile}' from distfiles to recycle")
                 try:
                     # note: distfile_path can be a symlink here
                     os.rename(os.path.realpath(self.distfile_path), recycle_path)
                 except OSError as e:
                     if e.errno != errno.EXDEV:
                         logger.error(
-                            ("rename %s from distfiles to " "recycle failed: %s")
-                            % (self.distfile, e)
+                            f"rename {self.distfile} from distfiles to recycle failed: {e}"
                         )
                 else:
                     self._delete_links()
@@ -51,9 +50,9 @@ class DeletionTask(CompositeTask):
         success = True
 
         if self.config.options.dry_run:
-            logger.info(("dry-run: delete '%s' from " "distfiles") % self.distfile)
+            logger.info(f"dry-run: delete '{self.distfile}' from distfiles")
         else:
-            logger.debug(("delete '%s' from " "distfiles") % self.distfile)
+            logger.debug(f"delete '{self.distfile}' from distfiles")
             try:
                 os.unlink(self.distfile_path)
             except OSError as e:
@@ -85,8 +84,7 @@ class DeletionTask(CompositeTask):
 
         else:
             logger.error(
-                ("%s copy from distfiles " "to recycle failed: %s")
-                % (self.distfile, copier.future.exception())
+                f"{self.distfile} copy from distfiles to recycle failed: {copier.future.exception()}"
             )
             success = False
 
@@ -102,7 +100,7 @@ class DeletionTask(CompositeTask):
         success = True
         for layout in self.config.layouts:
             if isinstance(layout, ContentHashLayout) and not self.distfile.digests:
-                logger.debug(("_delete_links: '%s' has " "no digests") % self.distfile)
+                logger.debug(f"_delete_links: '{self.distfile}' has no digests")
                 continue
             distfile_path = os.path.join(
                 self.config.options.distfiles, layout.get_path(self.distfile)
@@ -134,7 +132,7 @@ class DeletionTask(CompositeTask):
             except KeyError:
                 pass
             else:
-                logger.debug(("drop '%s' from " "distfiles db") % self.distfile)
+                logger.debug(f"drop '{self.distfile}' from distfiles db")
 
         if self.config.content_db is not None:
             self.config.content_db.remove(self.distfile)
@@ -145,4 +143,4 @@ class DeletionTask(CompositeTask):
             except KeyError:
                 pass
             else:
-                logger.debug(("drop '%s' from " "deletion db") % self.distfile)
+                logger.debug(f"drop '{self.distfile}' from deletion db")

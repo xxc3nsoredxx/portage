@@ -220,11 +220,11 @@ def parse_updates(mycontent):
         if len(mysplit) == 0:
             continue
         if mysplit[0] not in ("move", "slotmove"):
-            errors.append(_("ERROR: Update type not recognized '%s'") % myline)
+            errors.append(f"ERROR: Update type not recognized '{myline}'")
             continue
         if mysplit[0] == "move":
             if len(mysplit) != 3:
-                errors.append(_("ERROR: Update command invalid '%s'") % myline)
+                errors.append(f"ERROR: Update command invalid '{myline}'")
                 continue
             valid = True
             for i in (1, 2):
@@ -238,7 +238,7 @@ def parse_updates(mycontent):
                 if atom is not None:
                     mysplit[i] = atom
                 else:
-                    errors.append(_("ERROR: Malformed update entry '%s'") % myline)
+                    errors.append(f"ERROR: Malformed update entry '{myline}'")
                     valid = False
                     break
             if not valid:
@@ -246,7 +246,7 @@ def parse_updates(mycontent):
 
         if mysplit[0] == "slotmove":
             if len(mysplit) != 4:
-                errors.append(_("ERROR: Update command invalid '%s'") % myline)
+                errors.append(f"ERROR: Update command invalid '{myline}'")
                 continue
             pkg, origslot, newslot = mysplit[1], mysplit[2], mysplit[3]
             try:
@@ -259,7 +259,7 @@ def parse_updates(mycontent):
             if atom is not None:
                 mysplit[1] = atom
             else:
-                errors.append(_("ERROR: Malformed update entry '%s'") % myline)
+                errors.append(f"ERROR: Malformed update entry '{myline}'")
                 continue
 
             invalid_slot = False
@@ -274,7 +274,7 @@ def parse_updates(mycontent):
                     break
 
             if invalid_slot:
-                errors.append(_("ERROR: Malformed update entry '%s'") % myline)
+                errors.append(f"ERROR: Malformed update entry '{myline}'")
                 continue
 
         # The list of valid updates is filtered by continue statements above.

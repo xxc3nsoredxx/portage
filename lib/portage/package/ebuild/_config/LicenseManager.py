@@ -88,8 +88,7 @@ class LicenseManager:
         license_group = self._license_groups.get(group_name)
         if group_name in traversed_groups:
             writemsg(
-                _("Circular license group reference" " detected in '%s'\n")
-                % group_name,
+                f"Circular license group reference detected in '{group_name}'\n",
                 noiselevel=-1,
             )
             rValue.append("@" + group_name)
@@ -98,8 +97,7 @@ class LicenseManager:
             for l in license_group:
                 if l.startswith("-"):
                     writemsg(
-                        _("Skipping invalid element %s" " in license group '%s'\n")
-                        % (l, group_name),
+                        f"Skipping invalid element {l} in license group '{group_name}'\n",
                         noiselevel=-1,
                     )
                 else:
@@ -107,9 +105,7 @@ class LicenseManager:
         else:
             if self._license_groups and group_name not in self._undef_lic_groups:
                 self._undef_lic_groups.add(group_name)
-                writemsg(
-                    _("Undefined license group '%s'\n") % group_name, noiselevel=-1
-                )
+                writemsg(f"Undefined license group '{group_name}'\n", noiselevel=-1)
             rValue.append("@" + group_name)
         if negate:
             rValue = ["-" + token for token in rValue]

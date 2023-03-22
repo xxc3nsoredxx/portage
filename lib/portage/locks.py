@@ -269,16 +269,15 @@ def _lockfile_iteration(
                         os.close(myfd)
                         return None
                     writemsg(
-                        "%s: chown('%s', -1, %d)\n" % (e, lockfilename, portage_gid),
+                        f"{e}: chown('{lockfilename}', -1, {portage_gid})\n",
                         noiselevel=-1,
                     )
                     writemsg(
-                        _("Cannot chown a lockfile: '%s'\n") % lockfilename,
+                        f"Cannot chown a lockfile: '{lockfilename}'\n",
                         noiselevel=-1,
                     )
                     writemsg(
-                        _("Group IDs of current user: %s\n")
-                        % " ".join(str(n) for n in os.getgroups()),
+                        f"Group IDs of current user: {' '.join(str(n) for n in os.getgroups())}\n",
                         noiselevel=-1,
                     )
         finally:
@@ -288,9 +287,7 @@ def _lockfile_iteration(
         myfd = mypath
 
     else:
-        raise ValueError(
-            _("Unknown type passed in '%s': '%s'") % (type(mypath), mypath)
-        )
+        raise ValueError(f"Unknown type passed in '{type(mypath)}': '{mypath}'")
 
     # try for a non-blocking lock, if it's held, throw a message
     # we're waiting on lockfile and use a blocking attempt.
@@ -315,9 +312,9 @@ def _lockfile_iteration(
                 out = portage.output.EOutput()
             if waiting_msg is None:
                 if isinstance(mypath, int):
-                    waiting_msg = _("waiting for lock on fd %i") % myfd
+                    waiting_msg = f"waiting for lock on fd {myfd}"
                 else:
-                    waiting_msg = _("waiting for lock on %s") % lockfilename
+                    waiting_msg = f"waiting for lock on {lockfilename}"
             if out is not None:
                 out.ebegin(waiting_msg)
             # try for the exclusive lock now.
@@ -334,13 +331,10 @@ def _lockfile_iteration(
                         if not enolock_msg_shown:
                             enolock_msg_shown = True
                             if isinstance(mypath, int):
-                                context_desc = (
-                                    _("Error while waiting " "to lock fd %i") % myfd
-                                )
+                                context_desc = f"Error while waiting to lock fd {myfd}"
                             else:
                                 context_desc = (
-                                    _("Error while waiting " "to lock '%s'")
-                                    % lockfilename
+                                    f"Error while waiting to lock '{lockfilename}'"
                                 )
                             writemsg(f"\n!!! {context_desc}: {e}\n", noiselevel=-1)
 
@@ -516,7 +510,7 @@ def unlockfile(mytuple):
 
     # myfd may be None here due to myfd = mypath in lockfile()
     if isinstance(lockfilename, str) and not os.path.exists(lockfilename):
-        writemsg(_("lockfile does not exist '%s'\n") % lockfilename, 1)
+        writemsg(f"lockfile does not exist '{lockfilename}'\n", 1)
         if myfd is not None:
             _open_fds[myfd].close()
         return False
@@ -529,7 +523,7 @@ def unlockfile(mytuple):
     except OSError:
         if isinstance(lockfilename, str):
             _open_fds[myfd].close()
-        raise OSError(_("Failed to unlock file '%s'\n") % lockfilename)
+        raise OSError(f"Failed to unlock file '{lockfilename}'\n")
 
     try:
         # This sleep call was added to allow other processes that are
@@ -548,7 +542,7 @@ def unlockfile(mytuple):
                 writemsg(_("Unlinked lockfile...\n"), 1)
                 locking_method(myfd, fcntl.LOCK_UN)
             else:
-                writemsg(_("lockfile does not exist '%s'\n") % lockfilename, 1)
+                writemsg(f"lockfile does not exist '{lockfilename}'\n", 1)
                 _open_fds[myfd].close()
                 return False
     except SystemExit:
@@ -570,8 +564,7 @@ def hardlock_name(path):
     base, tail = os.path.split(path)
     return os.path.join(
         base,
-        ".%s.hardlock-%s-%s"
-        % (tail, portage._decode_argv([os.uname()[1]])[0], portage.getpid()),
+        f".{tail}.hardlock-{portage._decode_argv([os.uname()[1]])[0]}-{portage.getpid()}",
     )
 
 
@@ -656,16 +649,15 @@ def hardlink_lockfile(
             except OSError as e:
                 if e.errno not in (errno.ENOENT, errno.ESTALE):
                     writemsg(
-                        "%s: fchown('%s', -1, %d)\n" % (e, lockfilename, portage_gid),
+                        f"{e}: fchown('{lockfilename}', -1, {portage_gid})\n",
                         noiselevel=-1,
                     )
                     writemsg(
-                        _("Cannot chown a lockfile: '%s'\n") % lockfilename,
+                        f"Cannot chown a lockfile: '{lockfilename}'\n",
                         noiselevel=-1,
                     )
                     writemsg(
-                        _("Group IDs of current user: %s\n")
-                        % " ".join(str(n) for n in os.getgroups()),
+                        f"Group IDs of current user: {' '.join(str(n) for n in os.getgroups())}\n",
                         noiselevel=-1,
                     )
                 else:
@@ -718,7 +710,7 @@ def hardlink_lockfile(
         if out is not None and not displayed_waiting_msg:
             displayed_waiting_msg = True
             if waiting_msg is None:
-                waiting_msg = _("waiting for lock on %s\n") % lockfilename
+                waiting_msg = f"waiting for lock on {lockfilename}\n"
             out.ebegin(waiting_msg)
 
         time.sleep(_HARDLINK_POLL_LATENCY)
@@ -765,7 +757,7 @@ def hardlock_cleanup(path, remove_all_locks=False):
 
                 mycount += 1
 
-    results.append(_("Found %(count)s locks") % {"count": mycount})
+    results.append(f"Found {mycount} locks")
 
     for x in mylist:
         if myhost in mylist[x] or remove_all_locks:

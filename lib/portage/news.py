@@ -167,7 +167,7 @@ class NewsManager:
                         itemid, encoding=_encodings["fs"], errors="replace"
                     )
                     writemsg_level(
-                        _("!!! Invalid encoding in news item name: '%s'\n") % itemid,
+                        f"!!! Invalid encoding in news item name: '{itemid}'\n",
                         level=logging.ERROR,
                         noiselevel=-1,
                     )

@@ -18,7 +18,7 @@ class ManifestScheduler(AsyncScheduler):
         gpg_cmd=None,
         gpg_vars=None,
         force_sign_key=None,
-        **kwargs
+        **kwargs,
     ):
         AsyncScheduler.__init__(self, **kwargs)
 
@@ -60,11 +60,9 @@ class ManifestScheduler(AsyncScheduler):
                     if repo_config.name not in disabled_repos:
                         disabled_repos.add(repo_config.name)
                         portage.writemsg(
-                            _(
-                                ">>> Skipping creating Manifest for %s%s%s; "
-                                "repository is configured to not use them\n"
-                            )
-                            % (cp, _repo_separator, repo_config.name),
+                            ">>> Skipping creating Manifest for "
+                            f"{cp}{_repo_separator}{repo_config.name}; repository "
+                            "is configured to not use them\n",
                             noiselevel=-1,
                         )
                     continue
@@ -95,8 +93,8 @@ class ManifestScheduler(AsyncScheduler):
         if task.returncode != os.EX_OK:
             if not self._terminated_tasks:
                 portage.writemsg(
-                    "Error processing %s%s%s, continuing...\n"
-                    % (task.cp, _repo_separator, task.repo_config.name),
+                    f"Error processing {task.cp}{_repo_separator}{task.repo_config.name}, "
+                    "continuing...\n",
                     noiselevel=-1,
                 )
 

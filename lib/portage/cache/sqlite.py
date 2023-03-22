@@ -69,7 +69,8 @@ class database(fs_template.FsBased):
             # Avoid potential UnicodeEncodeError in python-2.x by
             # only calling str() when it's absolutely necessary.
             s = str(s)
-        return "'%s'" % s.replace("'", "''")
+        temp_replaced = s.replace("'", "''")
+        return f"'{temp_replaced}'"
 
     @property
     def _db_cursor(self):
@@ -132,8 +133,7 @@ class database(fs_template.FsBased):
         create_statement.append("(")
         table_parameters = []
         table_parameters.append(
-            "%s INTEGER PRIMARY KEY AUTOINCREMENT"
-            % self._db_table["packages"]["package_id"]
+            f"{self._db_table['packages']['package_id']} INTEGER PRIMARY KEY AUTOINCREMENT"
         )
         table_parameters.append(f"{self._db_table['packages']['package_key']} TEXT")
         for k in self._allowed_keys:
@@ -155,11 +155,11 @@ class database(fs_template.FsBased):
                     if missing_keys:
                         for k in sorted(missing_keys):
                             cursor.execute(
-                                "ALTER TABLE %s ADD COLUMN %s TEXT"
-                                % (self._db_table["packages"]["table_name"], k)
+                                f"ALTER TABLE {self._db_table['packages']['table_name']} "
+                                f"ADD COLUMN {k} TEXT"
                             )
                 else:
-                    writemsg(_("sqlite: dropping old table: %s\n") % v["table_name"])
+                    writemsg(f"sqlite: dropping old table: {v['table_name']}\n")
                     cursor.execute(f"DROP TABLE {v['table_name']}")
                     cursor.execute(v["create"])
             else:
@@ -169,8 +169,8 @@ class database(fs_template.FsBased):
         """return true/false dependant on a tbl existing"""
         cursor = self._db_cursor
         cursor.execute(
-            'SELECT name FROM sqlite_master WHERE type="table" AND name=%s'
-            % self._db_escape_string(table_name)
+            "SELECT name FROM sqlite_master "
+            f'WHERE type="table" AND name={self._db_escape_string(table_name)}'
         )
         return len(cursor.fetchall()) == 1
 
@@ -178,8 +178,7 @@ class database(fs_template.FsBased):
         """return true/false dependant on a tbl existing"""
         cursor = self._db_cursor
         cursor.execute(
-            "SELECT sql FROM sqlite_master WHERE name=%s"
-            % self._db_escape_string(table_name)
+            f"SELECT sql FROM sqlite_master WHERE name={self._db_escape_string(table_name)}"
         )
         return cursor.fetchall()[0][0]
 
@@ -188,12 +187,11 @@ class database(fs_template.FsBased):
         if statement == self._db_table["packages"]["create"]:
             return True, missing_keys
 
+        table_name = self._db_table["packages"]["table_name"]
+        package_id = self._db_table["packages"]["package_id"]
         m = re.match(
-            r"^\s*CREATE\s*TABLE\s*%s\s*\(\s*%s\s*INTEGER\s*PRIMARY\s*KEY\s*AUTOINCREMENT\s*,(.*)\)\s*$"
-            % (
-                self._db_table["packages"]["table_name"],
-                self._db_table["packages"]["package_id"],
-            ),
+            rf"^\s*CREATE\s*TABLE\s*{table_name}\s*\(\s*"
+            rf"{package_id}\s*INTEGER\s*PRIMARY\s*KEY\s*AUTOINCREMENT\s*,(.*)\)\s*$",
             statement,
         )
         if m is None:
@@ -224,7 +222,7 @@ class database(fs_template.FsBased):
         page_size = int(cursor.fetchone()[0])
         # number of pages, sqlite default is 2000
         cache_size = cache_bytes // page_size
-        cursor.execute("PRAGMA cache_size = %d" % cache_size)
+        cursor.execute(f"PRAGMA cache_size = {cache_size}")
         cursor.execute("PRAGMA cache_size")
         actual_cache_size = int(cursor.fetchone()[0])
         del cursor
@@ -239,7 +237,7 @@ class database(fs_template.FsBased):
 
     def _db_init_synchronous(self, synchronous):
         cursor = self._db_cursor
-        cursor.execute("PRAGMA synchronous = %d" % synchronous)
+        cursor.execute(f"PRAGMA synchronous = {synchronous}")
         cursor.execute("PRAGMA synchronous")
         actual_synchronous = int(cursor.fetchone()[0])
         del cursor
@@ -255,12 +253,8 @@ class database(fs_template.FsBased):
     def _getitem(self, cpv):
         cursor = self._db_cursor
         cursor.execute(
-            "select * from %s where %s=%s"
-            % (
-                self._db_table["packages"]["table_name"],
-                self._db_table["packages"]["package_key"],
-                self._db_escape_string(cpv),
-            )
+            f"select * from {self._db_table['packages']['table_name']} "
+            f"where {self._db_table['packages']['package_key']}={self._db_escape_string(cpv)}"
         )
         result = cursor.fetchall()
         if len(result) == 1:
@@ -315,31 +309,16 @@ class database(fs_template.FsBased):
     def _delitem(self, cpv):
         cursor = self._db_cursor
         cursor.execute(
-            "DELETE FROM %s WHERE %s=%s"
-            % (
-                self._db_table["packages"]["table_name"],
-                self._db_table["packages"]["package_key"],
-                self._db_escape_string(cpv),
-            )
+            f"DELETE FROM {self._db_table['packages']['table_name']} "
+            f"WHERE {self._db_table['packages']['package_key']}={self._db_escape_string(cpv)}"
         )
 
     def __contains__(self, cpv):
         cursor = self._db_cursor
         cursor.execute(
-            " ".join(
-                [
-                    "SELECT %s FROM %s"
-                    % (
-                        self._db_table["packages"]["package_id"],
-                        self._db_table["packages"]["table_name"],
-                    ),
-                    "WHERE %s=%s"
-                    % (
-                        self._db_table["packages"]["package_key"],
-                        self._db_escape_string(cpv),
-                    ),
-                ]
-            )
+            f"SELECT {self._db_table['packages']['package_id']} "
+            f"FROM {self._db_table['packages']['table_name']} "
+            f"WHERE {self._db_table['packages']['package_key']}={self._db_escape_string(cpv)}"
         )
         result = cursor.fetchall()
         if len(result) == 0:
@@ -352,11 +331,8 @@ class database(fs_template.FsBased):
         """generator for walking the dir struct"""
         cursor = self._db_cursor
         cursor.execute(
-            "SELECT %s FROM %s"
-            % (
-                self._db_table["packages"]["package_key"],
-                self._db_table["packages"]["table_name"],
-            )
+            f"SELECT {self._db_table['packages']['package_key']} "
+            f"FROM {self._db_table['packages']['table_name']}"
         )
         result = cursor.fetchall()
         key_list = [x[0] for x in result]

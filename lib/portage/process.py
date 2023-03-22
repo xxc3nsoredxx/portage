@@ -748,7 +748,7 @@ def _exec(
     # it is done before we start forking children
     if cgroup:
         with open(os.path.join(cgroup, "cgroup.procs"), "a") as f:
-            f.write("%d\n" % portage.getpid())
+            f.write(f"{portage.getpid()}\n")
 
     # Unshare (while still uid==0)
     if unshare_net or unshare_ipc or unshare_mount or unshare_pid:
@@ -778,11 +778,8 @@ def _exec(
                             involved_features.append("pid-sandbox")
 
                         writemsg(
-                            'Unable to unshare: %s (for FEATURES="%s")\n'
-                            % (
-                                errno.errorcode.get(errno_value, "?"),
-                                " ".join(involved_features),
-                            ),
+                            f"Unable to unshare: {errno.errorcode.get(errno_value, '?')} "
+                            f'(for FEATURES="{" ".join(involved_features)}")\n',
                             noiselevel=-1,
                         )
                     else:
@@ -848,7 +845,7 @@ def _exec(
                             if mount_ret != 0:
                                 # TODO: should it be fatal maybe?
                                 writemsg(
-                                    "Unable to mark mounts slave: %d\n" % (mount_ret,),
+                                    f"Unable to mark mounts slave: {mount_ret}\n",
                                     noiselevel=-1,
                                 )
                         if unshare_pid:
@@ -858,7 +855,7 @@ def _exec(
                             if mount_ret != 0:
                                 # can't proceed with shared /proc
                                 writemsg(
-                                    "Unable to mark /proc slave: %d\n" % (mount_ret,),
+                                    f"Unable to mark /proc slave: {mount_ret}\n",
                                     noiselevel=-1,
                                 )
                                 os._exit(1)
@@ -869,7 +866,7 @@ def _exec(
                             mount_ret = s.wait()
                             if mount_ret != 0:
                                 writemsg(
-                                    "Unable to mount new /proc: %d\n" % (mount_ret,),
+                                    f"Unable to mount new /proc: {mount_ret}\n",
                                     noiselevel=-1,
                                 )
                                 os._exit(1)
@@ -893,8 +890,8 @@ def _exec(
                                         )
                             except Exception as e:
                                 writemsg(
-                                    'Unable to set hostname: %s (for FEATURES="network-sandbox")\n'
-                                    % (e,),
+                                    f"Unable to set hostname: {e} "
+                                    '(for FEATURES="network-sandbox")\n',
                                     noiselevel=-1,
                                 )
                             _configure_loopback_interface()

@@ -90,7 +90,7 @@ class Config:
     def _open_log(self, log_desc, log_path, mode):
         if log_path is None or getattr(self.options, "dry_run", False):
             log_func = logger.info
-            line_format = "%s: %%s" % log_desc
+            line_format = f"{log_desc}: %s"
             add_newline = False
             if log_path is not None:
                 logger.warning(f"dry-run: {log_desc} log redirected to logging.info")

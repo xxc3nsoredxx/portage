@@ -29,7 +29,7 @@ def getmaskingreason(
         portdb = portage.portdb
     mysplit = catpkgsplit(mycpv)
     if not mysplit:
-        raise ValueError(_("invalid CPV: %s") % mycpv)
+        raise ValueError(f"invalid CPV: {mycpv}")
 
     if metadata is None:
         db_keys = list(portdb._aux_cache_keys)

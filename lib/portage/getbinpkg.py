@@ -130,7 +130,7 @@ def create_conn(baseurl, conn=None):
     parts = baseurl.split("://", 1)
     if len(parts) != 2:
         raise ValueError(
-            _("Provided URI does not " "contain protocol identifier. '%s'") % baseurl
+            f"Provided URI does not contain protocol identifier. '{baseurl}'"
         )
     protocol, url = parts
     del parts
@@ -217,7 +217,7 @@ def create_conn(baseurl, conn=None):
             t.connect(username=username, password=password)
             conn = paramiko.SFTPClient.from_transport(t)
         else:
-            raise NotImplementedError(_("%s is not a supported protocol.") % protocol)
+            raise NotImplementedError(f"{protocol} is not a supported protocol.")
 
     return (conn, protocol, address, http_params, http_headers)
 
@@ -405,7 +405,7 @@ def dir_get_list(baseurl, conn=None):
             import portage.exception
 
             raise portage.exception.PortageException(
-                _("Unable to get listing: %s %s") % (rc, msg)
+                f"Unable to get listing: {rc} {msg}"
             )
     elif protocol == "ftp":
         if address[-1] == "/":
@@ -419,7 +419,7 @@ def dir_get_list(baseurl, conn=None):
     elif protocol == "sftp":
         listing = conn.listdir(address)
     else:
-        raise TypeError(_("Unknown protocol. '%s'") % protocol)
+        raise TypeError(f"Unknown protocol. '{protocol}'")
 
     if not keepconnection:
         conn.close()
@@ -582,7 +582,7 @@ def file_get_lib(baseurl, dest, conn=None):
             finally:
                 f.close()
     else:
-        raise TypeError(_("Unknown protocol. '%s'") % protocol)
+        raise TypeError(f"Unknown protocol. '{protocol}'")
 
     if not keepconnection:
         conn.close()

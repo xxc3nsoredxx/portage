@@ -128,9 +128,8 @@ class LocationsManager:
                     # that can be used for backward compatibility with
                     # old software.
                     writemsg(
-                        "!!! %s\n"
-                        % _("Found 2 make.profile dirs: " "using '%s', ignoring '%s'")
-                        % (self.profile_path, deprecated_profile_path),
+                        f"!!! Found 2 make.profile dirs: using '{self.profile_path}', "
+                        f"ignoring '{deprecated_profile_path}'\n",
                         noiselevel=-1,
                     )
             else:
@@ -157,7 +156,7 @@ class LocationsManager:
             except ParseError as e:
                 if not portage._sync_mode:
                     writemsg(
-                        _("!!! Unable to parse profile: '%s'\n") % self.profile_path,
+                        f"!!! Unable to parse profile: '{self.profile_path}'\n",
                         noiselevel=-1,
                     )
                     writemsg(f"!!! ParseError: {str(e)}\n", noiselevel=-1)
@@ -193,8 +192,7 @@ class LocationsManager:
     def _check_var_directory(self, varname, var):
         if not isdir_raise_eaccess(var):
             writemsg(
-                _("!!! Error: %s='%s' is not a directory. " "Please correct this.\n")
-                % (varname, var),
+                f"!!! Error: {varname}='{var}' is not a directory. Please correct this.\n",
                 noiselevel=-1,
             )
             raise DirectoryNotFound(var)
@@ -232,11 +230,7 @@ class LocationsManager:
         else:
             if not eapi_is_supported(eapi):
                 raise ParseError(
-                    _("Profile contains unsupported " "EAPI '%s': '%s'")
-                    % (
-                        eapi,
-                        os.path.realpath(eapi_file),
-                    )
+                    f"Profile contains unsupported EAPI '{eapi}': '{os.path.realpath(eapi_file)}'"
                 )
         finally:
             if f is not None:
@@ -275,29 +269,23 @@ class LocationsManager:
                 x for x in offenders if os.path.isdir(os.path.join(currentPath, x))
             )
             if offenders:
+                temp_joined = "\n\t".join(offenders)
                 warnings.warn(
-                    _(
-                        "\nThe selected profile is implicitly using the 'portage-1' format:\n"
-                        "\tprofile = %(profile_path)s\n"
-                        "But this repository is not using that format:\n"
-                        "\trepo = %(repo_name)s\n"
-                        "This will break in the future.  Please convert these dirs to files:\n"
-                        "\t%(files)s\n"
-                        "Or, add this line to the repository's layout.conf:\n"
-                        "\tprofile-formats = portage-1"
-                    )
-                    % dict(
-                        profile_path=currentPath,
-                        repo_name=repo_loc,
-                        files="\n\t".join(offenders),
-                    )
+                    "\nThe selected profile is implicitly using the 'portage-1' format:\n"
+                    f"\tprofile = {currentPath}\n"
+                    "But this repository is not using that format:\n"
+                    f"\trepo = {repo_loc}\n"
+                    "This will break in the future.  Please convert these dirs to files:\n"
+                    f"\t{temp_joined}\n"
+                    "Or, add this line to the repository's layout.conf:\n"
+                    "\tprofile-formats = portage-1"
                 )
 
         parentsFile = os.path.join(currentPath, "parent")
         if exists_raise_eaccess(parentsFile):
             parents = grabfile(parentsFile)
             if not parents:
-                raise ParseError(_("Empty parent file: '%s'") % parentsFile)
+                raise ParseError(f"Empty parent file: '{parentsFile}'")
             for parentPath in parents:
                 abs_parent = parentPath[:1] == os.sep
                 if not abs_parent and allow_parent_colon:
@@ -324,7 +312,7 @@ class LocationsManager:
                     )
                 else:
                     raise ParseError(
-                        _("Parent '%s' not found: '%s'") % (parentPath, parentsFile)
+                        f"Parent '{parentPath}' not found: '{parentsFile}'"
                     )
 
         self.profiles.append(currentPath)
@@ -347,9 +335,7 @@ class LocationsManager:
 
         if colon == 0:
             if repo_loc is None:
-                raise ParseError(
-                    _("Parent '%s' not found: '%s'") % (parentPath, parentsFile)
-                )
+                raise ParseError(f"Parent '{parentPath}' not found: '{parentsFile}'")
             else:
                 parentPath = normalize_path(
                     os.path.join(repo_loc, "profiles", parentPath[colon + 1 :])
@@ -359,9 +345,7 @@ class LocationsManager:
             try:
                 p_repo_loc = repositories.get_location_for_name(p_repo_name)
             except KeyError:
-                raise ParseError(
-                    _("Parent '%s' not found: '%s'") % (parentPath, parentsFile)
-                )
+                raise ParseError(f"Parent '{parentPath}' not found: '{parentsFile}'")
             else:
                 parentPath = normalize_path(
                     os.path.join(p_repo_loc, "profiles", parentPath[colon + 1 :])
@@ -385,11 +369,7 @@ class LocationsManager:
 
         if self.sysroot != "/" and self.target_root == "/":
             writemsg(
-                _(
-                    "!!! Error: SYSROOT (currently %s) must "
-                    "be set to / when ROOT is /.\n"
-                )
-                % self.sysroot,
+                f"!!! Error: SYSROOT (currently {self.sysroot}) must be set to / when ROOT is /.\n",
                 noiselevel=-1,
             )
             raise InvalidLocation(self.sysroot)

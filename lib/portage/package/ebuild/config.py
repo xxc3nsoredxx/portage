@@ -451,9 +451,8 @@ class config:
 
             if make_conf_count == 2:
                 writemsg(
-                    "!!! %s\n"
-                    % _("Found 2 make.conf files, using both '%s' and '%s'")
-                    % tuple(make_conf_paths),
+                    "!!! Found 2 make.conf files, "
+                    f"using both '{make_conf_paths[0]}' and '{make_conf_paths[0]}'\n",
                     noiselevel=-1,
                 )
 
@@ -513,12 +512,8 @@ class config:
                 # that can be used for backward compatibility with
                 # old software.
                 writemsg(
-                    "!!! %s\n"
-                    % _(
-                        "Found obsolete make.globals file: "
-                        "'%s', (using '%s' instead)"
-                    )
-                    % (old_make_globals, make_globals_path),
+                    "!!! Found obsolete make.globals file: "
+                    f"'{old_make_globals}', (using '{make_globals_path}' instead)\n",
                     noiselevel=-1,
                 )
 
@@ -673,8 +668,7 @@ class config:
                         new_ov.append(portage._shell_quote(ov))
                     else:
                         writemsg(
-                            _("!!! Invalid PORTDIR_OVERLAY" " (not a dir): '%s'\n")
-                            % ov,
+                            f"!!! Invalid PORTDIR_OVERLAY (not a dir): '{ov}'\n",
                             noiselevel=-1,
                         )
 
@@ -1017,12 +1011,7 @@ class config:
                     else:
                         # TODO: bail out?
                         writemsg(
-                            (
-                                _("!!! package.provided not allowed in EAPI %s: ")
-                                % x.eapi
-                            )
-                            + x.location
-                            + "\n",
+                            f"!!! package.provided not allowed in EAPI {x.eapi}: {x.location}\n",
                             noiselevel=-1,
                         )
 
@@ -1032,7 +1021,7 @@ class config:
                 myline = pkgprovidedlines[x]
                 if not isvalidatom("=" + myline):
                     writemsg(
-                        _("Invalid package name in package.provided: %s\n") % myline,
+                        f"Invalid package name in package.provided: {myline}\n",
                         noiselevel=-1,
                     )
                     has_invalid_data = True
@@ -1131,11 +1120,8 @@ class config:
                     self[var] = str(int(self.get(var, default_val)))
                 except ValueError:
                     writemsg(
-                        _(
-                            "!!! %s='%s' is not a valid integer.  "
-                            "Falling back to %s.\n"
-                        )
-                        % (var, self[var], default_val),
+                        f"!!! {var}='{self[var]}' is not a valid integer.  "
+                        f"Falling back to {default_val}.\n",
                         noiselevel=-1,
                     )
                     self[var] = default_val
@@ -1213,8 +1199,8 @@ class config:
             "PKG_CONFIG_.*",
         )
 
-        broot_only_variables_re = re.compile(r"^(%s)$" % "|".join(broot_only_variables))
-        eroot_only_variables_re = re.compile(r"^(%s)$" % "|".join(eroot_only_variables))
+        broot_only_variables_re = re.compile(rf"^({'|'.join(broot_only_variables)})$")
+        eroot_only_variables_re = re.compile(rf"^({'|'.join(eroot_only_variables)})$")
 
         broot_env_d_path = os.path.join(broot or "/", "etc", "profile.env")
         eroot_env_d_path = os.path.join(eroot or "/", "etc", "profile.env")
@@ -1271,7 +1257,7 @@ class config:
                 if not valid:
                     if v_split:
                         writemsg_level(
-                            _("%s setting is invalid: '%s'\n") % (k, v),
+                            f"{k} setting is invalid: '{v}'\n",
                             level=logging.ERROR,
                             noiselevel=-1,
                         )
@@ -1284,11 +1270,7 @@ class config:
                         if not default_valid:
                             if v_split:
                                 writemsg_level(
-                                    _(
-                                        "%s setting from make.globals"
-                                        + " is invalid: '%s'\n"
-                                    )
-                                    % (k, v),
+                                    f"{k} setting from make.globals is invalid: '{v}'\n",
                                     level=logging.ERROR,
                                     noiselevel=-1,
                                 )
@@ -1330,7 +1312,7 @@ class config:
                 ensure_dirs(mydir, gid=gid, mode=mode, mask=modemask)
             except PortageException as e:
                 writemsg(
-                    _("!!! Directory initialization failed: '%s'\n") % mydir,
+                    f"!!! Directory initialization failed: '{mydir}'\n",
                     noiselevel=-1,
                 )
                 writemsg(f"!!! {str(e)}\n", noiselevel=-1)
@@ -1426,7 +1408,7 @@ class config:
                     and group not in ("*", "~*", "**")
                 ):
                     writemsg(
-                        _("!!! INVALID ACCEPT_KEYWORDS: %s\n") % str(group),
+                        f"!!! INVALID ACCEPT_KEYWORDS: {str(group)}\n",
                         noiselevel=-1,
                     )
 
@@ -1463,15 +1445,12 @@ class config:
                 )
 
             writemsg(
-                _(
-                    "\n\n!!! %s is not a symlink and will probably prevent most merges.\n"
-                )
-                % abs_profile_path,
+                f"\n\n!!! {abs_profile_path} is not a symlink "
+                "and will probably prevent most merges.\n",
                 noiselevel=-1,
             )
             writemsg(
-                _("!!! It should point into a profile within %s/profiles/\n")
-                % self["PORTDIR"]
+                f"!!! It should point into a profile within {self['PORTDIR']}/profiles/\n"
             )
             writemsg(
                 _(
@@ -1554,7 +1533,7 @@ class config:
             if binpkg_format not in SUPPORTED_GENTOO_BINPKG_FORMATS:
                 writemsg(
                     "!!! BINPKG_FORMAT contains invalid or "
-                    "unsupported format: %s" % binpkg_format,
+                    f"unsupported format: {binpkg_format}",
                     noiselevel=-1,
                 )
 
@@ -1565,7 +1544,7 @@ class config:
             except KeyError as e:
                 writemsg(
                     "!!! BINPKG_COMPRESS contains invalid or "
-                    "unsupported compression method: %s" % e.args[0],
+                    f"unsupported compression method: {e.args[0]}",
                     noiselevel=-1,
                 )
             else:
@@ -1587,16 +1566,15 @@ class config:
                 except IndexError as e:
                     writemsg(
                         "!!! BINPKG_COMPRESS contains invalid or "
-                        "unsupported compression method: %s" % e.args[0],
+                        f"unsupported compression method: {e.args[0]}",
                         noiselevel=-1,
                     )
                 else:
                     if portage.process.find_binary(compression_binary) is None:
                         missing_package = compression["package"]
                         writemsg(
-                            "!!! BINPKG_COMPRESS unsupported %s. "
-                            "Missing package: %s"
-                            % (binpkg_compression, missing_package),
+                            f"!!! BINPKG_COMPRESS unsupported {binpkg_compression}. "
+                            f"Missing package: {missing_package}",
                             noiselevel=-1,
                         )
 
@@ -1633,7 +1611,7 @@ class config:
         if key and key in self.configdict["env"]:
             self.backupenv[key] = copy.deepcopy(self.configdict["env"][key])
         else:
-            raise KeyError(_("No such key defined in environment: %s") % key)
+            raise KeyError(f"No such key defined in environment: {key}")
 
     def reset(self, keeping_pkg=0, use_cache=None):
         """
@@ -2286,8 +2264,8 @@ class config:
             )
             if penvconfig is None:
                 writemsg(
-                    "!!! %s references non-existent file: %s\n"
-                    % (os.path.join(abs_user_config, "package.env"), penvfile),
+                    f"!!! {os.path.join(abs_user_config, 'package.env')} "
+                    f"references non-existent file: {penvfile}\n",
                     noiselevel=-1,
                 )
             else:
@@ -2663,23 +2641,19 @@ class config:
                 self._accept_chost_re = re.compile(".*")
             elif len(accept_chost) == 1:
                 try:
-                    self._accept_chost_re = re.compile(r"^%s$" % accept_chost[0])
+                    self._accept_chost_re = re.compile(rf"^{accept_chost[0]}$")
                 except re.error as e:
                     writemsg(
-                        _("!!! Invalid ACCEPT_CHOSTS value: '%s': %s\n")
-                        % (accept_chost[0], e),
+                        f"!!! Invalid ACCEPT_CHOSTS value: '{accept_chost[0]}': {e}\n",
                         noiselevel=-1,
                     )
                     self._accept_chost_re = re.compile("^$")
             else:
                 try:
-                    self._accept_chost_re = re.compile(
-                        r"^(%s)$" % "|".join(accept_chost)
-                    )
+                    self._accept_chost_re = re.compile(rf"^({'|'.join(accept_chost)})$")
                 except re.error as e:
                     writemsg(
-                        _("!!! Invalid ACCEPT_CHOSTS value: '%s': %s\n")
-                        % (" ".join(accept_chost), e),
+                        f"!!! Invalid ACCEPT_CHOSTS value: '{' '.join(accept_chost)}': {e}\n",
                         noiselevel=-1,
                     )
                     self._accept_chost_re = re.compile("^$")
@@ -2807,8 +2781,7 @@ class config:
                         writemsg(
                             colorize(
                                 "BAD",
-                                _("%s values should not start with a '+': %s")
-                                % (mykey, x),
+                                f"{mykey} values should not start with a '+': {x}",
                             )
                             + "\n",
                             noiselevel=-1,
@@ -2917,7 +2890,7 @@ class config:
                     writemsg(
                         colorize(
                             "BAD",
-                            _("USE flags should not start " "with a '+': %s\n") % x,
+                            f"USE flags should not start with a '+': {x}\n",
                         ),
                         noiselevel=-1,
                     )
@@ -2975,12 +2948,8 @@ class config:
                             writemsg(
                                 colorize(
                                     "BAD",
-                                    _(
-                                        "Invalid '+' "
-                                        "operator in non-incremental variable "
-                                        "'%s': '%s'\n"
-                                    )
-                                    % (var, x),
+                                    "Invalid '+' operator in non-incremental variable "
+                                    f"'{var}': '{x}'\n",
                                 ),
                                 noiselevel=-1,
                             )
@@ -2989,12 +2958,8 @@ class config:
                             writemsg(
                                 colorize(
                                     "BAD",
-                                    _(
-                                        "Invalid '+' "
-                                        "operator in incremental variable "
-                                        "'%s': '%s'\n"
-                                    )
-                                    % (var, x),
+                                    "Invalid '+' operator in incremental variable "
+                                    f"'{var}': '{x}'\n",
                                 ),
                                 noiselevel=-1,
                             )
@@ -3004,12 +2969,8 @@ class config:
                             writemsg(
                                 colorize(
                                     "BAD",
-                                    _(
-                                        "Invalid '-' "
-                                        "operator in non-incremental variable "
-                                        "'%s': '%s'\n"
-                                    )
-                                    % (var, x),
+                                    "Invalid '-' operator in non-incremental variable "
+                                    f"'{var}': '{x}'\n",
                                 ),
                                 noiselevel=-1,
                             )
@@ -3137,12 +3098,8 @@ class config:
                 raise
             else:
                 warnings.warn(
-                    _("Passing nonexistent key %r to %s is deprecated. Use %s instead.")
-                    % (
-                        key,
-                        "portage.package.ebuild.config.config.__getitem__",
-                        "portage.package.ebuild.config.config.get",
-                    ),
+                    f"Passing nonexistent key {key!r} to portage.package.ebuild.config.config.__getitem__ "
+                    "is deprecated. Use portage.package.ebuild.config.config.get instead.",
                     DeprecationWarning,
                     stacklevel=2,
                 )
@@ -3285,7 +3242,7 @@ class config:
                 continue
             if not isinstance(myvalue, str):
                 writemsg(
-                    _("!!! Non-string value in config: %s=%s\n") % (x, myvalue),
+                    f"!!! Non-string value in config: {x}={myvalue}\n",
                     noiselevel=-1,
                 )
                 continue

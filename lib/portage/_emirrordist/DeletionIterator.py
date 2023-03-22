@@ -62,8 +62,8 @@ class DeletionIterator:
             else:
                 if exceptions:
                     logger.error(
-                        "stat failed on '%s' in distfiles: %s\n"
-                        % (filename, "; ".join(str(x) for x in exceptions))
+                        f"stat failed on '{filename}' in distfiles: "
+                        f"{'; '.join(str(x) for x in exceptions)}\n"
                     )
                 continue
 

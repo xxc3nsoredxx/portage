@@ -53,15 +53,12 @@ class MaskManager:
                 )
                 if repo_config.portage1_profiles_compat and os.path.isdir(path):
                     warnings.warn(
-                        _(
-                            "Repository '%(repo_name)s' is implicitly using "
-                            "'portage-1' profile format in its profiles/package.mask, but "
-                            "the repository profiles are not marked as that format.  This will break "
-                            "in the future.  Please either convert the following paths "
-                            "to files, or add\nprofile-formats = portage-1\nto the "
-                            "repository's layout.conf.\n"
-                        )
-                        % dict(repo_name=repo_config.name)
+                        f"Repository '{repo_config.name}' is implicitly using "
+                        "'portage-1' profile format in its profiles/package.mask, but "
+                        "the repository profiles are not marked as that format.  This will break "
+                        "in the future.  Please either convert the following paths "
+                        "to files, or add\nprofile-formats = portage-1\nto the "
+                        "repository's layout.conf.\n"
                     )
 
             return pmask_cache[loc]
@@ -106,21 +103,15 @@ class MaskManager:
                     unmatched_removals = list(unmatched_removals)
                     if len(unmatched_removals) > 3:
                         writemsg(
-                            _("--- Unmatched removal atoms in %s: %s and %s more\n")
-                            % (
-                                source_file,
-                                ", ".join("-" + x for x in unmatched_removals[:3]),
-                                len(unmatched_removals) - 3,
-                            ),
+                            f"--- Unmatched removal atoms in {source_file}: "
+                            f"{', '.join(f'-{x}' for x in unmatched_removals[:3])} "
+                            f"and {len(unmatched_removals) - 3} more\n",
                             noiselevel=-1,
                         )
                     else:
                         writemsg(
-                            _("--- Unmatched removal atom(s) in %s: %s\n")
-                            % (
-                                source_file,
-                                ", ".join("-" + x for x in unmatched_removals),
-                            ),
+                            f"--- Unmatched removal atom(s) in {source_file}: "
+                            f"{', '.join(f'-{x}' for x in unmatched_removals)}\n",
                             noiselevel=-1,
                         )
 

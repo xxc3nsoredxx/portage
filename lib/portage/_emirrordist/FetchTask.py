@@ -101,8 +101,7 @@ class FetchTask(CompositeTask):
             if self.config.options.dry_run:
                 if st is not None:
                     logger.info(
-                        ("dry-run: delete '%s' with " "wrong size from distfiles")
-                        % (self.distfile,)
+                        f"dry-run: delete '{self.distfile}' with wrong size from distfiles"
                     )
             else:
                 # Do the unlink in order to ensure that the path is clear,
@@ -116,13 +115,11 @@ class FetchTask(CompositeTask):
                     if self._unlink_file(unlink_path, "distfiles"):
                         if st is not None:
                             logger.debug(
-                                ("delete '%s' with " "wrong size from distfiles")
-                                % (self.distfile,)
+                                f"delete '{self.distfile}' with wrong size from distfiles"
                             )
                     else:
                         self.config.log_failure(
-                            "%s\t%s\t%s"
-                            % (self.cpv, self.distfile, "unlink failed in distfiles")
+                            f"{self.cpv}\t{self.distfile}\tunlink failed in distfiles"
                         )
                         unlink_success = False
                 if not unlink_success:
@@ -155,9 +152,7 @@ class FetchTask(CompositeTask):
             size = self.digests["size"]
             self.config.added_byte_count += size
             self.config.added_file_count += 1
-            self.config.log_success(
-                "%s\t%s\tadded %i bytes" % (self.cpv, self.distfile, size)
-            )
+            self.config.log_success(f"{self.cpv}\t{self.distfile}\tadded {size} bytes")
 
         if self._log_path is not None:
             if not self.config.options.dry_run:
@@ -357,13 +352,13 @@ class FetchTask(CompositeTask):
                     current_mirror.location, self.config.options.distfiles
                 ):
                     logger.info(
-                        ("dry-run: hardlink '%s' from %s " "to distfiles")
-                        % (self.distfile, current_mirror.name)
+                        f"dry-run: hardlink '{self.distfile}' from "
+                        f"{current_mirror.name} to distfiles"
                     )
                 else:
                     logger.info(
-                        "dry-run: copy '%s' from %s to distfiles"
-                        % (self.distfile, current_mirror.name)
+                        f"dry-run: copy '{self.distfile}' from "
+                        f"{current_mirror.name} to distfiles"
                     )
                 self._success()
                 self.returncode = os.EX_OK
@@ -379,8 +374,7 @@ class FetchTask(CompositeTask):
                     src, dest, f"{current_mirror.name} to distfiles"
                 ):
                     logger.debug(
-                        "hardlink '%s' from %s to distfiles"
-                        % (self.distfile, current_mirror.name)
+                        f"hardlink '{self.distfile}' from {current_mirror.name} to distfiles"
                     )
                     self._success()
                     self.returncode = os.EX_OK

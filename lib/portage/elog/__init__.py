@@ -193,11 +193,7 @@ def elog_process(cpv, mysettings, phasefilter=None):
                     atexit_register(m.finalize)
             except (ImportError, AttributeError) as e:
                 writemsg(
-                    _(
-                        "!!! Error while importing logging modules "
-                        'while loading "mod_%s":\n'
-                    )
-                    % str(s)
+                    f'!!! Error while importing logging modules while loading "mod_{s}":\n'
                 )
                 writemsg(f"{str(e)}\n", noiselevel=-1)
             except AlarmSignal:

@@ -70,7 +70,7 @@ def _getmaskingstatus(mycpv, settings, portdb, myrepo=None):
         try:
             mycpv = _pkg_str(mycpv, metadata=metadata, settings=settings)
         except portage.exception.InvalidData:
-            raise ValueError(_("invalid CPV: %s") % mycpv)
+            raise ValueError(f"invalid CPV: {mycpv}")
 
     rValue = []
 

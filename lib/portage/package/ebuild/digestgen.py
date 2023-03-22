@@ -76,11 +76,8 @@ def digestgen(myarchives=None, mysettings=None, myportdb=None):
 
         if not mf.allow_create:
             writemsg_stdout(
-                _(
-                    ">>> Skipping creating Manifest for %s; "
-                    "repository is configured to not use them\n"
-                )
-                % mysettings["O"]
+                f">>> Skipping creating Manifest for {mysettings['O']}; "
+                "repository is configured to not use them\n"
             )
             return 1
 
@@ -162,7 +159,7 @@ def digestgen(myarchives=None, mysettings=None, myportdb=None):
                 myebuild = os.path.join(mysettings["O"], catsplit(cpv)[1] + ".ebuild")
                 spawn_nofetch(myportdb, myebuild)
                 writemsg(
-                    _("!!! Fetch failed for %s, can't update Manifest\n") % myfile,
+                    f"!!! Fetch failed for {myfile}, can't update Manifest\n",
                     noiselevel=-1,
                 )
                 if myfile in dist_hashes and st is not None and st.st_size > 0:
@@ -174,19 +171,14 @@ def digestgen(myarchives=None, mysettings=None, myportdb=None):
                         f"ebuild --force {os.path.basename(myebuild)} manifest",
                     )
                     writemsg(
-                        (
-                            _(
-                                "!!! If you would like to forcefully replace the existing Manifest entry\n"
-                                "!!! for %s, use the following command:\n"
-                            )
-                            % myfile
-                        )
-                        + f"!!!    {cmd}\n",
+                        "!!! If you would like to forcefully replace the existing Manifest entry\n"
+                        f"!!! for {myfile}, use the following command:\n"
+                        f"!!!    {cmd}\n",
                         noiselevel=-1,
                     )
                 return 0
 
-        writemsg_stdout(_(">>> Creating Manifest for %s\n") % mysettings["O"])
+        writemsg_stdout(f">>> Creating Manifest for {mysettings['O']}\n")
         try:
             mf.create(
                 assumeDistHashesSometimes=True,
@@ -194,17 +186,17 @@ def digestgen(myarchives=None, mysettings=None, myportdb=None):
             )
         except FileNotFound as e:
             writemsg(
-                _("!!! File %s doesn't exist, can't update Manifest\n") % e,
+                f"!!! File {e} doesn't exist, can't update Manifest\n",
                 noiselevel=-1,
             )
             return 0
         except PortagePackageException as e:
-            writemsg(("!!! %s\n") % (e,), noiselevel=-1)
+            writemsg(f"!!! {e}\n", noiselevel=-1)
             return 0
         try:
             mf.write(sign=False)
         except PermissionDenied as e:
-            writemsg(_("!!! Permission Denied: %s\n") % (e,), noiselevel=-1)
+            writemsg(f"!!! Permission Denied: {e}\n", noiselevel=-1)
             return 0
         if "assume-digests" not in mysettings.features:
             distlist = list(mf.fhashdict.get("DIST", {}))

@@ -42,10 +42,8 @@ class StaticFileSet(EditablePackageSet):
         self.loader = ItemFileLoader(self._filename, self._validate)
         if greedy and not dbapi:
             self.errors.append(
-                _(
-                    "%s configured as greedy set, but no dbapi instance passed in constructor"
-                )
-                % self._filename
+                f"{self._filename} configured as greedy set, "
+                "but no dbapi instance passed in constructor"
             )
             greedy = False
         self.greedy = greedy
@@ -125,7 +123,7 @@ class StaticFileSet(EditablePackageSet):
                 )
             except KeyError:
                 raise SetConfigError(
-                    _("Could not find repository '%s'") % match.groupdict()["reponame"]
+                    f"Could not find repository '{match.groupdict()['reponame']}'"
                 )
         return StaticFileSet(filename, greedy=greedy, dbapi=trees["vartree"].dbapi)
 
@@ -151,7 +149,7 @@ class StaticFileSet(EditablePackageSet):
                 )
             except KeyError:
                 raise SetConfigError(
-                    _("Could not find repository '%s'") % match.groupdict()["reponame"]
+                    f"Could not find repository '{match.groupdict()['reponame']}'"
                 )
 
         try:
@@ -165,10 +163,8 @@ class StaticFileSet(EditablePackageSet):
                 directory, encoding=_encodings["fs"], errors="replace"
             )
             raise SetConfigError(
-                _(
-                    "Directory path contains invalid character(s) for encoding '%s': '%s'"
-                )
-                % (_encodings["fs"], directory)
+                "Directory path contains invalid character(s) for encoding "
+                f"'{_encodings['fs']}': '{directory}'"
             )
 
         vcs_dirs = [_unicode_encode(x, encoding=_encodings["fs"]) for x in VCS_DIRS]

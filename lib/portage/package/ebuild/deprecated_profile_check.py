@@ -101,25 +101,13 @@ def deprecated_profile_check(settings=None):
 
             if not new_config.profiles:
                 writemsg(
-                    "\n %s %s\n"
-                    % (
-                        colorize("WARN", "*"),
-                        _(
-                            "You must update portage before you "
-                            "can migrate to the above profile."
-                        ),
-                    ),
+                    f"\n {colorize('WARN', '*')} You must update portage "
+                    "before you can migrate to the above profile.\n",
                     noiselevel=-1,
                 )
                 writemsg(
-                    " %s %s\n\n"
-                    % (
-                        colorize("WARN", "*"),
-                        _(
-                            "In order to update portage, "
-                            "run 'emerge --oneshot sys-apps/portage'."
-                        ),
-                    ),
+                    f" {colorize('WARN', '*')} In order to update portage, "
+                    "run 'emerge --oneshot sys-apps/portage'.\n\n",
                     noiselevel=-1,
                 )
 

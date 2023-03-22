@@ -84,8 +84,7 @@ class KeywordsManager:
 
             if pkgdict and portage._internal_caller:
                 warnings.warn(
-                    _("%s is deprecated, use %s instead")
-                    % (user_kwrds_path, user_accept_kwrds_path),
+                    f"{user_kwrds_path} is deprecated, use {user_accept_kwrds_path} instead",
                     UserWarning,
                 )
 

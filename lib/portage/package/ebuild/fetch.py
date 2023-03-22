@@ -180,9 +180,6 @@ def _spawn_fetch(settings, args, **kwargs):
 
 
 _userpriv_test_write_file_cache = {}
-_userpriv_test_write_cmd_script = (
-    ">> %(file_path)s 2>/dev/null ; rval=$? ; " + "rm -f  %(file_path)s ; exit $rval"
-)
 
 
 def _userpriv_test_write_file(settings, file_path):
@@ -196,15 +193,16 @@ def _userpriv_test_write_file(settings, file_path):
     @return: True if write succeeds, False otherwise.
     """
 
-    global _userpriv_test_write_file_cache, _userpriv_test_write_cmd_script
+    global _userpriv_test_write_file_cache
     rval = _userpriv_test_write_file_cache.get(file_path)
     if rval is not None:
         return rval
 
+    quote_path = _shell_quote(file_path)
     args = [
         BASH_BINARY,
         "-c",
-        _userpriv_test_write_cmd_script % {"file_path": _shell_quote(file_path)},
+        f">> {quote_path} 2>/dev/null ; rval=$? ; rm -f {quote_path} ; exit $rval",
     ]
 
     returncode = _spawn_fetch(settings, args)
@@ -257,9 +255,7 @@ def _ensure_distdir(settings, distdir):
             # The directory has just been created
             # and therefore it must be empty.
             return
-        writemsg(
-            _("Adjusting permissions recursively: '%s'\n") % distdir, noiselevel=-1
-        )
+        writemsg(f"Adjusting permissions recursively: '{distdir}'\n", noiselevel=-1)
         if not apply_recursive_permissions(
             distdir,
             gid=dir_gid,
@@ -327,12 +323,10 @@ def _check_digests(filename, digests, show_errors=1):
     verified_ok, reason = verify_all(filename, digests)
     if not verified_ok:
         if show_errors:
+            writemsg(f"!!! Previously fetched file: '{filename}'\n", noiselevel=-1)
+            writemsg(f"!!! Reason: {reason[0]}\n", noiselevel=-1)
             writemsg(
-                _("!!! Previously fetched" " file: '%s'\n") % filename, noiselevel=-1
-            )
-            writemsg(_("!!! Reason: %s\n") % reason[0], noiselevel=-1)
-            writemsg(
-                _("!!! Got:      %s\n" "!!! Expected: %s\n") % (reason[1], reason[2]),
+                f"!!! Got:      {reason[1]}\n!!! Expected: {reason[2]}\n",
                 noiselevel=-1,
             )
         return False
@@ -359,7 +353,7 @@ def _check_distfile(filename, digests, eout, show_errors=1, hash_filter=None):
         return (False, st)
     if not digests:
         if size is not None:
-            eout.ebegin(_("%s size ;-)") % os.path.basename(filename))
+            eout.ebegin(f"{os.path.basename(filename)} size ;-)")
             eout.eend(0)
         elif st.st_size == 0:
             # Zero-byte distfiles are always invalid.
@@ -616,7 +610,7 @@ class MirrorLayoutConfig:
         vals = []
         for i in itertools.count():
             try:
-                vals.append(tuple(cp.get("structure", "%d" % i).split()))
+                vals.append(tuple(cp.get("structure", f"{i}").split()))
             except ConfigParserError:
                 break
         self.structure = tuple(vals)
@@ -829,31 +823,22 @@ def fetch(
         )
     except (ValueError, OverflowError):
         writemsg(
-            _(
-                "!!! Variable PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS"
-                " contains non-integer value: '%s'\n"
-            )
-            % mysettings["PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS"],
+            "!!! Variable PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS contains non-integer "
+            f"value: '{mysettings['PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS']}'\n",
             noiselevel=-1,
         )
         writemsg(
-            _("!!! Using PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS " "default value: %s\n")
-            % checksum_failure_max_tries,
+            f"!!! Using PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS default value: {checksum_failure_max_tries}\n",
             noiselevel=-1,
         )
         v = checksum_failure_max_tries
     if v < 1:
         writemsg(
-            _(
-                "!!! Variable PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS"
-                " contains value less than 1: '%s'\n"
-            )
-            % v,
+            f"!!! Variable PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS contains value less than 1: '{v}'\n",
             noiselevel=-1,
         )
         writemsg(
-            _("!!! Using PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS " "default value: %s\n")
-            % checksum_failure_max_tries,
+            f"!!! Using PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS default value: {checksum_failure_max_tries}\n",
             noiselevel=-1,
         )
         v = checksum_failure_max_tries
@@ -870,16 +855,12 @@ def fetch(
         match = _fetch_resume_size_re.match(fetch_resume_size)
         if match is None or (match.group(2).upper() not in _size_suffix_map):
             writemsg(
-                _(
-                    "!!! Variable PORTAGE_FETCH_RESUME_MIN_SIZE"
-                    " contains an unrecognized format: '%s'\n"
-                )
-                % mysettings["PORTAGE_FETCH_RESUME_MIN_SIZE"],
+                "!!! Variable PORTAGE_FETCH_RESUME_MIN_SIZE contains an unrecognized "
+                f"format: '{mysettings['PORTAGE_FETCH_RESUME_MIN_SIZE']}'\n",
                 noiselevel=-1,
             )
             writemsg(
-                _("!!! Using PORTAGE_FETCH_RESUME_MIN_SIZE " "default value: %s\n")
-                % fetch_resume_size_default,
+                f"!!! Using PORTAGE_FETCH_RESUME_MIN_SIZE default value: {fetch_resume_size_default}\n",
                 noiselevel=-1,
             )
             fetch_resume_size = None
@@ -1085,7 +1066,7 @@ def fetch(
                     mirrorname not in custommirrors
                     and mirrorname not in thirdpartymirrors
                 ):
-                    writemsg(_("!!! No known mirror by the name: %s\n") % (mirrorname))
+                    writemsg(f"!!! No known mirror by the name: {mirrorname}\n")
             else:
                 writemsg(_("Invalid mirror definition in SRC_URI:\n"), noiselevel=-1)
                 writemsg(f"  {myuri}\n", noiselevel=-1)
@@ -1129,16 +1110,13 @@ def fetch(
             if not os.path.isdir(mysettings["DISTDIR"]):
                 writemsg(f"!!! {str(e)}\n", noiselevel=-1)
                 writemsg(
-                    _("!!! Directory Not Found: DISTDIR='%s'\n")
-                    % mysettings["DISTDIR"],
+                    f"!!! Directory Not Found: DISTDIR='{mysettings['DISTDIR']}'\n",
                     noiselevel=-1,
                 )
                 writemsg(_("!!! Fetching will fail!\n"), noiselevel=-1)
 
     if can_fetch and not fetch_to_ro and not os.access(mysettings["DISTDIR"], os.W_OK):
-        writemsg(
-            _("!!! No write access to '%s'\n") % mysettings["DISTDIR"], noiselevel=-1
-        )
+        writemsg(f"!!! No write access to '{mysettings['DISTDIR']}'\n", noiselevel=-1)
         can_fetch = False
 
     distdir_writable = can_fetch and not fetch_to_ro
@@ -1170,12 +1148,10 @@ def fetch(
                     got,
                     expected,
                 )
+                writemsg(f"!!! Fetched file: {myfile} VERIFY FAILED!\n", noiselevel=-1)
+                writemsg(f"!!! Reason: {reason[0]}\n", noiselevel=-1)
                 writemsg(
-                    _("!!! Fetched file: %s VERIFY FAILED!\n") % myfile, noiselevel=-1
-                )
-                writemsg(_("!!! Reason: %s\n") % reason[0], noiselevel=-1)
-                writemsg(
-                    _("!!! Got:      %s\n!!! Expected: %s\n") % (reason[1], reason[2]),
+                    f"!!! Got:      {reason[1]}\n!!! Expected: {reason[2]}\n",
                     noiselevel=-1,
                 )
 
@@ -1251,11 +1227,8 @@ def fetch(
                     file_lock = lockfile(myfile_path, wantnewlockfile=1, **lock_kwargs)
                 except TryAgain:
                     writemsg(
-                        _(
-                            ">>> File '%s' is already locked by "
-                            "another fetcher. Continuing...\n"
-                        )
-                        % myfile,
+                        f">>> File '{myfile}' is already locked by "
+                        "another fetcher. Continuing...\n",
                         noiselevel=-1,
                     )
                     continue
@@ -1282,8 +1255,7 @@ def fetch(
                         except PortageException as e:
                             if not os.access(myfile_path, os.R_OK):
                                 writemsg(
-                                    _("!!! Failed to adjust permissions:" " %s\n")
-                                    % str(e),
+                                    f"!!! Failed to adjust permissions: {str(e)}\n",
                                     noiselevel=-1,
                                 )
                             del e
@@ -1302,12 +1274,8 @@ def fetch(
                 if mystat is not None:
                     if stat.S_ISDIR(mystat.st_mode):
                         writemsg_level(
-                            _(
-                                "!!! Unable to fetch file since "
-                                "a directory is in the way: \n"
-                                "!!!   %s\n"
-                            )
-                            % myfile_path,
+                            "!!! Unable to fetch file since a directory is in the way:\n"
+                            f"!!!   {myfile_path}\n",
                             level=logging.ERROR,
                             noiselevel=-1,
                         )
@@ -1321,8 +1289,7 @@ def fetch(
                             mysettings, mysettings["DISTDIR"], myfile
                         )
                         writemsg_stdout(
-                            _("Refetching... " "File renamed to '%s'\n\n")
-                            % temp_filename,
+                            f"Refetching... File renamed to '{temp_filename}'\n\n",
                             noiselevel=-1,
                         )
 
@@ -1353,13 +1320,8 @@ def fetch(
                             # Since the user may want to keep this file, rename
                             # it instead of deleting it.
                             writemsg(
-                                _(
-                                    ">>> Renaming distfile with size "
-                                    "%d (smaller than "
-                                    "PORTAGE_FETCH_RESU"
-                                    "ME_MIN_SIZE)\n"
-                                )
-                                % mystat.st_size
+                                f">>> Renaming distfile with size {mystat.st_size} "
+                                "(smaller than PORTAGE_FETCH_RESUME_MIN_SIZE)\n"
                             )
                             temp_filename = _checksum_failure_temp_file(
                                 mysettings,
@@ -1367,8 +1329,7 @@ def fetch(
                                 os.path.basename(download_path),
                             )
                             writemsg_stdout(
-                                _("Refetching... " "File renamed to '%s'\n\n")
-                                % temp_filename,
+                                f"Refetching... File renamed to '{temp_filename}'\n\n",
                                 noiselevel=-1,
                             )
                         elif mystat.st_size >= size:
@@ -1378,8 +1339,7 @@ def fetch(
                                 os.path.basename(download_path),
                             )
                             writemsg_stdout(
-                                _("Refetching... " "File renamed to '%s'\n\n")
-                                % temp_filename,
+                                f"Refetching... File renamed to '{temp_filename}'\n\n",
                                 noiselevel=-1,
                             )
 
@@ -1407,8 +1367,7 @@ def fetch(
                 # the file is not already fetched
                 if not has_space:
                     writemsg(
-                        _("!!! Insufficient space to store %s in %s\n")
-                        % (myfile, mysettings["DISTDIR"]),
+                        f"!!! Insufficient space to store {myfile} in {mysettings['DISTDIR']}\n",
                         noiselevel=-1,
                     )
 
@@ -1435,7 +1394,7 @@ def fetch(
                         mirror_file = get_mirror_url(mydir, myfile, mysettings)
                         try:
                             shutil.copyfile(mirror_file, download_path)
-                            writemsg(_("Local mirror has file: %s\n") % myfile)
+                            writemsg(f"Local mirror has file: {myfile}\n")
                             break
                         except OSError as e:
                             if e.errno not in (errno.ENOENT, errno.ESTALE):
@@ -1464,8 +1423,7 @@ def fetch(
                         except PortageException as e:
                             if not os.access(download_path, os.R_OK):
                                 writemsg(
-                                    _("!!! Failed to adjust permissions:" " %s\n")
-                                    % (e,),
+                                    f"!!! Failed to adjust permissions: {e}\n",
                                     noiselevel=-1,
                                 )
 
@@ -1506,16 +1464,13 @@ def fetch(
                             verified_ok, reason = verify_all(download_path, digests)
                             if not verified_ok:
                                 writemsg(
-                                    _("!!! Previously fetched" " file: '%s'\n")
-                                    % myfile,
+                                    f"!!! Previously fetched file: '{myfile}'\n",
                                     noiselevel=-1,
                                 )
+                                writemsg(f"!!! Reason: {reason[0]}\n", noiselevel=-1)
                                 writemsg(
-                                    _("!!! Reason: %s\n") % reason[0], noiselevel=-1
-                                )
-                                writemsg(
-                                    _("!!! Got:      %s\n" "!!! Expected: %s\n")
-                                    % (reason[1], reason[2]),
+                                    f"!!! Got:      {reason[1]}\n"
+                                    f"!!! Expected: {reason[2]}\n",
                                     noiselevel=-1,
                                 )
                                 if reason[0] == _(
@@ -1529,8 +1484,7 @@ def fetch(
                                         os.path.basename(download_path),
                                     )
                                     writemsg_stdout(
-                                        _("Refetching... " "File renamed to '%s'\n\n")
-                                        % temp_filename,
+                                        f"Refetching... File renamed to '{temp_filename}'\n\n",
                                         noiselevel=-1,
                                     )
                             else:
@@ -1585,22 +1539,16 @@ def fetch(
                     fetchcommand = mysettings.get(fetchcommand_var)
                     if fetchcommand is None:
                         writemsg_level(
-                            _(
-                                "!!! %s is unset. It should "
-                                "have been defined in\n!!! %s/make.globals.\n"
-                            )
-                            % (fetchcommand_var, global_config_path),
+                            f"!!! {fetchcommand_var} is unset. It should have been defined in\n"
+                            f"!!! {global_config_path}/make.globals.\n",
                             level=logging.ERROR,
                             noiselevel=-1,
                         )
                         return 0
                 if "${FILE}" not in fetchcommand:
                     writemsg_level(
-                        _(
-                            "!!! %s does not contain the required ${FILE}"
-                            " parameter.\n"
-                        )
-                        % fetchcommand_var,
+                        f"!!! {fetchcommand_var} does not contain the required "
+                        "${FILE} parameter.\n",
                         level=logging.ERROR,
                         noiselevel=-1,
                     )
@@ -1613,22 +1561,16 @@ def fetch(
                     resumecommand = mysettings.get(resumecommand_var)
                     if resumecommand is None:
                         writemsg_level(
-                            _(
-                                "!!! %s is unset. It should "
-                                "have been defined in\n!!! %s/make.globals.\n"
-                            )
-                            % (resumecommand_var, global_config_path),
+                            f"!!! {resumecommand_var} is unset. It should have been defined in\n"
+                            f"!!! {global_config_path}/make.globals.\n",
                             level=logging.ERROR,
                             noiselevel=-1,
                         )
                         return 0
                 if "${FILE}" not in resumecommand:
                     writemsg_level(
-                        _(
-                            "!!! %s does not contain the required ${FILE}"
-                            " parameter.\n"
-                        )
-                        % resumecommand_var,
+                        f"!!! {resumecommand_var} does not contain the required "
+                        "${FILE} parameter.\n",
                         level=logging.ERROR,
                         noiselevel=-1,
                     )
@@ -1659,25 +1601,19 @@ def fetch(
 
                         if mysize == 0:
                             writemsg(
-                                _("!!! File %s isn't fetched but unable to get it.\n")
-                                % myfile,
+                                f"!!! File {myfile} isn't fetched but unable to get it.\n",
                                 noiselevel=-1,
                             )
                         elif size is None or size > mysize:
                             writemsg(
-                                _(
-                                    "!!! File %s isn't fully fetched, but unable to complete it\n"
-                                )
-                                % myfile,
+                                f"!!! File {myfile} isn't fully fetched, "
+                                "but unable to complete it\n",
                                 noiselevel=-1,
                             )
                         else:
                             writemsg(
-                                _(
-                                    "!!! File %s is incorrect size, "
-                                    "but unable to retry.\n"
-                                )
-                                % myfile,
+                                f"!!! File {myfile} is incorrect size, "
+                                "but unable to retry.\n",
                                 noiselevel=-1,
                             )
                         return 0
@@ -1696,13 +1632,8 @@ def fetch(
                         else:
                             if distdir_writable and mystat.st_size < fetch_resume_size:
                                 writemsg(
-                                    _(
-                                        ">>> Deleting distfile with size "
-                                        "%d (smaller than "
-                                        "PORTAGE_FETCH_RESU"
-                                        "ME_MIN_SIZE)\n"
-                                    )
-                                    % mystat.st_size
+                                    f">>> Deleting distfile with size {mystat.st_size} "
+                                    "(smaller than PORTAGE_FETCH_RESUME_MIN_SIZE)\n"
                                 )
                                 try:
                                     os.unlink(download_path)
@@ -1720,7 +1651,7 @@ def fetch(
                         # normal mode:
                         locfetch = fetchcommand
                         command_var = fetchcommand_var
-                    writemsg_stdout(_(">>> Downloading '%s'\n") % _hide_url_passwd(loc))
+                    writemsg_stdout(f">>> Downloading '{_hide_url_passwd(loc)}'\n")
                     variables = {"URI": loc, "FILE": os.path.basename(download_path)}
 
                     try:
@@ -1756,8 +1687,7 @@ def fetch(
                         except PortageException as e:
                             if not os.access(download_path, os.R_OK):
                                 writemsg(
-                                    _("!!! Failed to adjust permissions:" " %s\n")
-                                    % str(e),
+                                    f"!!! Failed to adjust permissions: {str(e)}\n",
                                     noiselevel=-1,
                                 )
                             del e
@@ -1791,13 +1721,9 @@ def fetch(
                                 # contains wget's -P option where it should
                                 # instead have -O.
                                 writemsg_level(
-                                    _(
-                                        "!!! The command specified in the "
-                                        "%s variable appears to have\n!!! "
-                                        "created a directory instead of a "
-                                        "normal file.\n"
-                                    )
-                                    % command_var,
+                                    f"!!! The command specified in the {command_var} variable "
+                                    "appears to have\n"
+                                    "!!! created a directory instead of a normal file.\n",
                                     level=logging.ERROR,
                                     noiselevel=-1,
                                 )
@@ -1875,16 +1801,15 @@ def fetch(
                                 verified_ok, reason = verify_all(download_path, digests)
                                 if not verified_ok:
                                     writemsg(
-                                        _("!!! Fetched file: %s VERIFY FAILED!\n")
-                                        % myfile,
+                                        f"!!! Fetched file: {myfile} VERIFY FAILED!\n",
                                         noiselevel=-1,
                                     )
                                     writemsg(
-                                        _("!!! Reason: %s\n") % reason[0], noiselevel=-1
+                                        f"!!! Reason: {reason[0]}\n", noiselevel=-1
                                     )
                                     writemsg(
-                                        _("!!! Got:      %s\n!!! Expected: %s\n")
-                                        % (reason[1], reason[2]),
+                                        f"!!! Got:      {reason[1]}\n"
+                                        f"!!! Expected: {reason[2]}\n",
                                         noiselevel=-1,
                                     )
                                     if reason[0] == _(
@@ -1898,11 +1823,7 @@ def fetch(
                                             os.path.basename(download_path),
                                         )
                                         writemsg_stdout(
-                                            _(
-                                                "Refetching... "
-                                                "File renamed to '%s'\n\n"
-                                            )
-                                            % temp_filename,
+                                            f"Refetching... File renamed to '{temp_filename}'\n\n",
                                             noiselevel=-1,
                                         )
                                     fetched = 0
@@ -1963,14 +1884,14 @@ def fetch(
         if fetched != 2:
             if restrict_fetch and not restrict_fetch_msg:
                 restrict_fetch_msg = True
-                msg = _(
-                    "\n!!! %s/%s"
+                msg = (
+                    f"\n!!! {mysettings['CATEGORY']}/{mysettings['PF']}"
                     " has fetch restriction turned on.\n"
                     "!!! This probably means that this "
                     "ebuild's files must be downloaded\n"
                     "!!! manually.  See the comments in"
                     " the ebuild for more information.\n\n"
-                ) % (mysettings["CATEGORY"], mysettings["PF"])
+                )
                 writemsg_level(msg, level=logging.ERROR, noiselevel=-1)
             elif restrict_fetch:
                 pass
@@ -1978,12 +1899,12 @@ def fetch(
                 pass
             elif not filedict[myfile]:
                 writemsg(
-                    _("Warning: No mirrors available for file" " '%s'\n") % (myfile),
+                    f"Warning: No mirrors available for file '{myfile}'\n",
                     noiselevel=-1,
                 )
             else:
                 writemsg(
-                    _("!!! Couldn't download '%s'. Aborting.\n") % myfile, noiselevel=-1
+                    f"!!! Couldn't download '{myfile}'. Aborting.\n", noiselevel=-1
                 )
 
             if listonly:

@@ -96,8 +96,8 @@ class features_set:
                     writemsg_level(
                         colorize(
                             "BAD",
-                            _("FEATURES variable contains unknown value(s): %s")
-                            % ", ".join(sorted(unknown_features)),
+                            "FEATURES variable contains unknown value(s): "
+                            f"{', '.join(sorted(unknown_features))}",
                         )
                         + "\n",
                         level=logging.WARNING,

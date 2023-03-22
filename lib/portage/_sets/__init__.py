@@ -38,10 +38,7 @@ def get_boolean(options, name, default):
         return True
     if options[name].lower() in ("0", "no", "off", "false"):
         return False
-    raise SetConfigError(
-        _("invalid value '%(value)s' for option '%(option)s'")
-        % {"value": options[name], "option": name}
-    )
+    raise SetConfigError(f"invalid value '{options[name]}' for option '{name}'")
 
 
 class SetConfigError(Exception):
@@ -178,7 +175,7 @@ class SetConfig:
             import random
 
             while setname in parser.sections():
-                setname = "%08d" % random.randint(0, 10**10)
+                setname = f"{random.randint(0, 10**10):08}"
 
             parser.add_section(setname)
             for k, v in options.items():
@@ -189,11 +186,8 @@ class SetConfig:
                 section, "multiset"
             ):
                 self.errors.append(
-                    _(
-                        "Invalid request to reconfigure set '%(set)s' generated "
-                        "by multiset section '%(section)s'"
-                    )
-                    % {"set": setname, "section": section}
+                    f"Invalid request to reconfigure set '{setname}' generated "
+                    f"by multiset section '{section}'"
                 )
                 return
             for k, v in options.items():
@@ -224,8 +218,7 @@ class SetConfig:
                     setclass = load_mod("portage._sets." + classname)
                 except (ImportError, AttributeError):
                     self.errors.append(
-                        _("Could not import '%(class)s' for section " "'%(section)s'")
-                        % {"class": classname, "section": sname}
+                        f"Could not import '{classname}' for section '{sname}'"
                     )
                     continue
             # prepare option dict for the current section
@@ -245,15 +238,14 @@ class SetConfig:
                         )
                     except SetConfigError as e:
                         self.errors.append(
-                            _("Configuration error in section '%s': %s")
-                            % (sname, str(e))
+                            f"Configuration error in section '{sname}': {e}"
                         )
                         continue
                     for x in newsets:
                         if x in self.psets and not update:
                             self.errors.append(
-                                _("Redefinition of set '%s' (sections: '%s', '%s')")
-                                % (x, self.psets[x].creator, sname)
+                                f"Redefinition of set '{x}' "
+                                f"(sections: '{self.psets[x].creator}', '{sname}')"
                             )
                         newsets[x].creator = sname
                         if parser.has_option(
@@ -263,11 +255,8 @@ class SetConfig:
                     self.psets.update(newsets)
                 else:
                     self.errors.append(
-                        _(
-                            "Section '%(section)s' is configured as multiset, but '%(class)s' "
-                            "doesn't support that configuration"
-                        )
-                        % {"section": sname, "class": classname}
+                        f"Section '{sname}' is configured as multiset, but '{classname}' "
+                        "doesn't support that configuration"
                     )
                     continue
             else:
@@ -277,8 +266,8 @@ class SetConfig:
                     setname = sname
                 if setname in self.psets and not update:
                     self.errors.append(
-                        _("Redefinition of set '%s' (sections: '%s', '%s')")
-                        % (setname, self.psets[setname].creator, sname)
+                        f"Redefinition of set '{setname}' "
+                        f"(sections: '{self.psets[setname].creator}', '{sname}')"
                     )
                 if hasattr(setclass, "singleBuilder"):
                     try:
@@ -292,17 +281,13 @@ class SetConfig:
                             self.psets[setname].world_candidate = True
                     except SetConfigError as e:
                         self.errors.append(
-                            _("Configuration error in section '%s': %s")
-                            % (sname, str(e))
+                            f"Configuration error in section '{sname}': {e}"
                         )
                         continue
                 else:
                     self.errors.append(
-                        _(
-                            "'%(class)s' does not support individual set creation, section '%(section)s' "
-                            "must be configured as multiset"
-                        )
-                        % {"class": classname, "section": sname}
+                        f"'{classname}' does not support individual set creation, "
+                        f"section '{sname}' must be configured as multiset"
                     )
                     continue
         self._parsed = True

@@ -384,8 +384,7 @@ class vardbapi(dbapi):
         except (KeyError, ValueError):
             pass
         writemsg_level(
-            _("portage: COUNTER for %s was corrupted; " "resetting to value of 0\n")
-            % (mycpv,),
+            f"portage: COUNTER for {mycpv} was corrupted; resetting to value of 0\n",
             level=logging.ERROR,
             noiselevel=-1,
         )
@@ -720,7 +719,7 @@ class vardbapi(dbapi):
                 pass
             else:
                 writemsg(
-                    _("!!! Error loading '%s': %s\n") % (self._aux_cache_filename, e),
+                    f"!!! Error loading '{self._aux_cache_filename}': {e}\n",
                     noiselevel=-1,
                 )
             del e
@@ -1181,7 +1180,7 @@ class vardbapi(dbapi):
                     counter = int(f.readline().strip())
                 except (OverflowError, ValueError) as e:
                     writemsg(
-                        _("!!! COUNTER file is corrupt: '%s'\n") % self._counter_path,
+                        f"!!! COUNTER file is corrupt: '{self._counter_path}'\n",
                         noiselevel=-1,
                     )
                     writemsg(f"!!! {e}\n", noiselevel=-1)
@@ -1190,7 +1189,7 @@ class vardbapi(dbapi):
             # /var/cache/ are allowed to disappear.
             if e.errno != errno.ENOENT:
                 writemsg(
-                    _("!!! Unable to read COUNTER file: '%s'\n") % self._counter_path,
+                    f"!!! Unable to read COUNTER file: '{self._counter_path}'\n",
                     noiselevel=-1,
                 )
                 writemsg(f"!!! {str(e)}\n", noiselevel=-1)
@@ -1962,7 +1961,7 @@ class dblink:
         # Check validity of self.dbdir before attempting to remove it.
         if not self.dbdir.startswith(self.dbroot):
             writemsg(
-                _("portage.dblink.delete(): invalid dbdir: %s\n") % self.dbdir,
+                f"portage.dblink.delete(): invalid dbdir: {self.dbdir}\n",
                 noiselevel=-1,
             )
             return
@@ -2079,7 +2078,7 @@ class dblink:
                 # This won't happen as long the regular expression
                 # is written to only match valid entries.
                 raise AssertionError(
-                    _("required group not found " + "in CONTENTS entry: '%s'") % line
+                    f"required group not found in CONTENTS entry: '{line}'"
                 )
 
             path = m.group(base + 2)
@@ -2107,9 +2106,9 @@ class dblink:
             pkgfiles[path] = data
 
         if errors:
-            writemsg(_("!!! Parse error in '%s'\n") % contents_file, noiselevel=-1)
+            writemsg(f"!!! Parse error in '{contents_file}'\n", noiselevel=-1)
             for pos, e in errors:
-                writemsg(_("!!!   line %d: %s\n") % (pos, e), noiselevel=-1)
+                writemsg(f"!!!   line {pos}: {e}\n", noiselevel=-1)
         self.contentscache = pkgfiles
         return pkgfiles
 
@@ -2231,7 +2230,7 @@ class dblink:
                                 continue
                             obj_type = self.getcontents()[contents_key][0]
                             self._display_merge(
-                                _(">>> needed   %s %s\n") % (obj_type, contents_key),
+                                f">>> needed   {obj_type} {contents_key}\n",
                                 noiselevel=-1,
                             )
                         plib_registry.register(
@@ -2421,7 +2420,7 @@ class dblink:
                 retval = self._pre_unmerge_backup(background)
                 if retval != os.EX_OK:
                     showMessage(
-                        _("!!! FAILED prerm: quickpkg: %s\n") % retval,
+                        f"!!! FAILED prerm: quickpkg: {retval}\n",
                         level=logging.ERROR,
                         noiselevel=-1,
                     )
@@ -2437,7 +2436,7 @@ class dblink:
                 # Sometimes this happens due to corruption of the EAPI file.
                 failures += 1
                 showMessage(
-                    _("!!! FAILED prerm: %s\n") % os.path.join(self.dbdir, "EAPI"),
+                    f"!!! FAILED prerm: {os.path.join(self.dbdir, 'EAPI')}\n",
                     level=logging.ERROR,
                     noiselevel=-1,
                 )
@@ -2456,7 +2455,7 @@ class dblink:
                 if retval != os.EX_OK:
                     failures += 1
                     showMessage(
-                        _("!!! FAILED prerm: %s\n") % retval,
+                        f"!!! FAILED prerm: {retval}\n",
                         level=logging.ERROR,
                         noiselevel=-1,
                     )
@@ -2483,7 +2482,7 @@ class dblink:
                 if retval != os.EX_OK:
                     failures += 1
                     showMessage(
-                        _("!!! FAILED postrm: %s\n") % retval,
+                        f"!!! FAILED postrm: {retval}\n",
                         level=logging.ERROR,
                         noiselevel=-1,
                     )
@@ -2494,15 +2493,11 @@ class dblink:
                 if not eapi_unsupported and os.path.isfile(myebuildpath):
                     if retval != os.EX_OK:
                         msg_lines = []
-                        msg = _(
-                            "The '%(ebuild_phase)s' "
-                            "phase of the '%(cpv)s' package "
-                            "has failed with exit value %(retval)s."
-                        ) % {
-                            "ebuild_phase": ebuild_phase,
-                            "cpv": self.mycpv,
-                            "retval": retval,
-                        }
+                        msg = (
+                            f"The '{ebuild_phase}' "
+                            f"phase of the '{self.mycpv}' package "
+                            f"has failed with exit value {retval}."
+                        )
                         from textwrap import wrap
 
                         msg_lines.extend(wrap(msg, 72))
@@ -2510,14 +2505,14 @@ class dblink:
 
                         ebuild_name = os.path.basename(myebuildpath)
                         ebuild_dir = os.path.dirname(myebuildpath)
-                        msg = _(
+                        msg = (
                             "The problem occurred while executing "
-                            "the ebuild file named '%(ebuild_name)s' "
-                            "located in the '%(ebuild_dir)s' directory. "
+                            f"the ebuild file named '{ebuild_name}' "
+                            f"located in the '{ebuild_dir}' directory. "
                             "If necessary, manually remove "
                             "the environment.bz2 file and/or the "
                             "ebuild file located in that directory."
-                        ) % {"ebuild_name": ebuild_name, "ebuild_dir": ebuild_dir}
+                        )
                         msg_lines.extend(wrap(msg, 72))
                         msg_lines.append("")
 
@@ -3493,11 +3488,7 @@ class dblink:
         except CommandNotFound as e:
             self._linkmap_broken = True
             self._display_merge(
-                _(
-                    "!!! Disabling preserve-libs "
-                    "due to error: Command Not Found: %s\n"
-                )
-                % (e,),
+                f"!!! Disabling preserve-libs due to error: Command Not Found: {e}\n",
                 level=logging.ERROR,
                 noiselevel=-1,
             )
@@ -3667,11 +3658,8 @@ class dblink:
                 # contents. Such a path might belong to some other package, so
                 # it shouldn't be preserved here.
                 showMessage(
-                    _(
-                        "!!! File '%s' will not be preserved "
-                        "due to missing contents entry\n"
-                    )
-                    % (f_abs,),
+                    f"!!! File '{f_abs}' will not be preserved "
+                    "due to missing contents entry\n",
                     level=logging.ERROR,
                     noiselevel=-1,
                 )
@@ -3679,7 +3667,7 @@ class dblink:
                 continue
             new_contents[f_abs] = contents_entry
             obj_type = contents_entry[0]
-            showMessage(_(">>> needed    %s %s\n") % (obj_type, f_abs), noiselevel=-1)
+            showMessage(f">>> needed    {obj_type} {f_abs}\n", noiselevel=-1)
             # Add parent directories to contents if necessary.
             parent_dir = os.path.dirname(f_abs)
             while len(parent_dir) > len(root):
@@ -3804,11 +3792,8 @@ class dblink:
                     # This means that a symlink is in the preserved libs
                     # registry, but the actual lib it points to is not.
                     self._display_merge(
-                        _(
-                            "!!! symlink to lib is preserved, "
-                            "but not the lib itself:\n!!! '%s'\n"
-                        )
-                        % (obj,),
+                        "!!! symlink to lib is preserved, but not the lib itself:\n"
+                        f"!!! '{obj}'\n",
                         level=logging.ERROR,
                         noiselevel=-1,
                     )
@@ -3850,7 +3835,7 @@ class dblink:
                     raise
                 del e
             else:
-                showMessage(_("<<< !needed  %s %s\n") % (obj_type, obj), noiselevel=-1)
+                showMessage(f"<<< !needed  {obj_type} {obj}\n", noiselevel=-1)
 
         # Remove empty parent directories if possible.
         while parent_dirs:
@@ -3909,10 +3894,9 @@ class dblink:
         previous = time.monotonic()
         progress_shown = False
         report_interval = 1.7  # seconds
-        falign = len("%d" % totfiles)
+        falign = len(str(totfiles))
         showMessage(
-            _(" %s checking %d files for package collisions\n")
-            % (colorize("GOOD", "*"), totfiles)
+            f" {colorize('GOOD', '*')} checking {totfiles} files for package collisions\n"
         )
         for i, (f, f_type) in enumerate(
             chain(((f, "reg") for f in file_list), ((f, "sym") for f in symlink_list))
@@ -3920,8 +3904,7 @@ class dblink:
             current = time.monotonic()
             if current - previous > report_interval:
                 showMessage(
-                    _("%3d%% done,  %*d files remaining ...\n")
-                    % (i * 100 / totfiles, falign, totfiles - i)
+                    f"{i / totfiles:4.0%} done,  {totfiles - i:{falign}} files remaining ...\n"
                 )
                 previous = current
                 progress_shown = True
@@ -4288,7 +4271,7 @@ class dblink:
 
         if not os.path.isdir(srcroot):
             showMessage(
-                _("!!! Directory Not Found: D='%s'\n") % srcroot,
+                f"!!! Directory Not Found: D='{srcroot}'\n",
                 level=logging.ERROR,
                 noiselevel=-1,
             )
@@ -4347,14 +4330,8 @@ class dblink:
                 self._eqawarn(
                     "preinst",
                     [
-                        _(
-                            "QA Notice: Expected %(var_name)s='%(expected_value)s', got '%(actual_value)s'\n"
-                        )
-                        % {
-                            "var_name": var_name,
-                            "expected_value": self.settings.get(var_name, ""),
-                            "actual_value": val,
-                        }
+                        f"QA Notice: Expected {var_name}='{self.settings.get(var_name, '')}', "
+                        f"got '{val}'\n",
                     ],
                 )
 
@@ -4598,9 +4575,9 @@ class dblink:
             msg.append("")
             paths_with_newlines.sort()
             for f in paths_with_newlines:
-                msg.append("\t/%s" % (f.replace("\n", "\\n").replace("\r", "\\r")))
+                msg.append("\t/" + f.replace("\n", "\\n").replace("\r", "\\r"))
             msg.append("")
-            msg.append(_("package %s NOT merged") % self.mycpv)
+            msg.append(f"package {self.mycpv} NOT merged")
             msg.append("")
             eerror(msg)
             return 1
@@ -4622,33 +4599,26 @@ class dblink:
 
                 wrap_width = 72
                 msg = []
-                d = {"new_cpv": self.mycpv, "old_cpv": other_dblink.mycpv}
                 msg.extend(
                     wrap(
-                        _(
-                            "The '%(new_cpv)s' package will not install "
-                            "any files, but the currently installed '%(old_cpv)s'"
-                            " package has the following files: "
-                        )
-                        % d,
+                        f"The '{self.mycpv}' package will not install "
+                        f"any files, but the currently installed '{other_dblink.mycpv}'"
+                        " package has the following files: ",
                         wrap_width,
                     )
                 )
                 msg.append("")
                 msg.extend(sorted(installed_files))
                 msg.append("")
-                msg.append(_("package %s NOT merged") % self.mycpv)
+                msg.append(_(f"package {self.mycpv} NOT merged"))
                 msg.append("")
                 msg.extend(
                     wrap(
-                        _(
-                            "Manually run `emerge --unmerge =%s` if you "
-                            "really want to remove the above files. Set "
-                            'PORTAGE_PACKAGE_EMPTY_ABORT="0" in '
-                            "/etc/portage/make.conf if you do not want to "
-                            "abort in cases like this."
-                        )
-                        % other_dblink.mycpv,
+                        f"Manually run `emerge --unmerge ={other_dblink.mycpv}` if you "
+                        "really want to remove the above files. Set "
+                        'PORTAGE_PACKAGE_EMPTY_ABORT="0" in '
+                        "/etc/portage/make.conf if you do not want to "
+                        "abort in cases like this.",
                         wrap_width,
                     )
                 )
@@ -4703,10 +4673,7 @@ class dblink:
             msg.append("")
             self._elog("eerror", "preinst", msg)
 
-            msg = (
-                _("Package '%s' NOT merged due to read-only file systems.")
-                % self.settings.mycpv
-            )
+            msg = f"Package '{self.settings.mycpv}' NOT merged due to read-only file systems."
             msg += _(
                 " If necessary, refer to your elog "
                 "messages for the whole content of the above message."
@@ -4717,13 +4684,10 @@ class dblink:
 
         if internal_collisions:
             msg = (
-                _(
-                    "Package '%s' has internal collisions between non-identical files "
-                    "(located in separate directories in the installation image (${D}) "
-                    "corresponding to merged directories in the target "
-                    "filesystem (${ROOT})):"
-                )
-                % self.settings.mycpv
+                f"Package '{self.settings.mycpv}' has internal collisions between "
+                "non-identical files (located in separate directories in the installation "
+                "image (${D}) corresponding to merged directories in the target "
+                "filesystem (${ROOT})):"
             )
             msg = textwrap.wrap(msg, 70)
             msg.append("")
@@ -4741,11 +4705,8 @@ class dblink:
             self._elog("eerror", "preinst", msg)
 
             msg = (
-                _(
-                    "Package '%s' NOT merged due to internal collisions "
-                    "between non-identical files."
-                )
-                % self.settings.mycpv
+                f"Package '{self.settings.mycpv}' NOT merged due to internal collisions "
+                "between non-identical files."
             )
             msg += _(
                 " If necessary, refer to your elog messages for the whole "
@@ -4757,11 +4718,11 @@ class dblink:
         if symlink_collisions:
             # Symlink collisions need to be distinguished from other types
             # of collisions, in order to avoid confusion (see bug #409359).
-            msg = _(
-                "Package '%s' has one or more collisions "
+            msg = (
+                f"Package '{self.settings.mycpv}' has one or more collisions "
                 "between symlinks and directories, which is explicitly "
                 "forbidden by PMS section 13.4 (see bug #326685):"
-            ) % (self.settings.mycpv,)
+            )
             msg = textwrap.wrap(msg, 70)
             msg.append("")
             for f in symlink_collisions:
@@ -4812,7 +4773,7 @@ class dblink:
             msg = wrap(msg, 70)
             if collision_protect:
                 msg.append("")
-                msg.append(_("package %s NOT merged") % self.settings.mycpv)
+                msg.append(f"package {self.settings.mycpv} NOT merged")
             msg.append("")
             msg.append(_("Detected file collision(s):"))
             msg.append("")
@@ -4872,13 +4833,6 @@ class dblink:
                         [_("None of the installed" " packages claim the file(s)."), ""]
                     )
 
-            symlink_abort_msg = _(
-                "Package '%s' NOT merged since it has "
-                "one or more collisions between symlinks and directories, "
-                "which is explicitly forbidden by PMS section 13.4 "
-                "(see bug #326685)."
-            )
-
             # The explanation about the collision and how to solve
             # it may not be visible via a scrollback buffer, especially
             # if the number of file collisions is large. Therefore,
@@ -4886,24 +4840,20 @@ class dblink:
             abort = False
             if symlink_collisions:
                 abort = True
-                msg = symlink_abort_msg % (self.settings.mycpv,)
+                msg = (
+                    f"Package '{self.settings.mycpv}' NOT merged since it has "
+                    "one or more collisions between symlinks and directories, "
+                    "which is explicitly forbidden by PMS section 13.4 "
+                    "(see bug #326685)."
+                )
             elif collision_protect:
                 abort = True
-                msg = (
-                    _("Package '%s' NOT merged due to file collisions.")
-                    % self.settings.mycpv
-                )
+                msg = f"Package '{self.settings.mycpv}' NOT merged due to file collisions."
             elif protect_owned and owners:
                 abort = True
-                msg = (
-                    _("Package '%s' NOT merged due to file collisions.")
-                    % self.settings.mycpv
-                )
+                msg = f"Package '{self.settings.mycpv}' NOT merged due to file collisions."
             else:
-                msg = (
-                    _("Package '%s' merged despite file collisions.")
-                    % self.settings.mycpv
-                )
+                msg = f"Package '{self.settings.mycpv}' merged despite file collisions."
             msg += _(
                 " If necessary, refer to your elog "
                 "messages for the whole content of the above message."
@@ -4948,10 +4898,7 @@ class dblink:
                 return rval
 
         # run preinst script
-        showMessage(
-            _(">>> Merging %(cpv)s to %(destroot)s\n")
-            % {"cpv": self.mycpv, "destroot": destroot}
-        )
+        showMessage(f">>> Merging {self.mycpv} to {destroot}\n")
         phase = EbuildPhase(
             background=False,
             phase="preinst",
@@ -5077,7 +5024,7 @@ class dblink:
         # so that preserve-libs logic doesn't have
         # to account for the additional complexity of the
         # AUTOCLEAN=no mode.
-        emerge_log(_(" >>> AUTOCLEAN: %s") % (slot_atom,))
+        emerge_log(f" >>> AUTOCLEAN: {slot_atom}")
 
         others_in_slot.append(self)  # self has just been merged
         for dblnk in list(others_in_slot):
@@ -5085,7 +5032,7 @@ class dblink:
                 continue
 
             showMessage(_(">>> Safely unmerging already-installed instance...\n"))
-            emerge_log(_(" === Unmerging... (%s)") % (dblnk.mycpv,))
+            emerge_log(f" === Unmerging... ({dblnk.mycpv})")
             others_in_slot.remove(dblnk)  # dblnk will unmerge itself now
             dblnk._linkmap_broken = self._linkmap_broken
             dblnk.settings["REPLACED_BY_VERSION"] = portage.versions.cpv_getversion(
@@ -5101,9 +5048,9 @@ class dblink:
             dblnk.settings.pop("REPLACED_BY_VERSION", None)
 
             if unmerge_rval == os.EX_OK:
-                emerge_log(_(" >>> unmerge success: %s") % (dblnk.mycpv,))
+                emerge_log(f" >>> unmerge success: {dblnk.mycpv}")
             else:
-                emerge_log(_(" !!! unmerge FAILURE: %s") % (dblnk.mycpv,))
+                emerge_log(f" !!! unmerge FAILURE: {dblnk.mycpv}")
 
             self.lockdb()
             try:
@@ -5231,7 +5178,7 @@ class dblink:
             phase.start()
             a = phase.wait()
             if a == os.EX_OK:
-                showMessage(_(">>> %s merged.\n") % self.mycpv)
+                showMessage(f">>> {self.mycpv} merged.\n")
         finally:
             self.settings.pop("PORTAGE_UPDATE_ENV", None)
 
@@ -5243,7 +5190,7 @@ class dblink:
                 "eerror",
                 "postinst",
                 [
-                    _("FAILED postinst: %s") % (a,),
+                    f"FAILED postinst: {a}",
                 ],
             )
 
@@ -5279,7 +5226,7 @@ class dblink:
         x = -1
         while True:
             x += 1
-            backup_p = "%s.backup.%04d" % (p, x)
+            backup_p = f"{p}.backup.{x:4}"
             try:
                 os.lstat(backup_p)
             except OSError:
@@ -5618,10 +5565,8 @@ class dblink:
                         self._eqawarn(
                             "preinst",
                             [
-                                _(
-                                    "QA Notice: Symbolic link /%s points to /%s which does not exist."
-                                )
-                                % (relative_path, myabsto)
+                                f"QA Notice: Symbolic link /{relative_path} points to "
+                                f"/{myabsto} which does not exist.",
                             ],
                         )
 
@@ -5659,9 +5604,7 @@ class dblink:
 
                     if not stat.S_ISLNK(mydmode) and not os.access(mydest, os.W_OK):
                         pkgstuff = pkgsplit(self.pkg)
-                        writemsg(
-                            _("\n!!! Cannot write to '%s'.\n") % mydest, noiselevel=-1
-                        )
+                        writemsg(f"\n!!! Cannot write to '{mydest}'.\n", noiselevel=-1)
                         writemsg(
                             _(
                                 "!!! Please check permissions and directories for broken symlinks.\n"
@@ -5717,7 +5660,7 @@ class dblink:
                         ):
                             return 1
                         showMessage(
-                            _("bak %s %s.backup\n") % (mydest, mydest),
+                            f"bak {mydest} {mydest}.backup\n",
                             level=logging.ERROR,
                             noiselevel=-1,
                         )
@@ -6214,7 +6157,7 @@ class dblink:
                 quickpkg_binary = find_binary("quickpkg")
                 if quickpkg_binary is None:
                     self._display_merge(
-                        _("%s: command not found") % "quickpkg",
+                        "quickpkg: command not found",
                         level=logging.ERROR,
                         noiselevel=-1,
                     )
@@ -6272,7 +6215,7 @@ def merge(
         raise TypeError("settings argument is required")
     if not os.access(settings["EROOT"], os.W_OK):
         writemsg(
-            _("Permission denied: access('%s', W_OK)\n") % settings["EROOT"],
+            f"Permission denied: access('{settings['EROOT']}', W_OK)\n",
             noiselevel=-1,
         )
         return errno.EACCES

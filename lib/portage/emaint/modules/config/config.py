@@ -74,8 +74,8 @@ class CleanConfig:
         if messages:
             output.append("Not Installed:")
             output += messages
-            tot = "------------------------------------\n  Total %i Not installed"
+            tot = f"------------------------------------\n  Total {len(messages)} Not installed"
             if cleaned:
                 tot += " ...Cleaned"
-            output.append(tot % len(messages))
+            output.append(tot)
         return output

@@ -182,8 +182,8 @@ class UseManager:
         if eapi_filter is not None and not eapi_filter(eapi):
             if lines:
                 writemsg(
-                    _("--- EAPI '%s' does not support '%s': '%s'\n")
-                    % (eapi, os.path.basename(file_name), file_name),
+                    f"--- EAPI '{eapi}' does not support "
+                    f"'{os.path.basename(file_name)}': '{file_name}'\n",
                     noiselevel=-1,
                 )
             return ()
@@ -195,8 +195,7 @@ class UseManager:
                 useflag = prefixed_useflag
             if useflag_re.match(useflag) is None:
                 writemsg(
-                    _("--- Invalid USE flag in '%s': '%s'\n")
-                    % (file_name, prefixed_useflag),
+                    f"--- Invalid USE flag in '{file_name}': '{prefixed_useflag}'\n",
                     noiselevel=-1,
                 )
             else:
@@ -267,8 +266,8 @@ class UseManager:
         if eapi is not None and eapi_filter is not None and not eapi_filter(eapi):
             if file_dict:
                 writemsg(
-                    _("--- EAPI '%s' does not support '%s': '%s'\n")
-                    % (eapi, os.path.basename(file_name), file_name),
+                    f"--- EAPI '{eapi}' does not support "
+                    f"'{os.path.basename(file_name)}': '{file_name}'\n",
                     noiselevel=-1,
                 )
             return ret
@@ -292,8 +291,7 @@ class UseManager:
                     prefixed_useflag = useflag
                 if useflag_re.match(useflag) is None:
                     writemsg(
-                        _("--- Invalid USE flag for '%s' in '%s': '%s'\n")
-                        % (k, file_name, prefixed_useflag),
+                        f"--- Invalid USE flag for '{k}' in '{file_name}': '{prefixed_useflag}'\n",
                         noiselevel=-1,
                     )
                 else:

@@ -19,10 +19,9 @@ class VirtualsManager:
             return
 
         assert len(args) == 1, "VirtualsManager.__init__ takes one positional argument"
-        assert not kwargs, (
-            "unknown keyword argument(s) '%s' passed to VirtualsManager.__init__"
-            % ", ".join(kwargs)
-        )
+        assert (
+            not kwargs
+        ), f"unknown keyword argument(s) '{', '.join(kwargs)}' passed to VirtualsManager.__init__"
 
         profiles = args[0]
         self._virtuals = None
@@ -59,7 +58,7 @@ class VirtualsManager:
                         virt_atom = None
                 if virt_atom is None:
                     writemsg(
-                        _("--- Invalid virtuals atom in %s: %s\n") % (virtuals_file, k),
+                        f"--- Invalid virtuals atom in {virtuals_file}: {k}\n",
                         noiselevel=-1,
                     )
                     continue
@@ -78,8 +77,7 @@ class VirtualsManager:
                             atom = None
                     if atom is None:
                         writemsg(
-                            _("--- Invalid atom in %s: %s\n")
-                            % (virtuals_file, atom_orig),
+                            f"--- Invalid atom in {virtuals_file}: {atom_orig}\n",
                             noiselevel=-1,
                         )
                     else:

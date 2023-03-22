@@ -660,9 +660,7 @@ class binarytree:
 
             binpkg_path = self.getname(mycpv)
             if os.path.exists(binpkg_path) and not os.access(binpkg_path, os.W_OK):
-                writemsg(
-                    _("!!! Cannot update readonly binary: %s\n") % mycpv, noiselevel=-1
-                )
+                writemsg(f"!!! Cannot update readonly binary: {mycpv}\n", noiselevel=-1)
                 continue
 
             moves += 1
@@ -1012,8 +1010,7 @@ class binarytree:
                             continue
                     if not os.access(full_path, os.R_OK):
                         writemsg(
-                            _("!!! Permission denied to read " "binary package: '%s'\n")
-                            % full_path,
+                            f"!!! Permission denied to read binary package: '{full_path}'\n",
                             noiselevel=-1,
                         )
                         self.invalids.append(myfile[:-5])
@@ -1063,7 +1060,7 @@ class binarytree:
                     if not mycat or not mypf or not slot:
                         # old-style or corrupt package
                         writemsg(
-                            _("\n!!! Invalid binary package: '%s'\n") % full_path,
+                            f"\n!!! Invalid binary package: '{full_path}'\n",
                             noiselevel=-1,
                         )
                         missing_keys = []
@@ -1077,8 +1074,7 @@ class binarytree:
                         if missing_keys:
                             missing_keys.sort()
                             msg.append(
-                                _("Missing metadata key(s): %s.")
-                                % ", ".join(missing_keys)
+                                f"Missing metadata key(s): {', '.join(missing_keys)}."
                             )
                         msg.append(
                             _(
@@ -1118,8 +1114,7 @@ class binarytree:
                         invalid_name = True
                     if invalid_name:
                         writemsg(
-                            _("\n!!! Binary package name is " "invalid: '%s'\n")
-                            % full_path,
+                            f"\n!!! Binary package name is invalid: '{full_path}'\n",
                             noiselevel=-1,
                         )
                         continue
@@ -1129,8 +1124,7 @@ class binarytree:
                             build_id = int(pkg_metadata["BUILD_ID"])
                         except ValueError:
                             writemsg(
-                                _("!!! Binary package has " "invalid BUILD_ID: '%s'\n")
-                                % full_path,
+                                f"!!! Binary package has invalid BUILD_ID: '{full_path}'\n",
                                 noiselevel=-1,
                             )
                             continue
@@ -1151,19 +1145,12 @@ class binarytree:
                     mycpv = mycat + "/" + mypkg
                     if not self.dbapi._category_re.match(mycat):
                         writemsg(
-                            _(
-                                "!!! Binary package has an "
-                                "unrecognized category: '%s'\n"
-                            )
-                            % full_path,
+                            f"!!! Binary package has an unrecognized category: '{full_path}'\n",
                             noiselevel=-1,
                         )
                         writemsg(
-                            _(
-                                "!!! '%s' has a category that is not"
-                                " listed in %setc/portage/categories\n"
-                            )
-                            % (mycpv, self.settings["PORTAGE_CONFIGROOT"]),
+                            f"!!! '{mycpv}' has a category that is not listed in "
+                            f"{self.settings['PORTAGE_CONFIGROOT']}etc/portage/categories\n",
                             noiselevel=-1,
                         )
                         continue
@@ -1205,8 +1192,7 @@ class binarytree:
                         self._eval_use_flags(mycpv, d)
                     except portage.exception.InvalidDependString:
                         writemsg(
-                            _("!!! Invalid binary package: '%s'\n")
-                            % self.getname(mycpv),
+                            f"!!! Invalid binary package: '{self.getname(mycpv)}'\n",
                             noiselevel=-1,
                         )
                         self.dbapi.cpv_remove(mycpv)
@@ -1430,11 +1416,8 @@ class binarytree:
                     else:
                         if not self._pkgindex_version_supported(rmt_idx):
                             writemsg(
-                                _(
-                                    "\n\n!!! Binhost package index version"
-                                    " is not supported: '%s'\n"
-                                )
-                                % rmt_idx.header.get("VERSION"),
+                                "\n\n!!! Binhost package index version is not supported: "
+                                f"'{rmt_idx.header.get('VERSION')}'\n",
                                 noiselevel=-1,
                             )
                             pkgindex = None
@@ -1452,8 +1435,7 @@ class binarytree:
                             AlarmSignal.unregister()
                     except AlarmSignal:
                         writemsg(
-                            "\n\n!!! %s\n"
-                            % _("Timed out while closing connection to binhost"),
+                            "\n\n!!! Timed out while closing connection to binhost\n",
                             noiselevel=-1,
                         )
             except UseCachedCopyOfRemoteIndex:
@@ -1470,8 +1452,8 @@ class binarytree:
                 # This includes URLError which is raised for SSL
                 # certificate errors when PEP 476 is supported.
                 writemsg(
-                    _("\n\n!!! Error fetching binhost package" " info from '%s'\n")
-                    % _hide_url_passwd(base_url)
+                    "\n\n!!! Error fetching binhost package info from "
+                    f"'{_hide_url_passwd(base_url)}'\n"
                 )
                 # With Python 2, the EnvironmentError message may
                 # contain bytes or unicode, so use str to ensure
@@ -1495,7 +1477,7 @@ class binarytree:
                     pass
             if pkgindex is rmt_idx:
                 pkgindex.modified = False  # don't update the header
-                pkgindex.header["DOWNLOAD_TIMESTAMP"] = "%d" % time.time()
+                pkgindex.header["DOWNLOAD_TIMESTAMP"] = f"{time.time()}"
                 try:
                     ensure_dirs(os.path.dirname(pkgindex_file))
                     f = atomic_ofstream(pkgindex_file)
@@ -1633,7 +1615,7 @@ class binarytree:
         except portage.exception.InvalidDependString:
             invalid_depend = True
         if invalid_depend or not metadata.get("SLOT"):
-            writemsg(_("!!! Invalid binary package: '%s'\n") % full_path, noiselevel=-1)
+            writemsg(f"!!! Invalid binary package: '{full_path}'\n", noiselevel=-1)
             return
 
         fetched = False
@@ -2299,8 +2281,7 @@ class binarytree:
                 digests["size"] = int(metadata["SIZE"])
             except ValueError:
                 writemsg(
-                    _("!!! Malformed SIZE attribute in remote " "metadata for '%s'\n")
-                    % cpv
+                    f"!!! Malformed SIZE attribute in remote metadata for '{cpv}'\n"
                 )
 
         return digests

@@ -33,7 +33,7 @@ class ManifestTask(CompositeTask):
     )
 
     _PGP_HEADER = b"BEGIN PGP SIGNED MESSAGE"
-    _manifest_line_re = re.compile(r"^(%s) " % "|".join(MANIFEST2_IDENTIFIERS))
+    _manifest_line_re = re.compile(rf"^({'|'.join(MANIFEST2_IDENTIFIERS)}) ")
     _gpg_key_id_re = re.compile(r"^[0-9A-F]*$")
     _gpg_key_id_lengths = (8, 16, 24, 32, 40)
 
@@ -53,8 +53,7 @@ class ManifestTask(CompositeTask):
                     self.fetchlist_dict.result()
                 except InvalidDependString as e:
                     writemsg(
-                        _("!!! %s%s%s: SRC_URI: %s\n")
-                        % (self.cp, _repo_separator, self.repo_config.name, e),
+                        f"!!! {self.cp}{_repo_separator}{self.repo_config.name}: SRC_URI: {e}\n",
                         noiselevel=-1,
                     )
             self._async_wait()
@@ -211,7 +210,10 @@ class ManifestTask(CompositeTask):
         try:
             os.rename(*rename_args)
         except OSError as e:
-            writemsg("!!! rename('%s', '%s'): %s\n" % rename_args + (e,), noiselevel=-1)
+            writemsg(
+                f"!!! rename('{rename_args[0]}', '{rename_args[1]}'): {e}\n",
+                noiselevel=-1,
+            )
             try:
                 os.unlink(self._manifest_path + ".asc")
             except OSError:

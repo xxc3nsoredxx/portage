@@ -45,14 +45,13 @@ def _finalize():
     for root, key, logentries, logfile in _items:
         print()
         if root == "/":
-            printer.einfo(_("Messages for package %s:") % colorize("INFORM", key))
+            printer.einfo(f"Messages for package {colorize('INFORM', key)}:")
         else:
             printer.einfo(
-                _("Messages for package %(pkg)s merged to %(root)s:")
-                % {"pkg": colorize("INFORM", key), "root": root}
+                f"Messages for package {colorize('INFORM', key)} merged to {root}:"
             )
         if logfile is not None:
-            printer.einfo(_("Log file: %s") % colorize("INFORM", logfile))
+            printer.einfo(f"Log file: {colorize('INFORM', logfile)}")
         print()
         for phase in EBUILD_PHASES:
             if phase not in logentries:

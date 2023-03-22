@@ -203,8 +203,7 @@ def _parse_color_map(config_root="/", onerror=None):
             split_line = line.split("=")
             if len(split_line) != 2:
                 e = ParseError(
-                    _("'%s', line %s: expected exactly one occurrence of '=' operator")
-                    % (myfile, lineno)
+                    f"'{myfile}', line {lineno}: expected exactly one occurrence of '=' operator"
                 )
                 raise e
                 if onerror:
@@ -216,9 +215,7 @@ def _parse_color_map(config_root="/", onerror=None):
             k = strip_quotes(split_line[0].strip())
             v = strip_quotes(split_line[1].strip())
             if not k in _styles and not k in codes:
-                e = ParseError(
-                    _("'%s', line %s: Unknown variable: '%s'") % (myfile, lineno, k)
-                )
+                e = ParseError(f"'{myfile}', line {lineno}: Unknown variable: '{k}'")
                 if onerror:
                     onerror(e)
                 else:
@@ -238,9 +235,7 @@ def _parse_color_map(config_root="/", onerror=None):
                         elif k in codes:
                             code_list.append(codes[x])
                     else:
-                        e = ParseError(
-                            _("'%s', line %s: Undefined: '%s'") % (myfile, lineno, x)
-                        )
+                        e = ParseError(f"'{myfile}', line {lineno}: Undefined: '{x}'")
                         if onerror:
                             onerror(e)
                         else:
@@ -625,11 +620,18 @@ class EOutput:
         if self.__last_e_cmd != "ebegin":
             self.__last_e_len = 0
         if not self.quiet:
+            min_width = self.term_columns - self.__last_e_len - 1
+            # Unlike "%*s" which takes the absolute value of the minimum field
+            # width parameter and treats negative numbers as left-aligned,
+            # f-strings give a ValueError on negative numbers for string
+            # formats. Set the minimum width to 0 to avoid erroring out in
+            # pathological cases.
+            if min_width < 0:
+                min_width = 0
             out = sys.stdout
             self._write(
                 out,
-                "%*s%s\n"
-                % ((self.term_columns - self.__last_e_len - 7), "", status_brackets),
+                f"{status_brackets:>{min_width}}\n",
             )
 
     def ebegin(self, msg):
@@ -806,9 +808,9 @@ class ProgressBar:
         self._set_desc()
 
     def _set_desc(self):
-        self._desc = "{}{}".format(
-            "%s: " % self._title if self._title else "",
-            "%s" % self._label if self._label else "",
+        self._desc = f"{}{}".format(
+            f"{self._title if self._title else ''}: ",
+            f"{self._label if self._label else ''}",
         )
         if len(self._desc) > self._desc_max_length:  # truncate if too long
             self._desc = f"{self._desc[:self._desc_max_length - 3]}..."
@@ -961,7 +963,7 @@ def _init(config_root="/"):
     except FileNotFound:
         pass
     except PermissionDenied as e:
-        writemsg(_("Permission denied: '%s'\n") % str(e), noiselevel=-1)
+        writemsg(f"Permission denied: '{str(e)}'\n", noiselevel=-1)
         del e
     except PortageException as e:
         writemsg(f"{str(e)}\n", noiselevel=-1)

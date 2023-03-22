@@ -13,11 +13,8 @@ def eapi_invalid(self, cpv, repo_name, settings, eapi_var, eapi_parsed, eapi_lin
     msg = []
     msg.extend(
         textwrap.wrap(
-            (
-                "EAPI assignment in ebuild '%s%s%s' does not"
-                " conform with PMS section 7.3.1 (see bug #402167):"
-            )
-            % (cpv, _repo_separator, repo_name),
+            f"EAPI assignment in ebuild '{cpv}{_repo_separator}{repo_name}' "
+            "does not conform with PMS section 7.3.1 (see bug #402167):",
             70,
         )
     )
@@ -30,8 +27,8 @@ def eapi_invalid(self, cpv, repo_name, settings, eapi_var, eapi_parsed, eapi_lin
         )
     else:
         msg.append(
-            ("\tbash returned EAPI '%s' which does not match " "assignment on line: %s")
-            % (eapi_var, eapi_lineno)
+            f"\tbash returned EAPI '{eapi_var}' which does not match assignment "
+            f"on line: {eapi_lineno}"
         )
 
     if portage.data.secpass >= 2:

@@ -118,7 +118,7 @@ def _expand_new_virtuals(
             continue
 
         if not isinstance(x, Atom):
-            raise ParseError(_("invalid token: '%s'") % x)
+            raise ParseError(f"invalid token: '{x}'")
 
         if repoman:
             x = x._eval_qa_conditionals(use_mask, use_force)
@@ -221,12 +221,12 @@ def _expand_new_virtuals(
             pkg_kwargs["myuse"] = pkg_use_enabled(pkg)
             if edebug:
                 writemsg_level(
-                    _("Virtual Parent:      %s\n") % (pkg,),
+                    f"Virtual Parent:      {pkg}\n",
                     noiselevel=-1,
                     level=logging.DEBUG,
                 )
                 writemsg_level(
-                    _("Virtual Depstring:   %s\n") % (depstring,),
+                    f"Virtual Depstring:   {depstring}\n",
                     noiselevel=-1,
                     level=logging.DEBUG,
                 )

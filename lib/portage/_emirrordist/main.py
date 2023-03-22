@@ -288,8 +288,7 @@ def emirrordist_main(args):
         parent_dir = os.path.dirname(options.failure_log)
         if not (os.path.isdir(parent_dir) and os.access(parent_dir, os.W_OK | os.X_OK)):
             parser.error(
-                ("--failure-log '%s' parent is not a " "writable directory")
-                % options.failure_log
+                f"--failure-log '{options.failure_log}' parent is not a writable directory"
             )
 
     if options.success_log is not None:
@@ -298,8 +297,7 @@ def emirrordist_main(args):
         parent_dir = os.path.dirname(options.success_log)
         if not (os.path.isdir(parent_dir) and os.access(parent_dir, os.W_OK | os.X_OK)):
             parser.error(
-                ("--success-log '%s' parent is not a " "writable directory")
-                % options.success_log
+                f"--success-log '{options.success_log}' parent is not a writable directory"
             )
 
     if options.scheduled_deletion_log is not None:
@@ -310,8 +308,8 @@ def emirrordist_main(args):
         parent_dir = os.path.dirname(options.scheduled_deletion_log)
         if not (os.path.isdir(parent_dir) and os.access(parent_dir, os.W_OK | os.X_OK)):
             parser.error(
-                ("--scheduled-deletion-log '%s' parent is not a " "writable directory")
-                % options.scheduled_deletion_log
+                f"--scheduled-deletion-log '{options.scheduled_deletion_log}' "
+                "parent is not a writable directory"
             )
 
         if options.deletion_db is None:
@@ -334,9 +332,7 @@ def emirrordist_main(args):
             os.path.isdir(options.temp_dir)
             and os.access(options.temp_dir, os.W_OK | os.X_OK)
         ):
-            parser.error(
-                ("--temp-dir '%s' is not a " "writable directory") % options.temp_dir
-            )
+            parser.error(f"--temp-dir '{options.temp_dir}' is not a writable directory")
 
     if options.distfiles is not None:
         options.distfiles = normalize_path(os.path.abspath(options.distfiles))
@@ -346,7 +342,7 @@ def emirrordist_main(args):
             and os.access(options.distfiles, os.W_OK | os.X_OK)
         ):
             parser.error(
-                ("--distfiles '%s' is not a " "writable directory") % options.distfiles
+                f"--distfiles '{options.distfiles}' is not a writable directory"
             )
     else:
         parser.error("missing required --distfiles parameter")
@@ -361,8 +357,7 @@ def emirrordist_main(args):
             and os.path.isfile(options.mirror_overrides)
         ):
             parser.error(
-                "--mirror-overrides-file '%s' is not a readable file"
-                % options.mirror_overrides
+                f"--mirror-overrides-file '{options.mirror_overrides}' is not a readable file"
             )
 
     if options.distfiles_local is not None:
@@ -375,8 +370,7 @@ def emirrordist_main(args):
             and os.access(options.distfiles_local, os.W_OK | os.X_OK)
         ):
             parser.error(
-                ("--distfiles-local '%s' is not a " "writable directory")
-                % options.distfiles_local
+                f"--distfiles-local '{options.distfiles_local}' is not a writable directory"
             )
 
     if options.distfiles_db is not None:
@@ -392,8 +386,7 @@ def emirrordist_main(args):
             and os.access(options.recycle_dir, os.W_OK | os.X_OK)
         ):
             parser.error(
-                ("--recycle-dir '%s' is not a " "writable directory")
-                % options.recycle_dir
+                f"--recycle-dir '{options.recycle_dir}' is not a writable directory"
             )
 
     if options.recycle_db is not None:
@@ -412,8 +405,7 @@ def emirrordist_main(args):
             and os.access(options.fetch_log_dir, os.W_OK | os.X_OK)
         ):
             parser.error(
-                ("--fetch-log-dir '%s' is not a " "writable directory")
-                % options.fetch_log_dir
+                f"--fetch-log-dir '{options.fetch_log_dir}' is not a writable directory"
             )
 
     if options.whitelist_from:
@@ -428,8 +420,7 @@ def emirrordist_main(args):
                 for file in _recursive_file_list(path):
                     if not os.access(file, os.R_OK):
                         parser.error(
-                            "--whitelist-from '%s' directory contains not readable file '%s'"
-                            % (x, file)
+                            f"--whitelist-from '{x}' directory contains not readable file '{file}'"
                         )
                     normalized_paths.append(file)
             else:

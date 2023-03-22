@@ -351,7 +351,7 @@ def doebuild_environment(
     mypv = os.path.basename(ebuild_path)[:-7]
     mysplit = _pkgsplit(mypv, eapi=mysettings.configdict["pkg"].get("EAPI"))
     if mysplit is None:
-        raise IncorrectParameter(_("Invalid ebuild path: '%s'") % myebuild)
+        raise IncorrectParameter(f"Invalid ebuild path: '{myebuild}'")
 
     if (
         mysettings.mycpv is not None
@@ -577,18 +577,15 @@ def doebuild_environment(
                         break
                 else:
                     writemsg(
-                        (
-                            "Warning: %s requested but no masquerade dir "
-                            "can be found in /usr/lib*/%s/bin\n"
-                        )
-                        % (m, m)
+                        f"Warning: {m} requested but no masquerade dir "
+                        f"can be found in /usr/lib*/{m}/bin\n"
                     )
                     mysettings.features.remove(feature)
 
         if "MAKEOPTS" not in mysettings:
             nproc = get_cpu_count()
             if nproc:
-                mysettings["MAKEOPTS"] = "-j%d" % (nproc)
+                mysettings["MAKEOPTS"] = f"-j{nproc}"
             if "GNUMAKEFLAGS" not in mysettings:
                 mysettings["GNUMAKEFLAGS"] = "--output-sync=line"
 
@@ -628,7 +625,7 @@ def doebuild_environment(
         if binpkg_format not in portage.const.SUPPORTED_GENTOO_BINPKG_FORMATS:
             writemsg(
                 "!!! BINPKG_FORMAT contains invalid or "
-                "unsupported format: %s" % binpkg_format,
+                f"unsupported format: {binpkg_format}",
                 noiselevel=-1,
             )
             binpkg_format = "xpak"
@@ -673,8 +670,8 @@ def doebuild_environment(
                 if find_binary(compression_binary) is None:
                     missing_package = compression["package"]
                     writemsg(
-                        "Warning: File compression unsupported %s. Missing package: %s\n"
-                        % (binpkg_compression, missing_package)
+                        f"Warning: File compression unsupported {binpkg_compression}. "
+                        f"Missing package: {missing_package}\n"
                     )
                 else:
                     compression_binary = compression["compress"].replace(
@@ -921,7 +918,7 @@ def doebuild(
             _doebuild_manifest_cache = None
             if not os.path.exists(manifest_path):
                 out = portage.output.EOutput()
-                out.eerror(_("Manifest not found for '%s'") % (myebuild,))
+                out.eerror(f"Manifest not found for '{myebuild}'")
                 _doebuild_broken_ebuilds.add(myebuild)
                 return 1
             mf = repo_config.load_manifest(pkgdir, mysettings["DISTDIR"])
@@ -937,14 +934,13 @@ def doebuild(
                 and os.path.basename(myebuild) not in mf.fhashdict["EBUILD"]
             ):
                 out = portage.output.EOutput()
-                out.eerror(_("Missing digest for '%s'") % (myebuild,))
+                out.eerror(f"Missing digest for '{myebuild}'")
                 _doebuild_broken_ebuilds.add(myebuild)
                 return 1
         except FileNotFound:
             out = portage.output.EOutput()
             out.eerror(
-                _("A file listed in the Manifest " "could not be found: '%s'")
-                % (myebuild,)
+                f"A file listed in the Manifest could not be found: '{myebuild}'"
             )
             _doebuild_broken_ebuilds.add(myebuild)
             return 1
@@ -952,9 +948,9 @@ def doebuild(
             out = portage.output.EOutput()
             out.eerror(_("Digest verification failed:"))
             out.eerror(f"{e.value[0]}")
-            out.eerror(_("Reason: %s") % e.value[1])
-            out.eerror(_("Got: %s") % e.value[2])
-            out.eerror(_("Expected: %s") % e.value[3])
+            out.eerror(f"Reason: {e.value[1]}")
+            out.eerror(f"Got: {e.value[2]}")
+            out.eerror(f"Expected: {e.value[3]}")
             _doebuild_broken_ebuilds.add(myebuild)
             return 1
 
@@ -972,9 +968,7 @@ def doebuild(
                     f = os.path.join(pkgdir, f)
                     if f not in _doebuild_broken_ebuilds:
                         out = portage.output.EOutput()
-                        out.eerror(
-                            _("A file is not listed in the " "Manifest: '%s'") % (f,)
-                        )
+                        out.eerror(f"A file is not listed in the Manifest: '{f}'")
                     _doebuild_broken_manifests.add(manifest_path)
                     return 1
 
@@ -1033,8 +1027,7 @@ def doebuild(
         if mydo == "nofetch":
             if returnpid:
                 writemsg(
-                    "!!! doebuild: %s\n"
-                    % _("returnpid is not supported for phase '%s'\n" % mydo),
+                    f"!!! doebuild: returnpid is not supported for phase '{mydo}'\n\n",
                     noiselevel=-1,
                 )
 
@@ -1068,8 +1061,7 @@ def doebuild(
         if mydo == "unmerge":
             if returnpid:
                 writemsg(
-                    "!!! doebuild: %s\n"
-                    % _("returnpid is not supported for phase '%s'\n" % mydo),
+                    f"!!! doebuild: returnpid is not supported for phase '{mydo}'\n\n",
                     noiselevel=-1,
                 )
             return unmerge(
@@ -1127,11 +1119,7 @@ def doebuild(
 
                         if x_st is not None and x_st.st_mtime > workdir_st.st_mtime:
                             writemsg_stdout(
-                                _(
-                                    ">>> Timestamp of "
-                                    "%s has changed; recreating WORKDIR...\n"
-                                )
-                                % x
+                                f">>> Timestamp of {x} has changed; recreating WORKDIR...\n"
                             )
                             newstuff = True
                             break
@@ -1290,7 +1278,7 @@ def doebuild(
                 aalist = _parse_uri_map(mysettings.mycpv, metadata)
             except InvalidDependString as e:
                 writemsg(f"!!! {str(e)}\n", noiselevel=-1)
-                writemsg(_("!!! Invalid SRC_URI for '%s'.\n") % mycpv, noiselevel=-1)
+                writemsg(f"!!! Invalid SRC_URI for '{mycpv}'.\n", noiselevel=-1)
                 del e
                 return 1
 
@@ -1379,7 +1367,7 @@ def doebuild(
                 _doebuild_manifest_cache = None
                 digestgen(mysettings=mysettings, myportdb=mydbapi)
         except PermissionDenied as e:
-            writemsg(_("!!! Permission Denied: %s\n") % (e,), noiselevel=-1)
+            writemsg(f"!!! Permission Denied: {e}\n", noiselevel=-1)
             if mydo in ("digest", "manifest"):
                 return 1
 
@@ -1488,8 +1476,7 @@ def doebuild(
 
         elif returnpid:
             writemsg(
-                "!!! doebuild: %s\n"
-                % _("returnpid is not supported for phase '%s'\n" % mydo),
+                f"!!! doebuild: returnpid is not supported for phase '{mydo}'\n\n",
                 noiselevel=-1,
             )
 
@@ -1560,7 +1547,7 @@ def doebuild(
                 )
 
         else:
-            writemsg_stdout(_("!!! Unknown mydo: %s\n") % mydo, noiselevel=-1)
+            writemsg_stdout(f"!!! Unknown mydo: {mydo}\n", noiselevel=-1)
             return 1
 
         return retval
@@ -1592,13 +1579,10 @@ def _check_temp_dir(settings):
         settings["PORTAGE_TMPDIR"]
     ):
         writemsg(
-            _(
-                "The directory specified in your "
-                "PORTAGE_TMPDIR variable, '%s',\n"
-                "does not exist.  Please create this directory or "
-                "correct your PORTAGE_TMPDIR setting.\n"
-            )
-            % settings.get("PORTAGE_TMPDIR", ""),
+            "The directory specified in your "
+            f"PORTAGE_TMPDIR variable, '{settings.get('PORTAGE_TMPDIR', '')}',\n"
+            "does not exist.  Please create this directory or "
+            "correct your PORTAGE_TMPDIR setting.\n",
             noiselevel=-1,
         )
         return 1
@@ -1610,11 +1594,8 @@ def _check_temp_dir(settings):
 
     if not os.access(checkdir, os.W_OK):
         writemsg(
-            _(
-                "%s is not writable.\n"
-                "Likely cause is that you've mounted it as readonly.\n"
-            )
-            % checkdir,
+            f"{checkdir} is not writable.\n"
+            "Likely cause is that you've mounted it as readonly.\n",
             noiselevel=-1,
         )
         return 1
@@ -1623,13 +1604,10 @@ def _check_temp_dir(settings):
         os.chmod(fd.name, 0o755)
         if not os.access(fd.name, os.X_OK):
             writemsg(
-                _(
-                    "Can not execute files in %s\n"
-                    "Likely cause is that you've mounted it with one of the\n"
-                    "following mount options: 'noexec', 'user', 'users'\n\n"
-                    "Please make sure that portage can execute files in this directory.\n"
-                )
-                % checkdir,
+                f"Can not execute files in {checkdir}\n"
+                "Likely cause is that you've mounted it with one of the\n"
+                "following mount options: 'noexec', 'user', 'users'\n\n"
+                "Please make sure that portage can execute files in this directory.\n",
                 noiselevel=-1,
             )
             return 1
@@ -1823,7 +1801,7 @@ def _validate_deps(mysettings, myroot, mydo, mydbapi):
 
     if msgs:
         portage.util.writemsg_level(
-            _("Error(s) in metadata for '%s':\n") % (mysettings.mycpv,),
+            f"Error(s) in metadata for '{mysettings.mycpv}':\n",
             level=logging.ERROR,
             noiselevel=-1,
         )
@@ -1847,21 +1825,15 @@ def _validate_deps(mysettings, myroot, mydo, mydbapi):
         if not result:
             reduced_noise = result.tounicode()
             writemsg(
-                "\n  %s\n"
-                % _(
-                    "The following REQUIRED_USE flag" + " constraints are unsatisfied:"
-                ),
+                "\n  The following REQUIRED_USE flag constraints are unsatisfied:\n",
                 noiselevel=-1,
             )
             writemsg(f"    {reduced_noise}\n", noiselevel=-1)
             normalized_required_use = " ".join(pkg._metadata["REQUIRED_USE"].split())
             if reduced_noise != normalized_required_use:
                 writemsg(
-                    "\n  %s\n"
-                    % _(
-                        "The above constraints "
-                        + "are a subset of the following complete expression:"
-                    ),
+                    "\n  The above constraints are a subset of the following "
+                    "complete expression:\n",
                     noiselevel=-1,
                 )
                 writemsg(
@@ -2169,16 +2141,10 @@ def spawnebuild(
         )
         if os.path.exists(check_file):
             writemsg_stdout(
-                _(
-                    ">>> It appears that "
-                    "'%(action)s' has already executed for '%(pkg)s'; skipping.\n"
-                )
-                % {"action": mydo, "pkg": mysettings["PF"]}
+                ">>> It appears that "
+                f"'{mydo}' has already executed for '{mysettings['PF']}'; skipping.\n"
             )
-            writemsg_stdout(
-                _(">>> Remove '%(file)s' to force %(action)s.\n")
-                % {"file": check_file, "action": mydo}
-            )
+            writemsg_stdout(f">>> Remove '{check_file}' to force {mydo}.\n")
             return os.EX_OK
 
     return _spawn_phase(
@@ -2586,8 +2552,7 @@ def _preinst_bsdflags(mysettings):
 
         # Remove all the file flags to avoid EPERM errors.
         os.system(
-            "chflags -R noschg,nouchg,nosappnd,nouappnd %s"
-            % (_shell_quote(mysettings["D"]),)
+            f"chflags -R noschg,nouchg,nosappnd,nouappnd {_shell_quote(mysettings['D'])}"
         )
         os.system(
             f"chflags -R nosunlnk,nouunlnk {_shell_quote(mysettings['D'])} 2>/dev/null"
@@ -2750,10 +2715,7 @@ def _post_src_install_uid_fix(mysettings, out):
                         # expected header (bug #340725). Even if the header is
                         # missing, we still call rewrite_lafile() since some
                         # valid libtool archives may not have the header.
-                        msg = (
-                            "   %s is not a valid libtool archive, skipping\n"
-                            % fpath[len(destdir) :]
-                        )
+                        msg = f"   {fpath[len(destdir) :]} is not a valid libtool archive, skipping\n"
                         qa_msg = "QA Notice: invalid .la file found: {}, {}".format(
                             fpath[len(destdir) :],
                             e,
@@ -2826,7 +2788,7 @@ def _post_src_install_uid_fix(mysettings, out):
         encoding=_encodings["repo.content"],
         errors="strict",
     )
-    f.write("%d\n" % size)
+    f.write("{size}\n")
     f.close()
 
     _reapply_bsdflags_to_image(mysettings)
@@ -3101,11 +3063,7 @@ def _post_src_install_soname_symlinks(mysettings, out):
     qa_msg = ["QA Notice: Missing soname symlink(s):"]
     qa_msg.append("")
     qa_msg.extend(
-        "\t%s -> %s"
-        % (
-            os.path.join(os.path.dirname(obj).lstrip(os.sep), soname),
-            os.path.basename(obj),
-        )
+        f"\t{os.path.join(os.path.dirname(obj).lstrip(os.sep), soname)} -> {os.path.basename(obj)}"
         for obj, soname in missing_symlinks
     )
     qa_msg.append("")

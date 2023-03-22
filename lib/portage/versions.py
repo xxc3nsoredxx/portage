@@ -110,7 +110,7 @@ def ververify(myver, silent=1):
     if ver_regexp.match(myver):
         return True
     if not silent:
-        print(_("!!! syntax error in version: %s") % myver)
+        print(f"!!! syntax error in version: {myver}")
     return False
 
 
@@ -148,11 +148,11 @@ def vercmp(ver1, ver2, silent=1):
     # checking that the versions are valid
     if not match1 or not match1.groups():
         if not silent:
-            print(_("!!! syntax error in version: %s") % ver1)
+            print(f"!!! syntax error in version: {ver1}")
         return None
     if not match2 or not match2.groups():
         if not silent:
-            print(_("!!! syntax error in version: %s") % ver2)
+            print(f"!!! syntax error in version: {ver2}")
         return None
 
     # building lists of the version parts before the suffix
